@@ -8,7 +8,7 @@ Rules for this file (owner, 2026-11-28):
 Markup inside texts: [label](/path/), **bold**, `code`. Internal paths get the language prefix.
 """
 
-ASSET_VERSION = "091"
+ASSET_VERSION = "092"
 
 
 def L(ar, en, de):
@@ -287,6 +287,8 @@ page("", "home", L("الرئيسية", "Home", "Start"), hero=True, blocks=[
                   "Ultar OS entsteht bei KM Code Craft von Grund auf: ein eigener Kern in Rust, Ausgaben für Desktop, Server und Handy, ein signierter App-Store und jede App in einer abgeschotteten Zelle mit den wenigsten Rechten."),
         "btns": [(L("تنزيل Ultar OS", "Download Ultar OS", "Ultar OS herunterladen"), "/download/", "primary"),
                  (L("ما الجديد", "What is new", "Was ist neu"), "/releases/", "")],
+        "tags": [(L("مجموعة الأجهزة", "Device mesh", "Geräteverbund"), "#mesh"), (L("ذكاء اصطناعي محلي", "Local AI", "Lokale KI"), "#ai"),
+                 (L("التشفير والأمان", "Encryption and security", "Verschlüsselung und Sicherheit"), "#security"), (L("العربية أولاً", "Arabic first", "Arabisch zuerst"), "/about/")],
         "latest": True, "img": "apps",
         "alt": L("قائمة التطبيقات في Ultar OS", "The app grid of Ultar OS", "Das App-Raster von Ultar OS"),
     }),
@@ -306,26 +308,54 @@ page("", "home", L("الرئيسية", "Home", "Start"), hero=True, blocks=[
                   "p": L("اقرن أجهزتك مرة واحدة وتابع ما تعمل عليه على جهاز آخر – مشفّر من طرف إلى طرف.", "Pair your devices once and continue your work on another one – end-to-end encrypted.", "Geräte einmal koppeln und die Arbeit auf einem anderen weiterführen – Ende-zu-Ende verschlüsselt."),
                   "href": "/mesh/"},
              ], 4)]}),
-    ("sec", {"alt": True, "h": L("صور من النظام", "A look at the system", "Ein Blick ins System"),
+    ("sec", {"alt": True, "id": "mesh", "body": [("split", {
+        "k": L("مجموعة الأجهزة", "Device mesh", "Geräteverbund"),
+        "h": L("أجهزتك فريق واحد", "Your devices, one team", "Ihre Geräte – ein Team"),
+        "ps": [L("ابدأ على الهاتف وتابع على الحاسوب. أجهزتك تجد بعضها، تُقرَن مرة واحدة برمز من ستة أرقام، وتتبادل العمل والملفات والحافظة – مشفّرة من طرف إلى طرف، ولا شيء يصل دون سؤالك.",
+                 "Start on the phone and carry on at the computer. Your devices find each other, pair once with a six-digit code and pass work, files and the clipboard between them – end-to-end encrypted, and nothing arrives without asking you.",
+                 "Am Handy beginnen, am Rechner weitermachen. Ihre Geräte finden sich, werden einmal mit einem sechsstelligen Code gekoppelt und geben Arbeit, Dateien und die Zwischenablage weiter – Ende-zu-Ende verschlüsselt, und nichts kommt ungefragt an.")],
+        "list": [L("«المتابعة على جهاز آخر» من قائمة أي تطبيق – والجهاز الهدف يسأل دائماً", "“Continue on another device” from any app's menu – the target device always asks", "„Auf anderem Gerät weitermachen“ aus dem Menü jeder App – das Zielgerät fragt immer"),
+                 L("حافظة مشتركة بين الأجهزة المقترنة؛ ما هو سرّي لا يغادر الجهاز", "A shared clipboard between paired devices; confidential entries never leave", "Gemeinsame Zwischenablage zwischen gekoppelten Geräten; Vertrauliches verlässt das Gerät nie"),
+                 L("جهاز ضعيف يستعير نموذج الذكاء الاصطناعي من جهاز أقوى – بإذنك", "A weak device borrows the AI model of a stronger one – with your permission", "Ein schwaches Gerät leiht sich das KI-Modell eines stärkeren – mit Ihrer Erlaubnis"),
+                 L("في الشبكة نفسها مباشرة، وعبر الإنترنت من خلال مرحِّل لا يرى إلا نصاً مشفّراً", "Directly in the same network, across the internet through a relay that sees only ciphertext", "Im selben Netz direkt, über das Internet durch ein Relais, das nur Verschlüsseltes sieht")],
+        "btns": [(L("مجموعة الأجهزة", "Device mesh", "Geräteverbund"), "/mesh/", "")],
+        "img": "handoff", "alt": L("سؤال الجهاز الهدف قبل المتابعة", "The target device asks before continuing", "Das Zielgerät fragt vor dem Weitermachen")})]}),
+    ("sec", {"id": "ai", "body": [("split", {
+        "rev": True,
+        "k": L("الذكاء الاصطناعي المحلي", "Local AI", "Lokale KI"),
+        "h": L("مساعد يفكّر على جهازك", "A helper that thinks on your device", "Ein Helfer, der auf Ihrem Gerät denkt"),
+        "ps": [L("اطلب بكلماتك – «افتح الملفات»، «أطفئ البلوتوث»، «تابع هذا على الحاسوب» – والمساعد ينفّذ عبر النظام بصلاحيات ضيقة. كل خطوة مرئية، وما هو خطير يحتاج إلى تأكيدك. وهو مطفأ حتى تشغّله أنت.",
+                 "Ask in your own words – “open Files”, “turn Bluetooth off”, “continue this on the computer” – and the helper acts through the system with narrow rights. Every step is visible, and anything dangerous needs your confirmation. It stays off until you switch it on.",
+                 "Bitten Sie in eigenen Worten – „Dateien öffnen“, „Bluetooth aus“, „hier am Rechner weitermachen“ – und der Helfer handelt über das System mit engen Rechten. Jeder Schritt ist sichtbar, Gefährliches braucht Ihre Bestätigung. Er bleibt aus, bis Sie ihn einschalten.")],
+        "aside": ("ladder", [
+            (L("نموذج على جهازك", "A model on your device", "Ein Modell auf Ihrem Gerät"), L("أفضل خيار: لا شيء يغادر الجهاز.", "The best choice: nothing leaves the device.", "Die beste Wahl: nichts verlässt das Gerät.")),
+            (L("نموذج من جهاز مقترن", "A model of a paired device", "Ein Modell eines gekoppelten Geräts"), L("عبر المجموعة المشفّرة، إن سمح الجهاز بذلك.", "Through the encrypted mesh, if that device allows it.", "Über den verschlüsselten Verbund, wenn das Gerät es erlaubt.")),
+            (L("نموذج سحابي بمفتاحك", "A cloud model with your key", "Ein Cloud-Modell mit Ihrem Schlüssel"), L("آخر خيار فقط، وبمفتاحك الخاص لدى المزوّد.", "Only as the last way, with your own key at the provider.", "Nur als letzter Weg, mit Ihrem eigenen Schlüssel beim Anbieter.")),
+            (L("أصغر مساعدة", "The smallest help", "Die kleinste Hilfe"), L("أوامر ثابتة وأجوبة عن النظام بثلاث لغات – دون أي نموذج.", "Fixed commands and answers about the system in three languages – without any model.", "Feste Befehle und Antworten zum System in drei Sprachen – ganz ohne Modell.")),
+        ]),
+        "btns": [(L("المساعد", "The helper", "Der Helfer"), "/assistant/", "")]})]}),
+    ("sec", {"alt": True, "id": "security", "body": [("split", {
+        "k": L("التشفير والأمان", "Encryption and security", "Verschlüsselung und Sicherheit"),
+        "h": L("بياناتك مشفّرة، وجهازك لا يثق إلا بالتواقيع", "Your data encrypted, your device trusting only signatures", "Ihre Daten verschlüsselt, Ihr Gerät vertraut nur Signaturen"),
+        "ps": [L("جهازك لا يثق بخادمنا: يفحص بنفسه توقيع كل ما يُثبَّت – النظام والتعريفات والتطبيقات – ويرفض ما ليس موقّعاً.",
+                 "Your device does not trust our server: it checks the signature of everything it installs – system, drivers and apps – itself, and refuses what is not signed.",
+                 "Ihr Gerät vertraut unserem Server nicht: Es prüft selbst die Signatur von allem, was es installiert – System, Treiber und Apps – und lehnt Unsigniertes ab.")],
+        "list": [L("تشفير قسم البيانات (LUKS2، AES-XTS) بعبارة مرور وشاشة فتح عند الإقلاع؛ المفاتيح تُمسح عند الإطفاء – جديد، يأتي مع الإصدارات القادمة", "Data partition encryption (LUKS2, AES-XTS) with a passphrase and an unlock screen at start; keys are wiped at power-off – new, coming with the next releases", "Verschlüsselung der Datenpartition (LUKS2, AES-XTS) mit Passphrase und Entsperr-Bildschirm beim Start; Schlüssel werden beim Ausschalten gelöscht – neu, kommt mit den nächsten Ausgaben"),
+                 L("مكالمات صوت وصورة مشفّرة من طرف إلى طرف – الخادم لا يعرف ولا يحفظ شيئاً عنها", "End-to-end encrypted voice and video calls – the server neither knows nor keeps anything about them", "Ende-zu-Ende verschlüsselte Sprach- und Videoanrufe – der Server weiß und speichert nichts darüber"),
+                 L("كل تطبيق في خليته بأقل الصلاحيات، والأجهزة لا تصل إلى ذاكرة ليست لها (IOMMU)", "Every app in its own cell with the fewest rights, and devices cannot reach memory that is not theirs (IOMMU)", "Jede App in ihrer Zelle mit den wenigsten Rechten, und Geräte erreichen keinen fremden Speicher (IOMMU)"),
+                 L("تحديثات موقّعة بنسختين A/B مع رجوع تلقائي وحماية من النسخ الأقدم", "Signed updates on two A/B copies with automatic fallback and protection against older versions", "Signierte Updates auf zwei A/B-Kopien mit automatischem Rückfall und Schutz vor älteren Fassungen")],
+        "btns": [(L("الأمان والخصوصية", "Security and privacy", "Sicherheit und Datenschutz"), "/security/", "")],
+        "img": "permission", "alt": L("حوار صلاحية من النظام", "A permission dialog of the system", "Ein Rechte-Dialog des Systems")})]}),
+    ("sec", {"h": L("صور من النظام", "A look at the system", "Ein Blick ins System"),
              "body": [("shots", [
                  ("desktop", L("سطح المكتب: الشريط والبحث والتطبيقات", "The desktop: bar, search and apps", "Der Desktop: Leiste, Suche und Apps")),
                  ("overview", L("نظرة عامة على النوافذ", "Window overview", "Fensterübersicht")),
                  ("quick", L("الإعدادات السريعة", "Quick settings", "Schnelleinstellungen")),
                  ("lock", L("شاشة القفل", "The lock screen", "Der Sperrbildschirm")),
              ])]}),
-    ("sec", {"h": L("وعدنا لك", "Our promise to you", "Unser Versprechen an Sie"),
+    ("sec", {"alt": True, "h": L("وعدنا لك", "Our promise to you", "Unser Versprechen an Sie"),
              "lead": L("هذا ما نبني Ultar OS من أجله. كل قرار في النظام يُقاس بهذه الوعود.", "This is what we build Ultar OS for. Every decision in the system is measured against these promises.", "Dafür bauen wir Ultar OS. Jede Entscheidung im System wird an diesen Versprechen gemessen."),
              "body": [("cards", PROMISE[:4], 4), ("btns", [(L("كل الوعود", "All promises", "Alle Versprechen"), "/about/", "")])]}),
-    ("sec", {"alt": True, "body": [("split", {
-        "h": L("آمن من التصميم", "Secure by design", "Sicher von Grund auf"),
-        "ps": [L("جهازك لا يثق بخادمنا: كل ما يُثبَّت – النظام والتعريفات والتطبيقات – يفحص الجهاز توقيعه بنفسه ويرفض ما ليس موقّعاً.",
-                 "Your device does not trust our server: it checks the signature of everything it installs – system, drivers and apps – itself, and refuses what is not signed.",
-                 "Ihr Gerät vertraut unserem Server nicht: Alles, was es installiert – System, Treiber und Apps –, prüft es selbst auf seine Signatur und lehnt Unsigniertes ab.")],
-        "list": [L("كل تطبيق في خليته بأقل الصلاحيات", "Every app in its own cell with the fewest rights", "Jede App in ihrer Zelle mit den wenigsten Rechten"),
-                 L("مكالمات مشفّرة من طرف إلى طرف – الخادم لا يحفظ شيئاً", "End-to-end encrypted calls – the server keeps nothing", "Ende-zu-Ende verschlüsselte Anrufe – der Server speichert nichts"),
-                 L("تحديثات بنسختين A/B مع رجوع تلقائي", "Updates on two A/B copies with automatic fallback", "Updates auf zwei A/B-Kopien mit automatischem Rückfall")],
-        "btns": [(L("الأمان والخصوصية", "Security and privacy", "Sicherheit und Datenschutz"), "/security/", "")],
-        "img": "permission", "alt": L("حوار صلاحية من النظام", "A permission dialog of the system", "Ein Rechte-Dialog des Systems")})]}),
     ("sec", {"h": L("المتجر والعتاد", "Store and hardware", "Store und Hardware"), "body": [("cards", [
         {"h": L("متجر Ultar", "Ultar Store", "Ultar Store"),
          "p": L("فهرس موقّع عبر HTTPS أو من ذاكرة USB. يعمل دون حساب ودون إنترنت بآخر فهرس موثوق.", "A signed catalogue over HTTPS or from a USB stick. Works without an account and offline with the last trusted catalogue.", "Signierter Katalog über HTTPS oder vom USB-Stick. Geht ohne Konto und offline mit dem letzten vertrauenswürdigen Katalog."),
@@ -445,33 +475,66 @@ page("mesh", "products", L("مجموعة الأجهزة", "Device mesh", "Gerät
      blocks=[
     ("sec", {"body": [("split", {
         "h": L("تابع من حيث توقفت", "Continue where you stopped", "Weitermachen, wo Sie aufgehört haben"),
-        "ps": [L("ما هو مفتوح على جهاز ينتقل إلى جهاز آخر مقترن. لا شيء يصل دون سؤال: الجهاز الهدف يسألك دائماً، وإذا وُجدت عدة أجهزة يسألك المرسل إلى أيها.",
-                 "What is open on one device moves to another paired one. Nothing arrives unasked: the target device always asks you, and with several possible devices the sender asks which one.",
-                 "Was auf einem Gerät offen ist, geht auf ein anderes gekoppeltes über. Nichts kommt ungefragt an: Das Zielgerät fragt immer, und bei mehreren Geräten fragt der Sender, welches.")],
-        "list": [L("اقتران مرة واحدة برمز من ستة أرقام", "Pair once with a six-digit code", "Einmal koppeln mit einem sechsstelligen Code"),
-                 L("كل اتصال مشفّر من طرف إلى طرف", "Every connection end-to-end encrypted", "Jede Verbindung Ende-zu-Ende verschlüsselt"),
-                 L("في الشبكة نفسها مباشرة، وفي شبكات مختلفة عبر مرحِّل خادمنا", "Directly in the same network, through our server's relay across networks", "Im selben Netz direkt, über Netze hinweg über das Relais unseres Servers"),
-                 L("صلاحيات لكل جهاز، ومفتاح إيقاف حتى على مستوى النواة", "Rights per device, and an off switch down to the kernel", "Rechte je Gerät und ein Aus-Schalter bis in den Kern")],
+        "ps": [L("ما هو مفتوح على جهاز ينتقل إلى جهاز آخر مقترن. لا شيء يصل دون سؤال: الجهاز الهدف يسألك دائماً، وإذا وُجدت عدة أجهزة يسألك المرسل إلى أيها. وما لم تقبله خلال دقيقة يُرفض.",
+                 "What is open on one device moves to another paired one. Nothing arrives unasked: the target device always asks you, and with several possible devices the sender asks which one. What you do not accept within a minute is declined.",
+                 "Was auf einem Gerät offen ist, geht auf ein anderes gekoppeltes über. Nichts kommt ungefragt an: Das Zielgerät fragt immer, und bei mehreren Geräten fragt der Sender, welches. Was nicht binnen einer Minute angenommen wird, wird abgelehnt.")],
         "img": "handoff", "alt": L("سؤال الجهاز الهدف قبل المتابعة", "The target device asks before continuing", "Das Zielgerät fragt vor dem Weitermachen")})]}),
+    ("sec", {"alt": True, "h": L("ما تستطيع أجهزتك فعله معاً", "What your devices can do together", "Was Ihre Geräte zusammen können"), "body": [("cards", [
+        {"h": L("المتابعة على جهاز آخر", "Continue on another device", "Auf anderem Gerät weitermachen"), "p": L("من قائمة التطبيق أو بـ Super+M، أو من بطاقة المجموعة في الإعدادات السريعة. الملف يُفتح في المكان نفسه.", "From the app menu or with Super+M, or from the mesh tile in quick settings. A file opens at the same place.", "Aus dem App-Menü oder mit Super+M, oder über die Verbund-Kachel in den Schnelleinstellungen. Eine Datei öffnet sich an derselben Stelle.")},
+        {"h": L("إرسال الملفات", "Send files", "Dateien senden"), "p": L("أرسل ملفاً إلى جهاز مقترن؛ الجهاز الآخر يسأل قبل أن يحفظ أي شيء.", "Send a file to a paired device; the other device asks before it stores anything.", "Eine Datei an ein gekoppeltes Gerät senden; das andere Gerät fragt, bevor es etwas speichert.")},
+        {"h": L("حافظة مشتركة", "Shared clipboard", "Gemeinsame Zwischenablage"), "p": L("انسخ هنا والصق هناك (نص حتى 16 KB). ما هو سرّي – مثل كلمات المرور – لا يغادر الجهاز أبداً. جديد قيد التطوير.", "Copy here, paste there (text up to 16 KB). Confidential entries – such as passwords – never leave the device. New in development.", "Hier kopieren, dort einfügen (Text bis 16 KB). Vertrauliches – etwa Kennwörter – verlässt das Gerät nie. Neu in der Entwicklung.")},
+        {"h": L("إعارة نموذج الذكاء الاصطناعي", "Lending the AI model", "KI-Modell verleihen"), "p": L("الهاتف يفكّر بنموذج الحاسوب وينفّذ عنده؛ السؤال والجواب داخل القناة المشفّرة.", "The phone thinks with the computer's model and acts on itself; question and answer stay inside the encrypted channel.", "Das Handy denkt mit dem Modell des Rechners und handelt bei sich; Frage und Antwort bleiben im verschlüsselten Kanal.")},
+        {"h": L("المساعد يتصرّف على جهاز آخر", "The helper acts on another device", "Der Helfer handelt auf einem anderen Gerät"), "p": L("اطلب من مساعد هاتفك أن يفتح تطبيقاً على حاسوبك – فقط إن منحه الحاسوب صلاحية «التحكم بهذا الجهاز»، والخطير يؤكّده الشخص هناك.", "Ask your phone's helper to open an app on your computer – only if the computer granted the right “Control this device”, and the person there confirms anything dangerous.", "Den Helfer des Handys bitten, am Rechner eine App zu öffnen – nur wenn der Rechner das Recht „Dieses Gerät steuern“ gab; Gefährliches bestätigt dort die Person.")},
+        {"h": L("أجهزة في شبكات مختلفة", "Devices in different networks", "Geräte in verschiedenen Netzen"), "p": L("عبر مرحِّل خادمنا: يمرّر نصاً مشفّراً فقط، والقناة المشفّرة تبقى من طرف إلى طرف.", "Through our server's relay: it forwards ciphertext only, and the encrypted channel stays end to end.", "Über das Relais unseres Servers: es reicht nur Verschlüsseltes weiter, der verschlüsselte Kanal bleibt Ende-zu-Ende.")},
+    ], 3)]}),
+    ("sec", {"h": L("آمن من أول اقتران", "Secure from the first pairing", "Sicher ab der ersten Kopplung"), "body": [("checks", [
+        L("الاقتران برمز من ستة أرقام عبر SPAKE2، مربوط بمفتاحي الجهازين: خمس محاولات وخمس دقائق كحد أقصى.", "Pairing with a six-digit code over SPAKE2, bound to both devices' keys: at most five attempts and five minutes.", "Koppeln mit sechsstelligem Code über SPAKE2, gebunden an die Schlüssel beider Geräte: höchstens fünf Versuche und fünf Minuten."),
+        L("كل اتصال في قناة Noise ‏(X25519، ChaCha20-Poly1305) يُثبت فيها الطرفان مفتاحيهما.", "Every connection in a Noise channel (X25519, ChaCha20-Poly1305) in which both sides prove their keys.", "Jede Verbindung in einem Noise-Kanal (X25519, ChaCha20-Poly1305), in dem beide Seiten ihren Schlüssel beweisen."),
+        L("صلاحيات لكل جهاز: الجهاز المقترن حديثاً يعرض الأنشطة والملفات والحافظة فقط؛ رؤية الشاشة والتحكم والصوت والحساب ونموذج الذكاء الاصطناعي مطفأة حتى تمنحها.", "Rights per device: a newly paired device may only offer activities, files and the clipboard; seeing the screen, control, sound, computing and the AI model stay off until you grant them.", "Rechte je Gerät: ein frisch gekoppeltes Gerät darf nur Aktivitäten, Dateien und die Zwischenablage anbieten; Bildschirm sehen, Steuern, Ton, Rechnen und KI-Modell bleiben aus, bis Sie sie erlauben."),
+        L("مفتاح إيقاف على كل جهاز، حتى على مستوى النواة. خدمة المجموعة تعمل بمستخدم خاص ودون أي صلاحية في النواة.", "An off switch on every device, down to the kernel. The mesh service runs as its own user without any kernel right.", "Ein Aus-Schalter auf jedem Gerät, bis in den Kern. Der Verbund-Dienst läuft als eigener Benutzer ohne jedes Kern-Recht."),
+    ])]}),
     ("sec", {"alt": True, "h": L("الحالة بصدق", "Honest status", "Ehrlicher Stand"), "body": [("status", {
-        "ok": [L("الخدمة، صفحة «المجموعة» في الإعدادات مع الاقتران والصلاحيات، بطاقة الإعدادات السريعة، «المتابعة على جهاز آخر» في قائمة التطبيق، والسؤال على الجهاز الهدف", "The service, the “Mesh” page in Settings with pairing and rights, the quick-settings tile, “Continue on another device” in the app menu, and the question on the target device", "Der Dienst, die Seite „Verbund“ in den Einstellungen mit Koppeln und Rechten, die Kachel in den Schnelleinstellungen, „Auf anderem Gerät weitermachen“ im App-Menü und die Frage am Zielgerät"),
-               L("مختبَرة ضد خادمنا الحقيقي مع أعطال مفتعلة (انقطاع، تلف، تأخير)", "Tested against our real server with injected faults (drops, damage, delays)", "Geprüft gegen unseren echten Server mit eingebauten Fehlern (Abbruch, Beschädigung, Verzögerung)")],
-        "no": [L("التجربة على أجهزة حقيقية، والمشاهدة عن بعد، والصوت والمكالمات عبر المجموعة", "Trying it on real devices, remote view, sound and calls across the mesh", "Erprobung auf echten Geräten, Fernansicht, Ton und Anrufe im Verbund")]})]}),
+        "ok": [L("الخدمة، صفحة «المجموعة» في الإعدادات مع الاقتران والصلاحيات، بطاقة الإعدادات السريعة، «المتابعة على جهاز آخر»، والسؤال على الجهاز الهدف", "The service, the “Mesh” page in Settings with pairing and rights, the quick-settings tile, “Continue on another device”, and the question on the target device", "Der Dienst, die Seite „Verbund“ in den Einstellungen mit Koppeln und Rechten, die Kachel in den Schnelleinstellungen, „Auf anderem Gerät weitermachen“ und die Frage am Zielgerät"),
+               L("مختبَرة ضد خادمنا الحقيقي مع أعطال مفتعلة (انقطاع، تلف، تأخير، تعطّل)", "Tested against our real server with injected faults (drops, damage, delays, crashes)", "Geprüft gegen unseren echten Server mit eingebauten Fehlern (Abbruch, Beschädigung, Verzögerung, Absturz)")],
+        "new": [L("الحافظة المشتركة بين الأجهزة المقترنة", "The shared clipboard between paired devices", "Die gemeinsame Zwischenablage zwischen gekoppelten Geräten")],
+        "no": [L("التجربة على أجهزة حقيقية، وإيماءة «المشاركة» على الهاتف", "Trying it on real devices, and the “hand over” gesture on the phone", "Erprobung auf echten Geräten und die Geste „Weitergeben“ am Handy"),
+               L("المشاهدة والتحكم عن بعد، والصوت والمكالمات والإشعارات بين الأجهزة", "Remote view and control, sound, calls and notifications between devices", "Fernansicht und Fernsteuerung, Ton, Anrufe und Benachrichtigungen zwischen Geräten"),
+               L("إرسال الملفات واستقبالها في النظام المثبّت (مختبَر في الخدمة فقط)", "Sending and receiving files in the installed system (tested in the service only)", "Dateien senden und empfangen im installierten System (nur im Dienst geprüft)"),
+               L("التلفاز ومكبّرات الصوت كأجهزة في المجموعة", "TVs and speakers as mesh devices", "Fernseher und Lautsprecher als Verbund-Geräte")]})]}),
 ])
 
 page("assistant", "products", L("المساعد", "The helper", "Der Helfer"),
      lead=L("مساعد يعمل على جهازك نفسه – يفهم كلامك وينفّذ عبر النظام، ولا يفعل شيئاً خطيراً دون موافقتك.", "A helper that runs on your own device – it understands your words and acts through the system, and does nothing dangerous without your consent.", "Ein Helfer auf Ihrem eigenen Gerät – er versteht Ihre Worte, handelt über das System und tut nichts Gefährliches ohne Ihre Zustimmung."),
      blocks=[
-    ("sec", {"h": L("ذكي، ومحلي، وتحت سيطرتك", "Smart, local and under your control", "Klug, lokal und unter Ihrer Kontrolle"), "body": [("cards", [
-        {"h": L("على جهازك أولاً", "On your device first", "Zuerst auf Ihrem Gerät"), "p": L("بنموذج لغوي على الجهاز نفسه. الجهاز الضعيف يستعير نموذج جهاز مقترن يسمح بذلك.", "With a language model on the device itself. A weak device borrows the model of a paired device that allows it.", "Mit einem Sprachmodell auf dem Gerät selbst. Ein schwaches Gerät leiht sich das Modell eines gekoppelten Geräts, das es erlaubt.")},
-        {"h": L("السحابة آخر خيار", "Cloud only as a last resort", "Cloud nur als letzter Weg"), "p": L("فقط إن لم يتوفر نموذج محلي، وفقط بمفتاحك الخاص لدى المزوّد.", "Only when no local model is possible, and only with your own key at the provider.", "Nur wenn kein lokales Modell möglich ist, und nur mit Ihrem eigenen Schlüssel beim Anbieter.")},
-        {"h": L("مطفأ حتى تشغّله", "Off until you switch it on", "Aus, bis Sie ihn einschalten"), "p": L("خدمة النموذج لا تعمل إلا إذا فعّلتها، والمساعد لا يتصرف إلا بطلبك.", "The model service runs only when you enabled it, and the helper acts only when asked.", "Der Modelldienst läuft nur, wenn Sie ihn aktiviert haben, und der Helfer handelt nur auf Anfrage.")},
-        {"h": L("كل خطوة مرئية", "Every step visible", "Jeder Schritt sichtbar"), "p": L("سجلّ بالخطوات، وصفحة «ما يُسمح للمساعد» مع سجلّ لكل ما فعله.", "A history with the steps, and a page “What the helper may do” with a log of everything it did.", "Verlauf mit sichtbaren Schritten und eine Seite „Was der Helfer darf“ mit Protokoll.")},
+    ("sec", {"body": [("split", {
+        "h": L("أين يفكّر المساعد", "Where the helper thinks", "Wo der Helfer denkt"),
+        "ps": [L("المساعد يختار بنفسه أفضل «عقل» متاح، بهذا الترتيب. كيف يحسب النموذج (المعالج أو معالج الرسوميات أو المعالج العصبي) شأن خدمة النموذج؛ المساعد يرى فقط إن كان جاهزاً وما حجمه.",
+               "The helper picks the best “brain” available by itself, in this order. How a model computes (processor, graphics chip or neural chip) is the model service's matter; the helper only sees whether it is ready and how big it is.",
+               "Der Helfer wählt selbst das beste verfügbare „Gehirn“, in dieser Reihenfolge. Wie ein Modell rechnet (Prozessor, Grafikchip oder Neuralchip), ist Sache des Modelldienstes; der Helfer sieht nur, ob es bereit ist und wie groß.")],
+        "aside": ("ladder", [
+            (L("نموذج على جهازك", "A model on your device", "Ein Modell auf Ihrem Gerät"), L("أفضل خيار: لا شيء يغادر الجهاز.", "The best choice: nothing leaves the device.", "Die beste Wahl: nichts verlässt das Gerät.")),
+            (L("نموذج من جهاز مقترن", "A model of a paired device", "Ein Modell eines gekoppelten Geräts"), L("يفكّر هناك، وينفّذ هنا – عبر المجموعة المشفّرة.", "It thinks there and acts here – through the encrypted mesh.", "Es denkt dort und handelt hier – über den verschlüsselten Verbund.")),
+            (L("نموذج سحابي بمفتاحك", "A cloud model with your key", "Ein Cloud-Modell mit Ihrem Schlüssel"), L("آخر خيار فقط، وبمفتاحك الخاص لدى المزوّد (مثل Claude).", "Only as the last way, with your own key at the provider (for example Claude).", "Nur als letzter Weg, mit Ihrem eigenen Schlüssel beim Anbieter (etwa Claude).")),
+            (L("أصغر مساعدة", "The smallest help", "Die kleinste Hilfe"), L("أوامر ثابتة وأجوبة عن النظام بالعربية والإنجليزية والألمانية – دون نموذج.", "Fixed commands and answers about the system in Arabic, English and German – without a model.", "Feste Befehle und Antworten zum System auf Arabisch, Englisch und Deutsch – ohne Modell.")),
+        ])})]}),
+    ("sec", {"alt": True, "h": L("ما يستطيع فعله", "What it can do", "Was er kann"), "body": [("cards", [
+        {"h": L("التطبيقات والجهاز", "Apps and device", "Apps und Gerät"), "p": L("فتح التطبيقات، الصوت وكتمه، Wi-Fi وبلوتوث ووضع الطيران، صورة الشاشة، القفل والسكون.", "Open apps, volume and mute, Wi-Fi, Bluetooth and flight mode, screenshots, lock and sleep.", "Apps öffnen, Lautstärke und Stumm, WLAN, Bluetooth und Flugmodus, Bildschirmfoto, Sperren und Ruhezustand.")},
+        {"h": L("الإعدادات", "Settings", "Einstellungen"), "p": L("يقرأ الإعدادات ويغيّرها – المجالات الحساسة بعد تأكيدك، ومفاتيحك ومفاتيح الإدارة أبداً.", "Reads and changes settings – sensitive areas after your confirmation, your own keys and admin keys never.", "Liest und ändert Einstellungen – heikle Bereiche nach Ihrer Bestätigung, Ihre Schlüssel und Verwalter-Schlüssel nie.")},
+        {"h": L("المجموعة", "The mesh", "Der Verbund"), "p": L("«تابع هذا على الحاسوب»، «أرسل الملف إلى الهاتف» – والجهاز الآخر يسأل.", "“Continue this on the computer”, “send the file to the phone” – and the other device asks.", "„Hier am Rechner weitermachen“, „Datei ans Handy senden“ – und das andere Gerät fragt.")},
+        {"h": L("المعرفة", "Knowledge", "Wissen"), "p": L("يشرح الاقتران والمتابعة والملفات والنموذج وWi-Fi والبلوتوث والتحديثات – حتى دون نموذج.", "Explains pairing, continuing, files, the model, Wi-Fi, Bluetooth and updates – even without a model.", "Erklärt Koppeln, Weitermachen, Dateien, Modell, WLAN, Bluetooth und Updates – auch ohne Modell.")},
     ], 4)]}),
+    ("sec", {"h": L("تحت سيطرتك دائماً", "Always under your control", "Immer unter Ihrer Kontrolle"), "body": [("checks", [
+        L("مطفأ حتى تشغّله في الإعدادات ← المساعد؛ وخدمة النموذج لا تعمل إلا حينها.", "Off until you switch it on in Settings → Assistant; the model service runs only then.", "Aus, bis Sie ihn unter Einstellungen → Assistent einschalten; erst dann läuft der Modelldienst."),
+        L("يتصرّف فقط عندما تطلب، وفقط بأدوات محددة؛ أداة يخترعها النموذج تُرفض ولا تُنفَّذ.", "It acts only when asked, and only with fixed tools; a tool a model invents is refused and never run.", "Er handelt nur auf Anfrage und nur mit festen Werkzeugen; ein vom Modell erfundenes Werkzeug wird abgelehnt und nie ausgeführt."),
+        L("إعادة التشغيل والإطفاء وكل ما هو خطير يمرّ بحوار النظام ويحتاج إلى تأكيدك.", "Restart, power-off and anything dangerous goes through the system dialog and needs your confirmation.", "Neustart, Ausschalten und alles Gefährliche geht über den Systemdialog und braucht Ihre Bestätigung."),
+        L("لوحة خاصة (Super+H) تعرض كل خطوة مع زر «توقف»، وصفحة «ما يُسمح للمساعد» مع سجلّ لكل ما فعله.", "Its own sheet (Super+H) shows every step with a “Stop” button, and the page “What the helper may do” has a log of everything it did.", "Ein eigenes Blatt (Super+H) zeigt jeden Schritt mit „Stopp“-Knopf, und die Seite „Was der Helfer darf“ führt ein Protokoll über alles."),
+        L("يعمل بمستخدم خاص وبصلاحيات ضيقة عبر ناقل النظام فقط – دون صلاحيات المدير.", "It runs as its own user with narrow rights, through the system bus only – without administrator rights.", "Er läuft als eigener Benutzer mit engen Rechten, nur über den Systembus – ohne Administratorrechte."),
+    ])]}),
     ("sec", {"alt": True, "h": L("الحالة بصدق", "Honest status", "Ehrlicher Stand"), "body": [("status", {
-        "ok": [L("الخدمة مبنية ومختبَرة: تفهم أوامر ثابتة وتجيب عن أسئلة النظام بالعربية والإنجليزية والألمانية دون نموذج", "The service is built and tested: without a model it understands fixed commands and answers questions about the system in Arabic, English and German", "Der Dienst ist gebaut und geprüft: ohne Modell versteht er feste Befehle und beantwortet Fragen zum System auf Arabisch, Englisch und Deutsch")],
-        "no": [L("التحكم الصوتي «Hey KM» وكلمة السر الصوتية", "Voice control “Hey KM” and the spoken secret word", "Sprachsteuerung „Hey KM“ und das gesprochene Geheimwort"),
-               L("تشغيل النماذج على معالج الرسوميات والمعالج العصبي (NPU) عبر نواة Ultar", "Running models on the GPU and NPU through the Ultar kernel", "Modelle auf GPU und NPU über den Ultar-Kern")]})]}),
+        "ok": [L("الخدمة ولوحة المساعد وصفحة الصلاحيات مبنية ومختبَرة، مع المجموعة كجهازين حقيقيين في الاختبار", "The service, the helper sheet and the rights page are built and tested, together with the mesh as two devices in the test", "Dienst, Helfer-Blatt und Rechte-Seite sind gebaut und geprüft, zusammen mit dem Verbund wie auf zwei Geräten")],
+        "no": [L("التحكم الصوتي «Hey KM» والتعرّف على الصوت والنطق", "Voice control “Hey KM”, speech recognition and speech output", "Sprachsteuerung „Hey KM“, Spracherkennung und Sprachausgabe"),
+               L("تشغيل النماذج على معالج الرسوميات والمعالج العصبي عبر نواة Ultar", "Running models on the graphics and neural chips through the Ultar kernel", "Modelle auf Grafik- und Neuralchip über den Ultar-Kern"),
+               L("التجربة على عتاد حقيقي ومع نموذج حقيقي في النظام المثبّت", "Trying it on real hardware and with a real model in the installed system", "Erprobung auf echter Hardware und mit echtem Modell im installierten System")]})]}),
 ])
 
 page("apps", "products", L("المتجر والتطبيقات", "Store and apps", "Store und Apps"),
@@ -511,23 +574,31 @@ page("security", "products", L("الأمان والخصوصية", "Security and 
           "The server has no remote access to devices: no commands, no control, no silent installs.",
           "Der Server hat keinen Fernzugriff auf Geräte: keine Befehle, keine Steuerung, keine stillen Installationen."),
     ])]}),
-    ("sec", {"alt": True, "h": L("مكالمات لا يعرف عنها الخادم شيئاً", "Calls the server knows nothing about", "Anrufe, von denen der Server nichts weiß"), "body": [("checks", [
+    ("sec", {"alt": True, "id": "encryption", "h": L("تشفير بياناتك", "Encrypting your data", "Verschlüsselung Ihrer Daten"), "body": [("checks", [
+        L("في برنامج التثبيت تختار «عبارة مرور» (12 حرفاً على الأقل): قسم البيانات يُشفَّر بـ LUKS2 ‏(AES-XTS، والمفتاح مشتق بـ Argon2id).", "In the installer you choose “passphrase” (at least 12 characters): the data partition is encrypted with LUKS2 (AES-XTS, key derived with Argon2id).", "Im Installer wählen Sie „Passphrase“ (mindestens 12 Zeichen): die Datenpartition wird mit LUKS2 verschlüsselt (AES-XTS, Schlüssel per Argon2id)."),
+        L("عند الإقلاع تفتحه شاشة فتح رسومية، والنواة نفسها تفكّ التشفير. وعند الإطفاء تُمسح المفاتيح من الذاكرة.", "At start a graphical unlock screen opens it, and the kernel itself decrypts. At power-off the keys are wiped from memory.", "Beim Start öffnet ein grafischer Entsperr-Bildschirm die Platte, der Kern selbst entschlüsselt. Beim Ausschalten werden die Schlüssel aus dem Speicher gelöscht."),
+        L("النظام نفسه في نسختين A/B منفصلتين عن بياناتك؛ والتحديثات لا تلمس البيانات.", "The system itself lives in two A/B copies separate from your data; updates never touch the data.", "Das System selbst liegt in zwei A/B-Kopien getrennt von Ihren Daten; Updates berühren die Daten nie."),
+        L("قيد التطوير: يأتي مع الإصدارات القادمة. الفتح بشريحة الجهاز (TPM) لم يتوفر بعد.", "In development: it comes with the next releases. Unlocking with the device chip (TPM) is not available yet.", "In Entwicklung: kommt mit den nächsten Ausgaben. Entsperren mit dem Gerätechip (TPM) gibt es noch nicht."),
+    ])]}),
+    ("sec", {"h": L("مكالمات لا يعرف عنها الخادم شيئاً", "Calls the server knows nothing about", "Anrufe, von denen der Server nichts weiß"), "body": [("checks", [
         L("المفاتيح والصوت والصورة بين الجهازين فقط (X25519 وChaCha20-Poly1305)، موقّعة بمفتاح الجهاز.", "Keys, voice and picture stay between the two devices (X25519, ChaCha20-Poly1305), signed with the device key.", "Schlüssel, Stimme und Bild bleiben zwischen den beiden Geräten (X25519, ChaCha20-Poly1305), signiert mit dem Geräteschlüssel."),
         L("يرى الطرفان رقم أمان واحداً من 60 خانة للمقارنة، وتحذيراً إذا تغيّر المفتاح.", "Both sides see one 60-digit safety number to compare, and a warning if a key changes.", "Beide sehen dieselbe 60-stellige Sicherheitsnummer zum Vergleichen und eine Warnung, wenn sich ein Schlüssel ändert."),
         L("الخادم يوصل الطرفين فقط: لا يحفظ ولا يسجّل شيئاً عن المكالمة، ويمكن للطرفين إخفاء عنوانيهما عبر المرحِّل.", "The server only connects the two: it neither keeps nor logs anything about the call, and both sides can hide their addresses behind the relay.", "Der Server verbindet nur: Er speichert und protokolliert nichts über den Anruf, und beide Seiten können ihre Adressen hinter dem Relais verbergen."),
     ])]}),
-    ("sec", {"h": L("على جهازك", "On your device", "Auf Ihrem Gerät"), "body": [("checks", [
+    ("sec", {"alt": True, "h": L("على جهازك", "On your device", "Auf Ihrem Gerät"), "body": [("checks", [
+        L("الخلايا: كل تطبيق عملية بمستخدم خاص ومساحات أسماء خاصة وحدود ذاكرة، والنواة تفرض الصلاحيات.", "Cells: every app is a process with its own user, its own namespaces and memory limits, and the kernel enforces the rights.", "Zellen: jede App ist ein Prozess mit eigenem Benutzer, eigenen Namensräumen und Speichergrenzen, der Kern setzt die Rechte durch."),
+        L("حماية IOMMU ‏(VT-d): الأجهزة لا تصل إلى ذاكرة ليست لها.", "IOMMU protection (VT-d): devices cannot reach memory that is not theirs.", "IOMMU-Schutz (VT-d): Geräte erreichen keinen fremden Speicher."),
+        L("سجلّ النظام محمي بسلسلة تجزئة، وكلمات المرور تُحفظ بـ Argon2id فقط.", "The system log is protected by a hash chain, and passwords are kept only as Argon2id hashes.", "Das Systemprotokoll ist durch eine Hash-Kette geschützt, Kennwörter liegen nur als Argon2id-Hash vor."),
         L("كل تطبيق وكل خدمة بأقل الصلاحيات، والحوارات المهمة يصدرها النظام وتظهر بعلامة واضحة.", "Every app and every service with the fewest rights; important dialogs come from the system and are clearly marked.", "Jede App und jeder Dienst mit den wenigsten Rechten; wichtige Dialoge kommen vom System und sind deutlich gekennzeichnet."),
-        L("تشفير قسم البيانات بعبارة مرور (جديد قيد التطوير).", "Encryption of the data partition with a passphrase (new in development).", "Verschlüsselung der Datenpartition mit Passphrase (neu in der Entwicklung)."),
         L("التشخيص والموقع مطفآن من البداية.", "Diagnostics and location are off from the start.", "Diagnose und Standort sind von Anfang an aus."),
     ])]}),
-    ("sec", {"alt": True, "h": L("تحقّق بنفسك", "Check it yourself", "Selbst prüfen"),
+    ("sec", {"h": L("تحقّق بنفسك", "Check it yourself", "Selbst prüfen"),
              "lead": L("كل ملف للتنزيل يأتي مع بصمة SHA-256 وتوقيع Ed25519. [هكذا تتحقق](/install/verify/).", "Every download comes with a SHA-256 fingerprint and an Ed25519 signature. [This is how you check](/install/verify/).", "Jeder Download kommt mit SHA-256-Fingerabdruck und Ed25519-Signatur. [So prüfen Sie](/install/verify/)."),
              "body": [("table", [L("المفتاح", "Key", "Schlüssel"), L("معرّف المفتاح", "Key id", "Schlüssel-ID")], [
                  [L("صور النظام (الإصدارات)", "System images (releases)", "Systemabbilder (Ausgaben)"), "`66a1912229841a19`"],
                  [L("تطبيقات النظام", "System apps", "System-Apps"), "`54d9f4ea441a5da2`"],
                  [L("المتجر", "Store", "Store"), "`68b4f13ebe621352`"]])]}),
-    ("sec", {"id": "report", "h": L("الإبلاغ عن ثغرة أمنية", "Report a security issue", "Sicherheitslücke melden"),
+    ("sec", {"alt": True, "id": "report", "h": L("الإبلاغ عن ثغرة أمنية", "Report a security issue", "Sicherheitslücke melden"),
              "lead": L("وجدت ثغرة؟ اكتب إلى [info@code-craft.tech](mailto:info@code-craft.tech) وضع في الموضوع «Security». صف الخطوات والإصدار والجهاز. لا تنشر التفاصيل قبل أن نصلحها.",
                        "Found a weakness? Write to [info@code-craft.tech](mailto:info@code-craft.tech) with “Security” in the subject. Describe the steps, the release and the device. Please do not publish details before we have fixed it.",
                        "Eine Lücke gefunden? Schreiben Sie an [info@code-craft.tech](mailto:info@code-craft.tech) mit „Security“ im Betreff. Beschreiben Sie Schritte, Ausgabe und Gerät. Bitte keine Einzelheiten veröffentlichen, bevor wir sie behoben haben.")}),

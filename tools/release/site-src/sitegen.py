@@ -94,6 +94,8 @@ def b_hero(d, lang):
         parts.append(f'<p class="lead">{inline(tx(d["lead"], lang), lang)}</p>')
     if d.get("btns"):
         parts.append(btns(d["btns"], lang))
+    if d.get("tags"):
+        parts.append('<p class="tags">' + "".join(a(h, html.escape(tx(lbl, lang)), lang, "tag") for lbl, h in d["tags"]) + "</p>")
     if d.get("latest"):
         parts.append(f'<p class="latest" data-latest>{html.escape(tx(P.T["latest_wait"], lang))}</p>')
     parts.append("</div>")
@@ -207,7 +209,12 @@ def b_news(items, lang, limit=None):
 def b_split(d, lang):
     img = (f'<figure class="split-img"><img src="{shot(d["img"], lang)}" alt="{html.escape(tx(d.get("alt") or d["h"], lang))}" loading="lazy" width="1440" height="900"></figure>'
            if d.get("img") else "")
-    body = [f'<h2>{inline(tx(d["h"], lang), lang)}</h2>']
+    if d.get("aside"):
+        img = f'<div class="split-aside">{render(d["aside"], lang)}</div>'
+    body = []
+    if d.get("k"):
+        body.append(f'<p class="kicker">{inline(tx(d["k"], lang), lang)}</p>')
+    body.append(f'<h2>{inline(tx(d["h"], lang), lang)}</h2>')
     for p in d.get("ps", []):
         body.append(f"<p>{inline(tx(p, lang), lang)}</p>")
     if d.get("list"):
@@ -216,6 +223,11 @@ def b_split(d, lang):
         body.append(btns(d["btns"], lang))
     rev = " rev" if d.get("rev") else ""
     return f'<div class="split{rev}"><div class="split-tx">{"".join(body)}</div>{img}</div>'
+
+
+def b_ladder(items, lang):
+    lis = "".join(f'<li><b>{inline(tx(h, lang), lang)}</b><span>{inline(tx(p, lang), lang)}</span></li>' for h, p in items)
+    return f'<ol class="ladder">{lis}</ol>'
 
 
 def b_upd(lang):
@@ -264,6 +276,8 @@ def render(blk, lang):
         return b_news(P.NEWS, lang, blk[1] if len(blk) > 1 else None)
     if kind == "split":
         return b_split(blk[1], lang)
+    if kind == "ladder":
+        return b_ladder(blk[1], lang)
     if kind == "upd":
         return b_upd(lang)
     if kind == "kv":
