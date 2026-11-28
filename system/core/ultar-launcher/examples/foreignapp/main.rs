@@ -9,7 +9,7 @@
 //! Last line: `FOREIGN-APP-KERN: ALLES OK` or `FOREIGN-APP-KERN: FEHLER <what>`.
 //!
 //! ```text
-//! foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]
+//! foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS] [--component PROGRAM]
 //! ```
 //!
 //! Runs as root. `DIR` holds the static `ultar-launcher`, `ultar-foreign`,
@@ -48,11 +48,31 @@ fn check(ok: bool, what: &str) {
     }
 }
 
+/// With `--component PROGRAM` (ultar-foreign's `componenttest`): the component „Linux-Programme“
+/// as the service installs it, on this kernel, before the app (its lines pass through).
+fn component_first() {
+    let words: Vec<String> = std::env::args().collect();
+    let arg = |name: &str| words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned();
+    let (Some(test), Some(bin)) = (arg("--component"), arg("--bin")) else {
+        return;
+    };
+    let out = std::process::Command::new(&test)
+        .args(["--helper", &format!("{bin}/ultar-foreign"), "--work", "/data/componenttest"])
+        .output()
+        .unwrap_or_else(|e| fail(&format!("component: {e}")));
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        println!("{line}");
+    }
+    check(text.contains("COMPONENT: ALLES OK"), "component: the component test failed");
+}
+
 fn main() {
     let args = Args::parse().unwrap_or_else(|| {
         println!("foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]");
         std::process::exit(2)
     });
+    component_first();
     let world = World::start(&args).unwrap_or_else(|e| fail(&format!("setup: {e}")));
     let files = world.client("app.files");
     let settings = world.client("app.settings");

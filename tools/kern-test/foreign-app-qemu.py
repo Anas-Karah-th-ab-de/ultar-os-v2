@@ -81,13 +81,13 @@ try:
     log = b""
     p.stdin.write(command.encode() + b"\r")
     p.stdin.flush()
-    if read_until(rb"FOREIGN-APP: SHOT|FOREIGN-APP-KERN:", float(os.environ.get("WAIT", "4200"))) is None:
+    if read_until(rb"FOREIGN-APP: SHOT|FOREIGN-APP-KERN: [^\n]*\n", float(os.environ.get("WAIT", "4200"))) is None:
         print("\nFOREIGN-APP-KERN: FEHLER no window in time")
         sys.exit(1)
     if b"FOREIGN-APP: SHOT" in log:
         read_until(None, float(os.environ.get("WAIT_DRAW", "30")))
         screenshot()
-    read_until(rb"FOREIGN-APP-KERN: [A-Z]", float(os.environ.get("WAIT_END", "1200")))
+    read_until(rb"FOREIGN-APP-KERN: [^\n]*\n", float(os.environ.get("WAIT_END", "1200")))
 finally:
     p.kill()
     for f in (vars_, ppm):
