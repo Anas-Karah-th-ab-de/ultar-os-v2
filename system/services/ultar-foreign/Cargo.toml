@@ -1,0 +1,27 @@
+[package]
+name = "ultar-foreign"
+version = "0.8.1"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Service for apps from other systems (Linux, later Windows and Android): checks files, asks the administrator, installs into the Linux area in a cell and registers the programs as app.foreign apps (system services, area 4)"
+
+[lib]
+name = "ultar_foreign"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-foreign"
+path = "src/bin/ultar-foreign.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+ultar-sys = { path = "../../hal/ultar-sys" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+rustix = { version = "1", default-features = false, features = ["std", "thread", "process", "mount", "fs"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

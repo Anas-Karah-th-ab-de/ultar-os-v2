@@ -1,0 +1,35 @@
+# Apps from other systems (docs/integration/ultar-foreign.md, docs/FREMD-APPS.md stage P2):
+# installs Linux programs (.deb) of the person into the Linux area below
+# /data/ultar/foreign/linux and registers each visible program with the launcher as an
+# app of profile app.foreign (own user, own cell, the area read-only as its root).
+# Nothing is installed before an administrator confirmed in the system dialog; package
+# fields and scripts only ever run in the service's own cells (no network, no kernel
+# rights; reading as nobody, installing as root of the cell). Windows and Android files
+# are recognised and named, not installed (stages P3/P4).
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-foreign"
+args = [
+    "--bus", "/run/ultar/bus/foreign.sock",
+    "--root", "/data/ultar/foreign",
+    "--log-socket", "/run/ultar/log/foreign.sock",
+]
+user = 844
+# The user's files group: the service reads (only reads, never follows a link, see
+# detect.rs) the package file the person chose in their areas and copies it into its inbox.
+groups = [836]
+# 0755: the desktop shell reads the programs' icons in /data/ultar/foreign/icons; the
+# Linux area and the state stay the service's (the inbox is 0700, state.toml 0600).
+public_dirs = ["/data/ultar/foreign"]
+# right mount: the namespaces and views of its two cells (inspection, installation)
+# right set_id: nobody in the inspection cell, root of the installation cell
+# Every right is dropped in the cells before a program of the area runs.
+rights = ["mount", "set_id"]
+notify = true
+after = ["bus", "launcher"]
+restart = "always"
+
+[cgroup]
+# the package manager runs in its cells, which stay in this group
+"memory.max" = "512M"
+"pids.max" = "256"
+"cpu.weight" = "50"

@@ -31,6 +31,8 @@ fn plan() -> CellPlan {
         tmp_bytes: 64 << 20,
         drop_rights: Some(u64::MAX),
         nproc: Some(64),
+        runtime: Some("/data/ultar/foreign/linux".into()),
+        bridge: Some("/usr/lib/ultar/foreign".into()),
         program: Program {
             exec: "/usr/bin/camera".into(),
             args: vec!["--".into(), "".into(), "--uid".into()],
@@ -55,6 +57,8 @@ fn a_plan_survives_its_command_line() {
         dev: DevMode::None,
         drop_rights: None,
         nproc: None,
+        runtime: None,
+        bridge: None,
         ..p
     };
     let args = bare.to_args();

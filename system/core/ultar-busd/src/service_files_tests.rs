@@ -92,7 +92,7 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the services with own bus sockets (their group ids are the same).
-const IDS: [(&str, i64); 31] = [
+const IDS: [(&str, i64); 32] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
@@ -124,10 +124,11 @@ const IDS: [(&str, i64); 31] = [
     ("voiced", 842),
     ("updated", 841),
     ("screend", 843),
+    ("foreign", 844),
 ];
 
 /// The system services of docs/integration/system-services.md (own socket, own log socket).
-const SYSTEM_SERVICES: [&str; 18] = [
+const SYSTEM_SERVICES: [&str; 19] = [
     "authd",
     "displayd",
     "accountd",
@@ -146,6 +147,7 @@ const SYSTEM_SERVICES: [&str; 18] = [
     "llmcloud",
     "voiced",
     "screend",
+    "foreign",
 ];
 
 fn uid_of(name: &str) -> i64 {
@@ -576,5 +578,92 @@ fn the_service_manager_offers_init_and_only_the_administrator_steers_it() {
             !policy.may_call(&id(identity), "init", "admin"),
             "{identity}"
         );
+    }
+}
+
+/// Apps from other systems (ultar-foreign): the service may register unsigned
+/// `app.foreign` apps with the launcher and ask for an administrator, nothing more; the
+/// Files app may only inspect and start an installation, Settings may manage them; no
+/// other app reaches the service.
+#[test]
+fn the_foreign_service_and_its_callers_get_exactly_their_part() {
+    let policy = Policy::load(&etc().join("bus-policy.toml")).unwrap();
+    let topic = |name: &str| Pattern::parse(name).unwrap();
+    let foreign = id("system.foreign");
+    assert!(policy.may_register(&foreign, "foreign"));
+    for name in ["foreign.progress", "foreign.changed"] {
+        assert!(policy.may_publish(&foreign, name), "{name}");
+    }
+    for (service, method) in [
+        ("launcher", "install_foreign"),
+        ("launcher", "uninstall"),
+        ("launcher", "foreign"),
+        ("sysdialog", "authenticate"),
+    ] {
+        assert!(
+            policy.may_call(&foreign, service, method),
+            "{service}.{method}"
+        );
+    }
+    // never the signed path, the administrator's right or a grant
+    for (service, method) in [
+        ("launcher", "install"),
+        ("launcher", "admin"),
+        ("launcher", "grant"),
+        ("launcher", "start"),
+        ("settings", "set"),
+        ("net", "connect"),
+    ] {
+        assert!(
+            !policy.may_call(&foreign, service, method),
+            "{service}.{method}"
+        );
+    }
+    assert!(!policy.may_register(&foreign, "launcher"));
+    assert!(!policy.may_publish(&foreign, "launcher.changed"));
+    // only the foreign service holds launcher.foreign and launcher.install_foreign
+    // (besides the administrator's tools, which hold launcher.*)
+    for other in [
+        "system.shell",
+        "system.launcher",
+        "system.updated",
+        "app.store",
+        "app.files",
+        "app.settings",
+    ] {
+        let other = id(other);
+        assert!(!policy.may_call(&other, "launcher", "foreign"), "{other}");
+        assert!(
+            !policy.may_call(&other, "launcher", "install_foreign"),
+            "{other}"
+        );
+        assert!(!policy.may_register(&other, "foreign"), "{other}");
+    }
+    let files = id("app.files");
+    assert!(policy.may_call(&files, "foreign", "inspect"));
+    assert!(policy.may_call(&files, "foreign", "install"));
+    assert!(policy.may_subscribe(&files, &topic("foreign.progress")));
+    for method in ["remove", "set_choices", "runtime_update"] {
+        assert!(!policy.may_call(&files, "foreign", method), "{method}");
+    }
+    let settings = id("app.settings");
+    for method in [
+        "list",
+        "set_choices",
+        "remove",
+        "runtime_state",
+        "runtime_update",
+    ] {
+        assert!(policy.may_call(&settings, "foreign", method), "{method}");
+    }
+    for stranger in ["app.some-store-app", "app.foreign.mousepad", "app.phone"] {
+        let stranger = id(stranger);
+        for method in ["inspect", "install", "list", "remove", "set_choices"] {
+            assert!(
+                !policy.may_call(&stranger, "foreign", method),
+                "{stranger} {method}"
+            );
+        }
+        assert!(!policy.may_subscribe(&stranger, &topic("foreign.progress")));
     }
 }

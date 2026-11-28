@@ -42,6 +42,8 @@ args = [
     "--listen", "/run/ultar/bus/netd.sock=system.netd", "--mode", "0660", "--group", "826", "--max-connections", "4",
     "--listen", "/run/ultar/bus/btd.sock=system.btd", "--mode", "0660", "--group", "827", "--max-connections", "4",
     "--listen", "/run/ultar/bus/volumed.sock=system.volumed", "--mode", "0660", "--group", "828", "--max-connections", "4",
+    # Apps from other systems (844).
+    "--listen", "/run/ultar/bus/foreign.sock=system.foreign", "--mode", "0660", "--group", "844", "--max-connections", "2",
     # Device mesh (833), helper (834), the language model's bus face (835).
     "--listen", "/run/ultar/bus/mesh.sock=system.mesh", "--mode", "0660", "--group", "833", "--max-connections", "4",
     "--listen", "/run/ultar/bus/agentd.sock=system.agentd", "--mode", "0660", "--group", "834", "--max-connections", "4",
@@ -75,7 +77,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 839, 840, 841, 842, 843]
+groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 839, 840, 841, 842, 843, 844]
 public_dirs = ["/run/ultar/bus", "/run/ultar/appbus"]
 notify = true
 after = ["logd"]

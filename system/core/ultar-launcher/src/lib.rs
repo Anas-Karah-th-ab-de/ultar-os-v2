@@ -45,6 +45,7 @@ pub mod datadir;
 pub mod defaults;
 pub mod error;
 pub mod follow;
+pub mod foreign;
 pub mod install;
 mod instances;
 pub mod launcher;

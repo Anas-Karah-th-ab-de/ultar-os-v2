@@ -9,6 +9,7 @@
 //! | `groups` | memory and process limits | a group tree with `cgroup.procs` at the configured root |
 //! | `net` | no network without the permission | the helper tries a network namespace |
 //! | `net-guard` | network apps reach only the internet (no host loopback, device address, LAN) | the helper sets the Ultar kernel's "internet only" barrier |
+//! | `device-binds` | apps from other systems: only the harmless device nodes, never the device tree | the helper binds one node (the same probe that gives every cell its single-bind `/dev`) |
 //!
 //! Also detected: whether single device nodes can be bound into a cell
 //! (else the Ultar kernel's device tree, gated by modes and the right
@@ -30,16 +31,19 @@ pub enum Feature {
     Net,
     /// The "internet only" barrier of the Ultar kernel.
     NetGuard,
+    /// Single device nodes bound into a cell (required for apps from other systems).
+    DeviceBinds,
 }
 
 impl Feature {
     /// Every feature.
-    pub const ALL: [Feature; 5] = [
+    pub const ALL: [Feature; 6] = [
         Self::Ids,
         Self::Cell,
         Self::Groups,
         Self::Net,
         Self::NetGuard,
+        Self::DeviceBinds,
     ];
 
     /// Word in the configuration and in records.
@@ -50,6 +54,7 @@ impl Feature {
             Self::Groups => "groups",
             Self::Net => "net",
             Self::NetGuard => "net-guard",
+            Self::DeviceBinds => "device-binds",
         }
     }
 
@@ -142,6 +147,17 @@ impl Platform {
             Feature::Groups => self.groups,
             Feature::Net => self.net,
             Feature::NetGuard => self.net_guard,
+            Feature::DeviceBinds => self.file_binds,
+        }
+    }
+
+    /// Whether `feature` is there – for apps from other systems, where nothing missing is
+    /// ever accepted (`accept_missing` does not count). `Err` names the feature.
+    pub fn require_strictly(&self, feature: Feature) -> Result<(), Feature> {
+        if self.has(feature) {
+            Ok(())
+        } else {
+            Err(feature)
         }
     }
 

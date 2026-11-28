@@ -54,6 +54,9 @@ installer = 840
 screend = 843
 # Voice control (ultar-voiced, docs/integration/ultar-voiced.md): hears and speaks only through the bus.
 voiced = 842
+# Apps from other systems (ultar-foreign, docs/integration/ultar-foreign.md): installs Linux
+# programs into its Linux area in its own cells and registers them with the launcher.
+foreign = 844
 nobody = 65534
 
 [groups]
@@ -96,7 +99,7 @@ desktop = ["busd"]
 audio = ["audiod"]
 radio = ["netd", "btd"]
 disk = ["volumed"]
-userfiles = ["launcher", "desktop"]
+userfiles = ["launcher", "desktop", "foreign"]
 # Their sockets at the bus and the log service are open to their own groups.
 displayd = ["busd", "logd"]
 accountd = ["busd", "logd"]
@@ -119,6 +122,7 @@ llmcloud = ["busd", "logd"]
 osk = ["busd"]
 voiced = ["busd", "logd"]
 updated = ["busd", "logd"]
+foreign = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

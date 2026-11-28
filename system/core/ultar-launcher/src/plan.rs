@@ -182,6 +182,78 @@ fn network(
     Ok((own && guard, own && guard))
 }
 
+/// An app from another system (`foreign.rs`): every isolation feature is required –
+/// `accept_missing` never counts. The network is a namespace of its own: empty without the
+/// permission, with it behind the kernel's "internet only" barrier (`network` above, but
+/// strictly). Returns `(own network namespace, barrier)`.
+///
+/// The barrier has no mode for the local network yet: an app the person allowed the local
+/// network still gets the internet only (never more than granted; `docs/integration/ultar-foreign.md`).
+fn foreign_isolation(
+    platform: &crate::platform::Platform,
+    entry: &Entry,
+) -> Result<(bool, bool), LaunchError> {
+    for feature in [
+        Feature::Ids,
+        Feature::Cell,
+        Feature::Groups,
+        Feature::Net,
+        Feature::DeviceBinds,
+    ] {
+        platform
+            .require_strictly(feature)
+            .map_err(LaunchError::Platform)?;
+    }
+    if entry.granted.has(Permission::Network) {
+        platform
+            .require_strictly(Feature::NetGuard)
+            .map_err(LaunchError::Platform)?;
+        Ok((true, true))
+    } else {
+        Ok((true, false))
+    }
+}
+
+/// What differs in the cell of an app from another system: the Linux area instead of
+/// the system's view, the bridge, its environment, never the bus.
+fn foreign_cell(
+    core: &Core,
+    plan: &mut CellPlan,
+    env: &mut Vec<(String, String)>,
+) -> Result<(), LaunchError> {
+    let runtime = core
+        .config
+        .paths
+        .foreign_runtime
+        .clone()
+        .filter(|r| r.join("usr").is_dir())
+        .ok_or(LaunchError::StartFailed)?;
+    let bridge = core
+        .config
+        .paths
+        .foreign_bridge
+        .clone()
+        .filter(|b| b.join(crate::foreign::BRIDGE_PROGRAM).is_file());
+    plan.view.clear();
+    plan.runtime = Some(runtime);
+    plan.program = crate::foreign::bridged(&plan.program, bridge.is_some());
+    plan.bridge = bridge;
+    plan.publish = None;
+    // only the compositor's directory of the shared ones; the apps' bus never
+    if let Some(app_bus) = &core.config.paths.app_bus {
+        plan.shares.retain(|dir| dir != app_bus);
+    }
+    let lang = core
+        .look
+        .env()
+        .into_iter()
+        .find(|(k, _)| k == "ULTAR_LANG")
+        .map_or_else(|| "ar".to_owned(), |(_, v)| v);
+    env.retain(|(k, _)| k != "PATH");
+    env.extend(crate::foreign::environment(&lang));
+    Ok(())
+}
+
 /// The plan for `role` of the installed app `id`.
 pub(crate) fn prepare(
     core: &Core,
@@ -202,10 +274,22 @@ pub(crate) fn prepare(
         program.args.push(page.to_owned());
     }
     let (platform, accepted) = (&core.platform, &core.config.accept_missing);
+    let foreign = entry.profile == crate::profile::ProfileName::Foreign;
+    if foreign && role != Role::Ui {
+        return Err(LaunchError::NotDeclared);
+    }
+    let foreign_net = if foreign {
+        Some(foreign_isolation(platform, &entry)?)
+    } else {
+        None
+    };
     let cell = platform
         .require(Feature::Cell, accepted)
         .map_err(LaunchError::Platform)?;
-    let (isolate_net, net_guard) = network(platform, accepted, &entry)?;
+    let (isolate_net, net_guard) = match foreign_net {
+        Some(both) => both,
+        None => network(platform, accepted, &entry)?,
+    };
     let profile = entry.profile.profile();
     let limits = profile
         .limits(&manifest.limits)
@@ -234,8 +318,14 @@ pub(crate) fn prepare(
     }
     // the user's file areas: system apps only, each one the manifest declares (areas.rs)
     let (mut areas, mut groups) = (Vec::new(), Vec::new());
+    // system apps declare their areas; an app from another system gets the folders the
+    // person chose for it in the system dialog (written into its manifest by the service)
+    let may_have_areas = matches!(
+        entry.profile,
+        crate::profile::ProfileName::System | crate::profile::ProfileName::Foreign
+    );
     if let (true, Some(root), Some(group)) = (
-        entry.profile == crate::profile::ProfileName::System && cell,
+        may_have_areas && cell,
         &core.config.paths.areas_root,
         core.config.areas_group,
     ) {
@@ -247,7 +337,7 @@ pub(crate) fn prepare(
         }
     }
     let publish = publish_dir(core, id, &entry, owner, cell);
-    let plan = CellPlan {
+    let mut plan = CellPlan {
         identity: owner.map(|o| (o.uid, o.gid)),
         group_dir,
         namespaces: Namespaces {
@@ -268,6 +358,8 @@ pub(crate) fn prepare(
         tmp_bytes: limits.tmp_bytes,
         drop_rights: platform.ultar.then_some(!keep),
         nproc: Some(u64::from(limits.pids)),
+        runtime: None,
+        bridge: None,
         program,
     };
     let mut env = environment(id, role, if cell { None } else { Some(&data) }, opening);
@@ -284,6 +376,9 @@ pub(crate) fn prepare(
     }
     if publish.is_some() {
         env.push((PUBLISH_ENV.to_owned(), view::PUBLISH.to_owned()));
+    }
+    if foreign {
+        foreign_cell(core, &mut plan, &mut env)?;
     }
     Ok(Prepared { plan, env, restart })
 }

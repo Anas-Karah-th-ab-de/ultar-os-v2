@@ -30,6 +30,7 @@ members = [
     "system/services/ultar-sessiond",
     "system/services/ultar-notifyd",
     "system/services/ultar-calendard",
+    "system/services/ultar-foreign",
     "system/services/ultar-audiod",
     "system/services/ultar-mediad",
     "platform/ultar-captured",
