@@ -33,8 +33,10 @@ done
 mkdir -p "$WORK/data/foreign"
 cp -a "$AREA/linux" "$WORK/data/foreign/linux"
 cp "$AREA/mousepad.deb" "$WORK/data/mousepad.deb"
-size=$(( $(du -sm "$WORK/data" | cut -f1) * 3 / 2 + 256 ))
-mke2fs -q -t ext4 -m 0 -E root_owner=0:0 -d "$WORK/data" "$WORK/data.ext4" "${size}M"
+size=$(( $(du -sm "$WORK/data" | cut -f1) * 3 / 2 + 512 ))
+# every block group initialised (no uninit_bg/metadata_csum): the kernel's allocator takes free blocks
+# from initialised groups only, and `-d` fills the first ones
+mke2fs -q -t ext4 -O ^metadata_csum,^uninit_bg -m 0 -E root_owner=0:0 -d "$WORK/data" "$WORK/data.ext4" "${size}M"
 rm -rf "$WORK/data"
 python3 tools/kern-test/gptimg.py "$WORK/disk.img" "ultar-data:linux:$WORK/data.ext4"
 rm -f "$WORK/data.ext4"
