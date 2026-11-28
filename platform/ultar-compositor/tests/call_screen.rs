@@ -1,6 +1,7 @@
 //! The incoming-call screen (`Role::CallScreen`, right `ui.call-screen`): shown above the lock
-//! screen, answerable by pointer or touch while locked, but never given keys and never able to
-//! unlock. Without the right the role is refused.
+//! screen as a band at the top, answerable there by pointer or touch while locked, but never
+//! given keys, never the lock's entry area below the band and never able to unlock. Without the
+//! right the role is refused.
 
 mod common;
 
@@ -59,7 +60,7 @@ fn call_screen_needs_its_right() {
 }
 
 #[test]
-fn call_screen_is_above_the_lock_takes_pointer_but_no_keys_and_cannot_unlock() {
+fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cannot_unlock() {
     let rights = Rights::LOCK_SCREEN.union(Rights::CALL_SCREEN);
     let mut comp = compositor(config_with(rights), &[(800, 600)]);
     let mut app = Peer::hello(&mut comp);
@@ -76,23 +77,58 @@ fn call_screen_is_above_the_lock_takes_pointer_but_no_keys_and_cannot_unlock() {
 
     let mut phone = Peer::hello(&mut comp);
     let call = layer(&mut phone, &mut comp, 1, Role::CallScreen, 0x0000ff);
+    let band = phone.last_configure(call).unwrap();
+    assert_eq!(
+        (band.width, band.height),
+        (
+            800,
+            600 * ultar_compositor::state::CALL_BAND_PERCENT as u32 / 100
+        ),
+        "while locked only a band at the top"
+    );
     comp.render_now();
     assert_eq!(
-        pixel(&comp, 400, 300),
+        pixel(&comp, 400, 60),
         0x0000ff,
         "call screen above the lock screen"
+    );
+    assert_eq!(
+        pixel(&comp, 400, 300),
+        0x00ff00,
+        "the lock's entry area stays visible"
     );
 
     phone.take();
     lock.take();
-    click(&mut comp, 400.0, 300.0);
+    click(&mut comp, 400.0, 60.0);
     phone.pump(&mut comp);
     let buttons = phone
         .take()
         .iter()
         .filter(|e| matches!(e, Event::PointerButton { .. }))
         .count();
-    assert_eq!(buttons, 2, "press and release reach the call screen");
+    assert_eq!(
+        buttons, 2,
+        "press and release in the band reach the call screen"
+    );
+
+    // below the band the lock screen gets the taps, the call screen nothing (S-5: no PIN harvest)
+    click(&mut comp, 400.0, 400.0);
+    phone.pump(&mut comp);
+    lock.pump(&mut comp);
+    assert!(
+        !phone
+            .take()
+            .iter()
+            .any(|e| matches!(e, Event::PointerButton { .. })),
+        "no tap of the entry area reaches the call screen"
+    );
+    assert!(
+        lock.take()
+            .iter()
+            .any(|e| matches!(e, Event::PointerButton { .. })),
+        "the lock screen gets them"
+    );
 
     key(&mut comp, 30, true);
     key(&mut comp, 30, false);

@@ -238,6 +238,10 @@ impl State {
         action: WindowAction,
     ) -> Result<(), ErrorCode> {
         self.require(client, Rights::SHELL)?;
+        // nothing under the lock is closed, shown or moved (review S-12)
+        if self.locked() {
+            return Err(ErrorCode::Permission);
+        }
         let Some(i) = self.windows.iter().position(|w| w.id == id && !w.secure) else {
             return Ok(());
         };

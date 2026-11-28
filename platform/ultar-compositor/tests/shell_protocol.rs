@@ -306,6 +306,39 @@ fn window_list_and_actions_for_the_shell() {
     assert_eq!(app.error(), Some(ErrorCode::Permission));
 }
 
+/// Review S-12: while locked the shell cannot act on the windows under the lock.
+#[test]
+fn no_window_action_under_the_lock() {
+    let mut comp = compositor(config(), &[(800, 600)]);
+    let mut shell = Peer::hello_as(&mut comp, SHELL_UID);
+    panel(&mut shell, &mut comp);
+    let mut app = Peer::hello_as(&mut comp, APP_UID);
+    app.window(&mut comp, 1, 0xff0000);
+    let first = windows(&mut shell, &mut comp).unwrap()[0].id;
+    let mut lock = Peer::hello_as(&mut comp, LOCK_UID);
+    let s = SurfaceId(1);
+    lock.send(&Request::CreateSurface {
+        surface: s,
+        role: Role::Lock,
+    });
+    lock.pump(&mut comp);
+    let c = lock.last_configure(s).unwrap();
+    lock.fill(&mut comp, s, c.serial, (c.width, c.height), 0x00ff00);
+    assert!(comp.state.locked());
+    app.take();
+    shell.send(&Request::WindowAction {
+        window: first,
+        action: WindowAction::Close,
+    });
+    shell.pump(&mut comp);
+    app.pump(&mut comp);
+    assert_eq!(shell.error(), Some(ErrorCode::Permission));
+    assert!(!app
+        .take()
+        .iter()
+        .any(|e| matches!(e, Event::CloseRequested { .. })));
+}
+
 /// Super+P of the shell switches the compositor's display mode.
 #[test]
 fn display_mode_from_the_shell() {

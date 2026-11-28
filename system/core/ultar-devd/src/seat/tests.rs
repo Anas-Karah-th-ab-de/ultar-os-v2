@@ -170,6 +170,32 @@ fn hardware_joins_the_seat_software_only_when_allowed() {
     );
 }
 
+/// The Ultar kernel's layout: `/sys/class/input/<event>` is a directory
+/// (nothing to resolve), the bus is in `device/id/bustype` (review S-4).
+#[test]
+fn the_virtual_bus_marks_software_without_a_link() {
+    let tree = Tree::new("bus");
+    for (event, bus, name) in [
+        ("event3", "0003", "USB Tastatur"),
+        ("event4", "0006", "USB Tastatur"),
+        ("event5", "0006", "ultar-osk"),
+    ] {
+        let class = tree.0.join("sys/class/input").join(event);
+        fs::create_dir_all(class.join("device/id")).unwrap();
+        fs::write(class.join("device/name"), format!("{name}\n")).unwrap();
+        fs::write(class.join("device/id/bustype"), format!("{bus}\n")).unwrap();
+    }
+    let c = config(&["ultar-osk"]);
+    let reason = |name: &str| wanted(&tree.0, name, &c).map(|w| w.reason);
+    assert_eq!(reason("input/event3"), Some(Reason::SeatInput));
+    assert_eq!(
+        reason("input/event4"),
+        Some(Reason::RefusedVirtual),
+        "a uinput device named like hardware stays out"
+    );
+    assert_eq!(reason("input/event5"), Some(Reason::AllowedVirtual));
+}
+
 #[test]
 fn nodes_get_owner_group_and_mode_and_uinput_stays_root_only() {
     let tree = Tree::new("apply");

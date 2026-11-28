@@ -59,6 +59,19 @@ Ratenbegrenzung · Baukasten: 10 kleinere Verhaltensfehler (Schieber mit NaN, Ze
 Die vollständigen Berichte mit Fundstellen: `docs/review/ultar-ui-runde-1.md`; die Angriffs-Programme liegen unter
 `tools/kern-test/attacks/` und in den Testordnern (`*review*`, `*sec_review*`).
 
+## Sicherheit P0 – behoben am 28.11.2026 (Branch `claude/sicherheit-p0`)
+
+| # | Befund | Korrektur | Nachweis |
+|---|---|---|---|
+| S-8 | `noexec` vom Ultar-Kern ignoriert | Einhängungen tragen `read_only` und `no_exec`; `MS_NOEXEC` bei mount/remount, ein bind behält, was die Quelle verbietet; `execve` (Programm, Skript, Interpreter) → `EACCES`, der ELF-Lader wird nie von dort gelesen, `mmap(PROT_EXEC)` einer solchen Datei → `EPERM`; `/proc/mounts` zeigt `noexec` | `zelltest` (11 neue Prüfungen in der Zelle), QEMU: zelltest, kerntest, rechtetest ALLES OK |
+| S-4 | `uinput`-Geräte sahen wie Hardware aus | der Kern meldet für jedes `uinput`-Gerät `BUS_VIRTUAL`, egal was der Dienst angibt, und liefert `device/id/bustype` wie Linux; devd und die Sitz-Regel des HAL erkennen den virtuellen Bus auch ohne Verknüpfung | `bttest uinput`, `geraetetest` (QEMU ALLES OK), devd-Test mit dem Ultar-Aufbau |
+| S-7 | System-UI-Rechte als App-Berechtigung | `ui.shell`, `ui.input-method`, `ui.lock-screen`, `ui.system-dialog` vergibt kein Profil mehr (auch nicht `app.system`); der Compositor nimmt aus der Datei des Starters nur `ui.capture`, `ui.overlay`, `ui.client-header` | Tests `not_even_a_system_app_gets_the_system_ui`, `the_launchers_file_never_gives_the_system_ui` |
+| S-5 | Anruf-Bildschirm bildschirmfüllend über der PIN-Eingabe | gesperrt nur ein Band oben (30 %), darunter gehören Bild und Berührung der Sperre; Sperren/Entsperren meldet die Größe neu | `call_screen_is_a_band_above_the_lock_…` (Tipp unter dem Band erreicht nur die Sperre) |
+| S-10 | firstboot `.users.tmp` folgte Verknüpfungen | alte Datei entfernen, `O_EXCL` + `O_NOFOLLOW`, `fchown` am offenen Deskriptor | Installer-Tests |
+| S-12 | `window_action` während der Sperre | abgelehnt (`Permission`) | `no_window_action_under_the_lock` |
+
+Noch offen dazu: der Anruf-Bildschirm erscheint weiterhin ohne Bindung an ein „klingelt“-Ereignis von `ril`/`calld`; `mprotect` ist im Ultar-Kern noch ohne Wirkung (Seitenrechte ändern sich nicht – eigene Aufgabe, W^X); Bluetooth-Tastaturen über `btd` werden jetzt wie alle virtuellen Geräte abgewiesen, bis devd/Compositor sie über eine feste Kennung des Erzeugers zulassen und Sicherheitstasten nur von Hardware nehmen.
+
 ## Welle 8 – offen nach der Integration (Stand 24.11.2026)
 
 Behoben in `integ/wave8`: S-1 (Sperre nur durch den Besitzer der Sitzung), S-2 (kein offener „Zwilling“ eines
@@ -69,14 +82,10 @@ alle), S-16, L-1…L-11 und R2-1 des App-Starters, Kennungs-Kollision 813 (calld
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| S-4 | Kern/Compositor | `/dev/ultar/uinput`-Geräte sehen wie Hardware aus (sysfs-Verzeichnis statt Link), Name/Bus/Hersteller frei wählbar | Kern kennzeichnet virtuelle Geräte unfälschbar; Sicherheitstasten nur von Hardware |
-| S-5 | Compositor | gesperrt liegt der Anruf-Bildschirm noch bildschirmfüllend über der PIN-Eingabe und bekommt Zeiger/Berührung (entsperrt jetzt unter Systemdialogen) | gesperrt nur ein Band, Eingabebereich der Sperre hat Vorrang; nur bei klingelndem Anruf |
-| S-7 | Starter | `ui.lock-screen`, `ui.shell`, `ui.system-dialog` sind App-Berechtigungen (System-Apps per Dialog erteilbar) | diese Rechte nur über die feste Rechtedatei |
-| S-8 | Kern | `noexec` wird vom Ultar-Kern ignoriert (App startet Heruntergeladenes) | `noexec` im Kern |
 | R2-2…R2-5 | Starter | 64-Bit-Signaturkennung; Gruppen-Ende ohne `cgroup.kill` (pid-Wettlauf, je App statt je Rolle, 5 s unter Sperre); Telefon-Link `org.ultar.settings` ist keine Starter-Kennung, `app.phone` ohne `launcher.start`; ein langsamer Start blockiert den Busfaden | siehe `launcher-runde-2.md` |
 
-Leichter: S-9 (Gruppen-Ende per pid), S-10 (firstboot `.users.tmp` ohne `O_NOFOLLOW|O_EXCL`), S-11 (beliebige
-HCI-Herstellerbefehle), S-12 (`window_action` während der Sperre), S-13 (`--input-ack` nur für Tests), S-14
+Leichter: S-9 (Gruppen-Ende per pid), S-11 (beliebige
+HCI-Herstellerbefehle), S-13 (`--input-ack` nur für Tests), S-14
 (`ultar.profile` unter Linux aus der Bootzeile), S-15 (`ui.client-header` nur für System-Apps) · der Starter kann
 `ui.call-screen`/`ui.client-header`/`ui.output-config` nicht erteilen · „Im Ordner zeigen“ des Browsers ruft
 `ultar-files --select`, das Dateien-App noch nicht kennt · boringtun/ring für aarch64 ungeprüft · ultar-check auf

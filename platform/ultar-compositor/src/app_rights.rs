@@ -13,6 +13,11 @@
 //! line valid and every id inside the app range. Anything else gives no app
 //! any right (fail closed); ids outside the range never get a right from
 //! here – the static rights file is the only source for those.
+//!
+//! Only [`APP_GRANTABLE`] can come from here: the shell, the keyboard, the
+//! lock screen, system dialogs, output configuration and the call screen
+//! belong to system services and stay with the static file, whatever the
+//! launcher's file says (review S-7, defence in depth).
 
 use crate::config::RightsTable;
 use std::os::unix::fs::MetadataExt;
@@ -21,6 +26,10 @@ use ultar_surface::proto::Rights;
 
 /// Largest file read.
 pub const MAX_BYTES: u64 = 256 * 1024;
+/// The only rights an app can get through the launcher's file.
+pub const APP_GRANTABLE: Rights = Rights::CAPTURE
+    .union(Rights::OVERLAY)
+    .union(Rights::CLIENT_HEADER);
 /// `O_NOFOLLOW` (the generic Linux value on x86_64; aarch64 has its own).
 #[cfg(target_arch = "aarch64")]
 const O_NOFOLLOW: i32 = 0o100_000;
@@ -144,7 +153,7 @@ impl AppRights {
     /// The rights of `uid` (none outside the app range).
     pub fn rights_of(&self, uid: u32) -> Rights {
         if (self.first..=self.last).contains(&uid) {
-            self.table.rights_of(uid)
+            self.table.rights_of(uid).intersect(APP_GRANTABLE)
         } else {
             Rights::NONE
         }
@@ -211,6 +220,34 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         apps.refresh();
         assert_eq!(apps.state(), AppRightsState::Absent);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_launchers_file_never_gives_the_system_ui() {
+        let dir = std::env::temp_dir().join(format!("app-rights-sysui-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("apps.toml");
+        let all = "ui.shell,ui.input-method,ui.lock-screen,ui.capture,ui.overlay,ui.system-dialog,\
+                   ui.output-config,ui.call-screen,ui.client-header";
+        std::fs::write(&file, format!("20003 = \"{all}\"\n")).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let me = std::fs::metadata(&file).unwrap().uid();
+        let mut apps = AppRights::new(file, 20000, 20009, me);
+        apps.refresh();
+        assert_eq!(apps.state(), AppRightsState::Loaded);
+        assert_eq!(apps.rights_of(20003), APP_GRANTABLE);
+        for system in [
+            Rights::SHELL,
+            Rights::INPUT_METHOD,
+            Rights::LOCK_SCREEN,
+            Rights::SYSTEM_DIALOG,
+            Rights::OUTPUT_CONFIG,
+            Rights::CALL_SCREEN,
+        ] {
+            assert!(!apps.rights_of(20003).contains(system));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

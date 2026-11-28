@@ -116,27 +116,44 @@ pub fn account_line(a: &Answers) -> Result<(String, String), FirstBootError> {
     ))
 }
 
+/// `O_NOFOLLOW` (the generic Linux value on x86_64; aarch64 has its own).
+const fn libc_o_nofollow() -> i32 {
+    if cfg!(target_arch = "aarch64") {
+        0o100_000
+    } else {
+        0o400_000
+    }
+}
+
 /// The account file's content for `body`.
 pub fn account_file(body: &str) -> String {
     format!("#{KIND} crc32={:08x}\n{body}", crc32(body.as_bytes()))
 }
 
 /// Writes `content` to `dir/FILE` atomically (mode 0600), owned by `owner` when given.
+///
+/// `dir` belongs to the account service, so whatever lies at the temporary name is removed
+/// and the file is made new without following a link, and ownership is changed on the open
+/// descriptor: a link planted there can never get a root file chowned (review S-10).
 fn write_atomic(dir: &Path, content: &str, owner: Option<u32>) -> Result<(), FirstBootError> {
     let temp = dir.join(format!(".{FILE}.tmp"));
+    match fs::remove_file(&temp) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io("remove")(e)),
+        _ => {}
+    }
     let mut f = OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
+        .custom_flags(libc_o_nofollow())
         .mode(0o600)
         .open(&temp)
         .map_err(io("create"))?;
     f.write_all(content.as_bytes()).map_err(io("write"))?;
+    if let Some(uid) = owner {
+        std::os::unix::fs::fchown(&f, Some(uid), Some(uid)).map_err(io("chown"))?;
+    }
     f.sync_all().map_err(io("fsync"))?;
     drop(f);
-    if let Some(uid) = owner {
-        std::os::unix::fs::chown(&temp, Some(uid), Some(uid)).map_err(io("chown"))?;
-    }
     fs::rename(&temp, dir.join(FILE)).map_err(io("rename"))?;
     File::open(dir)
         .and_then(|d| d.sync_all())

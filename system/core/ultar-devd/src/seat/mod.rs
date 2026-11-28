@@ -198,7 +198,7 @@ pub fn wanted(root: &Path, devname: &str, config: &SeatConfig) -> Option<Wanted>
     let Ok(device) = std::fs::canonicalize(&class) else {
         return Some(root_only(Reason::Untraced));
     };
-    if !seat_nodes::is_virtual_device(&device) {
+    if !seat_nodes::is_virtual_device(&device) && !seat_nodes::declares_virtual_bus(&class) {
         return Some(seat(Reason::SeatInput));
     }
     let name = apply::read_small(&seat_nodes::input_name(&class), 256).unwrap_or_default();

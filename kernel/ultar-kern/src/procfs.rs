@@ -86,8 +86,10 @@ pub fn open(path: &str) -> Option<Node> {
             let mut s = String::new();
             // a process in its own mount namespace reads that namespace's table
             if let Some(ns) = proc::reader_mount_ns() {
-                for (at, fstype, ro) in ns.table() {
-                    s += &format!("{fstype} {at} {fstype} {} 0 0\n", if ro { "ro" } else { "rw" });
+                for (at, fstype, o) in ns.table() {
+                    let mode = if o.read_only { "ro" } else { "rw" };
+                    let exec = if o.no_exec { ",noexec" } else { "" };
+                    s += &format!("{fstype} {at} {fstype} {mode}{exec} 0 0\n");
                 }
                 return file(s);
             }

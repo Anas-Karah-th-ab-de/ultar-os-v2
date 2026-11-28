@@ -1,7 +1,7 @@
 //! System calls of the isolation layer: `mount`, `umount2`, `pivot_root`, `chroot`, `unshare`, `setns`,
 //! `symlink`, the rights part of `prctl`, and the right checks of calls that only need a gate.
 
-use super::mount::{join, repath, MountNs, Source};
+use super::mount::{join, repath, MountNs, Opts, Source};
 use super::path::{link_at, parent};
 use super::pid::PidNs;
 use super::rights::Rights;
@@ -35,6 +35,7 @@ pub const CLONE_NEWPID: u64 = 0x2000_0000;
 pub const CLONE_NEW_UNSUPPORTED: u64 = 0x0200_0000 | 0x0400_0000 | 0x0800_0000 | 0x1000_0000 | 0x4000_0000;
 
 const MS_RDONLY: u64 = 1;
+const MS_NOEXEC: u64 = 8;
 const MS_REMOUNT: u64 = 0x20;
 const MS_BIND: u64 = 0x1000;
 const MS_MOVE: u64 = 0x2000;
@@ -115,11 +116,11 @@ fn dir_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<String, i64> {
     }
 }
 
-fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64) -> Result<(Source, bool, &'static str), i64> {
+fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64) -> Result<(Source, Opts, &'static str), i64> {
     if flags & MS_BIND != 0 {
         let from = dir_in_ns(iso, source, true)?;
-        let (src, read_only) = iso.mnt.source_of(&from);
-        return Ok((src, read_only, "none"));
+        let (src, opts) = iso.mnt.source_of(&from);
+        return Ok((src, opts, "none"));
     }
     let kind = if fstype == 0 { String::new() } else { ustr(fstype).ok_or(-EFAULT)? };
     match kind.as_str() {
@@ -130,12 +131,12 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64
             let (mode, uid, gid) = crate::isolation::tmpfs::parse_root_attr(&options).map_err(|_| -EINVAL)?;
             let tree = Tmpfs::create(quota);
             crate::perm::store(&tree.host_root(), crate::perm::Attr { mode: crate::perm::S_IFDIR | mode, uid, gid });
-            Ok((Source::Tmpfs(tree, String::new()), false, "tmpfs"))
+            Ok((Source::Tmpfs(tree, String::new()), Opts::default(), "tmpfs"))
         }
         // the group tree, for a cell whose manager wants it visible inside
-        "cgroup2" => Ok((Source::Tree(String::from(crate::groups::files::ROOT_PATH)), false, "cgroup2")),
-        "proc" => Ok((Source::Tree(String::from("/proc")), false, "proc")),
-        "devtmpfs" => Ok((Source::Tree(String::from("/dev")), false, "devtmpfs")),
+        "cgroup2" => Ok((Source::Tree(String::from(crate::groups::files::ROOT_PATH)), Opts::default(), "cgroup2")),
+        "proc" => Ok((Source::Tree(String::from("/proc")), Opts::default(), "proc")),
+        "devtmpfs" => Ok((Source::Tree(String::from("/dev")), Opts::default(), "devtmpfs")),
         _ => Err(-ENODEV),
     }
 }
@@ -161,12 +162,13 @@ pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -
     if flags & (MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE) != 0 {
         return 0;
     }
-    let read_only = flags & MS_RDONLY != 0;
+    let opts = Opts { read_only: flags & MS_RDONLY != 0, no_exec: flags & MS_NOEXEC != 0 };
     let done = if flags & MS_REMOUNT != 0 {
-        iso.mnt.remount(&at, read_only)
+        iso.mnt.remount(&at, opts)
     } else {
         match mount_source(&iso, source, fstype, flags, data) {
-            Ok((src, src_ro, kind)) => iso.mnt.add(&at, src, read_only || src_ro, kind),
+            // a bind keeps what its source forbids
+            Ok((src, src_opts, kind)) => iso.mnt.add(&at, src, opts.union(src_opts), kind),
             Err(e) => return e,
         }
     };
