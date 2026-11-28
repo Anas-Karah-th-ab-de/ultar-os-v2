@@ -4,74 +4,74 @@
 //! |---|---|---|---|
 //! | `devices.capabilities` | topic | yes | `devd` |
 //! | `devices.driver_state` | topic | no | `devd` |
-//! | `devices.list` / `switch` / `rollback` / `clear_quarantine` / `rescan` / `shutdown` | calls | – | `devd` |
-//! | `notify.post` | call | – | notification service |
+//! | `devices.list` / `switch` / `rollback` / `clear_quarantine` / `rescan` / `shutdown` | calls | â€“ | `devd` |
+//! | `notify.post` | call | â€“ | notification service |
 //! | `notify.posted` | topic | no | notification service |
-//! | `settings.get` / `settings.set` | calls | – | `settingsd` |
+//! | `settings.get` / `settings.set` | calls | â€“ | `settingsd` |
 //! | `settings.changed` | topic | no | `settingsd` |
-//! | `settings.reset` / `list` / `confirm` / `revert` / `set_displays` / `shutdown` | calls | – | `settingsd` |
+//! | `settings.reset` / `list` / `confirm` / `revert` / `set_displays` / `shutdown` | calls | â€“ | `settingsd` |
 //! | `settings.pending` / `settings.pending_resolved` | topics | no | `settingsd` |
 //! | `settings.store_report` | topic | yes | `settingsd` |
-//! | `settings.set_accessibility` / `settings.accessibility` | calls (only `accessibility.*`) | – | `settingsd` |
+//! | `settings.set_accessibility` / `settings.accessibility` | calls (only `accessibility.*`) | â€“ | `settingsd` |
 //! | `power.state` | topic | yes | power service |
 //! | `shell.mode` | topic | yes | shell |
-//! | `log.query` / `log.stats` | calls | – | log service |
-//! | `init.status` / `init.control` | calls | – | `ultar-init` |
-//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` | calls | – | `ultar-launcher` |
-//! | `auth.users` / `verify` / `set_secret` | calls | – | `ultar-authd` |
-//! | `sysdialog.permission` / `authenticate` | calls | – | `ultar-sysdialog` |
+//! | `log.query` / `log.stats` | calls | â€“ | log service |
+//! | `init.status` / `init.control` | calls | â€“ | `ultar-init` |
+//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` | calls | â€“ | `ultar-launcher` |
+//! | `auth.users` / `verify` / `set_secret` | calls | â€“ | `ultar-authd` |
+//! | `sysdialog.permission` / `authenticate` | calls | â€“ | `ultar-sysdialog` |
 //! | `display.outputs` | topic | yes | display service (`ultar-displayd`) |
-//! | `display.identify` / `display.detect` / `apply` / `keep` / `revert` | calls | – | display service (`ultar-displayd`) |
+//! | `display.identify` / `display.detect` / `apply` / `keep` / `revert` | calls | â€“ | display service (`ultar-displayd`) |
 //! | `account.state` | topic | yes | account service |
-//! | `account.status` / `sign_in` / `sign_out` / `create` / `set_server` / `set_service` / `change_password` / `delete` / `device_sign_out` / `device_remove` | calls | – | account service |
+//! | `account.status` / `sign_in` / `sign_out` / `create` / `set_server` / `set_service` / `change_password` / `delete` / `device_sign_out` / `device_remove` | calls | â€“ | account service |
 //! | `account.users` | topic | yes | account service (`ultar-accountd`) |
-//! | `account.users_list` / `user_create` / `user_rename` / `user_picture` / `user_password` / `user_kind` / `user_auto_login` / `user_remove` / `user_picture_get` / `session` | calls | – | account service |
-//! | `auth.update_user` / `remove_user` | calls | – | `ultar-authd` (for the account service) |
+//! | `account.users_list` / `user_create` / `user_rename` / `user_picture` / `user_password` / `user_kind` / `user_auto_login` / `user_remove` / `user_picture_get` / `session` | calls | â€“ | account service |
+//! | `auth.update_user` / `remove_user` | calls | â€“ | `ultar-authd` (for the account service) |
 //! | `session.state` | topic | yes | session service (`ultar-sessiond`) |
-//! | `session.users` / `signed_in` / `switch_user` / `sign_out` | calls | – | session service |
+//! | `session.users` / `signed_in` / `switch_user` / `sign_out` | calls | â€“ | session service |
 //! | `power.actions` | topic | yes | power service (`ultar-powerd`) |
-//! | `power.suspend` / `restart` / `off` | calls | – | power service |
-//! | `init.power` | call | – | `ultar-init` (for the power service) |
-//! | `lock.lock` | call | – | `ultar-lock` (copy of the shell work's contract) |
-//! | `notify.invoke` / `dismiss` / `list` / `take_invoked` | calls | – | notification service (`ultar-notifyd`) |
+//! | `power.suspend` / `restart` / `off` | calls | â€“ | power service |
+//! | `init.power` | call | â€“ | `ultar-init` (for the power service) |
+//! | `lock.lock` | call | â€“ | `ultar-lock` (copy of the shell work's contract) |
+//! | `notify.invoke` / `dismiss` / `list` / `take_invoked` | calls | â€“ | notification service (`ultar-notifyd`) |
 //! | `notify.dismissed` / `notify.invoked` | topics | no | notification service |
-//! | `calendar.day` / `add` / `remove` | calls | – | calendar service (`ultar-calendard`) |
+//! | `calendar.day` / `add` / `remove` | calls | â€“ | calendar service (`ultar-calendard`) |
 //! | `calendar.changed` | topic | no | calendar service |
 //! | `audio.state` | topic | yes | audio service (`ultar-audiod`) |
-//! | `audio.set_volume` / `set_mute` / `outputs` / `set_output` | calls | – | audio service |
+//! | `audio.set_volume` / `set_mute` / `outputs` / `set_output` | calls | â€“ | audio service |
 //! | `media.state` | topic | yes | media service (`ultar-mediad`) |
 //! | `media.command` | topic | no | media service |
-//! | `media.update` / `release` / `play_pause` / `next` / `previous` | calls | – | media service |
-//! | `capture.screenshot` | call | – | screenshot service (`ultar-captured`) |
+//! | `media.update` / `release` / `play_pause` / `next` / `previous` | calls | â€“ | media service |
+//! | `capture.screenshot` | call | â€“ | screenshot service (`ultar-captured`) |
 //! | `net.state` | topic | yes | network service (`ultar-netd`) |
-//! | `net.set_wifi` / `set_airplane` / `scan` / `connect` | calls | – | network service |
+//! | `net.set_wifi` / `set_airplane` / `scan` / `connect` | calls | â€“ | network service |
 //! | `net.wifi` | topic | yes | network service (Wi-Fi connection) |
-//! | `net.networks` / `join` / `disconnect` / `forget` / `known` | calls | – | network service |
+//! | `net.networks` / `join` / `disconnect` / `forget` / `known` | calls | â€“ | network service |
 //! | `vpn.state` | topic | yes | VPN service (`ultar-vpnd`) |
-//! | `vpn.import` / `set` / `remove` | calls | – | VPN service |
+//! | `vpn.import` / `set` / `remove` | calls | â€“ | VPN service |
 //! | `bluetooth.state` | topic | yes | Bluetooth service (`ultar-btd`) |
-//! | `bluetooth.set` / `devices` / `connect` / `disconnect` | calls | – | Bluetooth service |
+//! | `bluetooth.set` / `devices` / `connect` / `disconnect` | calls | â€“ | Bluetooth service |
 //! | `volumes.state` | topic | yes | removable-drive service (`ultar-volumed`) |
-//! | `volumes.eject` | call | – | removable-drive service |
+//! | `volumes.eject` | call | â€“ | removable-drive service |
 //! | `call.state` | topic | yes | call service (`ultar-call`, see [`call`]) |
-//! | `call.dial` / `answer` / `hangup` / … | calls | – | call service |
+//! | `call.dial` / `answer` / `hangup` / â€¦ | calls | â€“ | call service |
 //! | `modem.state` | topic | yes | modem service (`ultar-ril`, see [`modem`]) |
-//! | `modem.dial` / `answer` / `release` / `hold` / `dtmf` / `mute` | calls | – | modem service |
+//! | `modem.dial` / `answer` / `release` / `hold` / `dtmf` / `mute` | calls | â€“ | modem service |
 //! | `mesh.state` | topic | yes | device mesh (`ultar-mesh`, see [`mesh`]) |
 //! | `mesh.handoff_incoming` / `handoff_progress` / `clipboard` | topics | no | device mesh |
-//! | `mesh.set_enabled` / `pair_begin` / `pair_join` / `unpair` / `set_rights` / `set_activity` / `handoff_targets` / `handoff_send` / `handoff_answer` / `send_file` / `clipboard_set` | calls | – | device mesh |
-//! | `mesh.think` / `mesh.models` | calls | – | device mesh (lending the language model, see [`mesh_model`]) |
-//! | `mesh.act` | call | – | device mesh (the helper of a paired device acts there, see [`mesh_remote`]) |
+//! | `mesh.set_enabled` / `pair_begin` / `pair_join` / `unpair` / `set_rights` / `set_activity` / `handoff_targets` / `handoff_send` / `handoff_answer` / `send_file` / `clipboard_set` | calls | â€“ | device mesh |
+//! | `mesh.think` / `mesh.models` | calls | â€“ | device mesh (lending the language model, see [`mesh_model`]) |
+//! | `mesh.act` | call | â€“ | device mesh (the helper of a paired device acts there, see [`mesh_remote`]) |
 //! | `llm.state` | topic | yes | language-model service (see [`llm`]) |
-//! | `llm.complete` | call | – | language-model service |
+//! | `llm.complete` | call | â€“ | language-model service |
 //! | `llmcloud.state` | topic | yes | cloud model, the helper's last way to think (see [`llm_cloud`]) |
-//! | `llmcloud.set_key`, `llmcloud.clear_key`, `llmcloud.complete` | call | – | cloud model |
+//! | `llmcloud.set_key`, `llmcloud.clear_key`, `llmcloud.complete` | call | â€“ | cloud model |
 //! | `agent.state` | topic | yes | local helper (`ultar-agentd`, see [`agent`]) |
-//! | `agent.ask` | call | – | local helper |
+//! | `agent.ask` | call | â€“ | local helper |
 //! | `agent.reach` | topic | yes | what the helper reaches (see [`agent_reach`]) |
 //! | `agent.activity` | topic | yes | what the helper did lately |
-//! | `agent.progress` | topic | – | each step of the request being answered |
-//! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
+//! | `agent.progress` | topic | â€“ | each step of the request being answered |
+//! | `agent.clear_activity` | call | â€“ | local helper (the Settings app only) |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -100,11 +100,13 @@ pub mod media;
 pub mod mesh;
 pub mod mesh_calls;
 pub mod mesh_dialog;
+pub mod mesh_media;
 pub mod mesh_model;
 pub mod mesh_remote;
 pub mod modem;
 pub mod net;
 pub mod notify;
+pub mod notify_mirror;
 pub mod power;
 pub mod session;
 pub mod settings;
@@ -257,6 +259,25 @@ mod tests {
         check_topic::<super::mesh_calls::CallProgress>();
         check_topic::<super::mesh_calls::CallAudio>();
         check_topic::<super::mesh_calls::NoteRemote>();
+        check_call::<super::mesh_calls::CallMeshMute>();
+        check_topic::<super::mesh_calls::MeshCallState>();
+    }
+
+    #[test]
+    fn mesh_media_and_mirror_contract_names_are_valid() {
+        check_call::<super::mesh_media::MediaOpen>();
+        check_call::<super::mesh_media::MediaPcmOut>();
+        check_call::<super::mesh_media::MediaCtlOut>();
+        check_call::<super::mesh_media::SetThere>();
+        check_call::<super::mesh_media::ThereVolume>();
+        check_call::<super::mesh_media::TherePause>();
+        check_call::<super::mesh_media::TherePush>();
+        check_call::<super::notify_mirror::PostEx>();
+        check_topic::<super::mesh_media::MediaIncoming>();
+        check_topic::<super::mesh_media::MediaPcmIn>();
+        check_topic::<super::mesh_media::MediaControl>();
+        check_topic::<super::mesh_media::MediaProgress>();
+        check_topic::<super::mesh_media::ThereState>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

@@ -156,10 +156,32 @@ pub struct NoteRemote {
     pub hide_on_locked: bool,
 }
 
+/// `call.mesh_mute` - mute or unmute the microphone of a call that is led here for another
+/// device (the shell on the device that answered; the phone's own `call.mute` is separate).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CallMeshMute {
+    /// Muted.
+    pub on: bool,
+}
+
+/// `call.mesh` - the call this device leads for another device (retained). `id` is `None`
+/// while there is none.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct MeshCallState {
+    /// The offer that is answered here.
+    pub id: Option<u64>,
+    /// The device that has the call's line.
+    pub device: String,
+    /// The microphone is muted.
+    pub muted: bool,
+}
+
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
 version_one!(
+    CallMeshMute,
+    MeshCallState,
     CallOffer,
     CallOffered,
     CallIncoming,
@@ -187,6 +209,17 @@ call!(CallAnswer, "call_answer", Done);
 call!(CallEnd, "call_end", Done);
 call!(CallAudioIn, "call_audio", Done);
 call!(NoteMirror, "note_mirror", Done);
+
+impl Call for CallMeshMute {
+    const SERVICE: &'static str = crate::messages::call::SERVICE;
+    const METHOD: &'static str = "mesh_mute";
+    type Reply = Done;
+}
+
+impl Topic for MeshCallState {
+    const TOPIC: &'static str = "call.mesh";
+    const RETAINED: bool = true;
+}
 
 impl Topic for CallIncoming {
     const TOPIC: &'static str = "mesh.call_incoming";

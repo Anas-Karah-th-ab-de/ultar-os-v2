@@ -98,7 +98,7 @@ fn keys_step(file: &Path) -> Result<Keys, StartError> {
     Ok(keys)
 }
 
-fn serve<C: Call>(request: IncomingRequest, work: impl FnOnce(C, &str) -> C::Reply) {
+pub(crate) fn serve<C: Call>(request: IncomingRequest, work: impl FnOnce(C, &str) -> C::Reply) {
     let caller = request.caller().to_owned();
     match request.decode::<C>() {
         Ok(call) => {
@@ -246,6 +246,10 @@ impl MeshService {
                 Effect::CallProgress(progress) => bus.publish(&progress),
                 Effect::CallAudio(audio) => bus.publish(&audio),
                 Effect::Note(note) => bus.publish(&note),
+                Effect::MediaIncoming(m) => bus.publish(&m),
+                Effect::MediaPcm(m) => bus.publish(&m),
+                Effect::MediaControl(m) => bus.publish(&m),
+                Effect::MediaProgress(m) => bus.publish(&m),
                 Effect::Open { offer, app, uri } => self.open(offer, app, uri, bus),
                 Effect::Changed => changed = true,
                 other => self.model_effect(other, bus),
@@ -450,6 +454,9 @@ impl Service for MeshService {
             return;
         };
         let Some(request) = self.remote(request, bus) else {
+            return;
+        };
+        let Some(request) = self.media_calls(request, bus) else {
             return;
         };
         let method = request.method().to_owned();

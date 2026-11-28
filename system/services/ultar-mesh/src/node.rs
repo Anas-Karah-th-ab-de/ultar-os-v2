@@ -121,6 +121,14 @@ pub enum Effect {
     CallAudio(ultar_bus::messages::mesh_calls::CallAudio),
     /// A notification of a paired device to show here.
     Note(ultar_bus::messages::mesh_calls::NoteRemote),
+    /// A paired device wants to play its sound here ("play there").
+    MediaIncoming(ultar_bus::messages::mesh_media::MediaIncoming),
+    /// One 20 ms of that sound.
+    MediaPcm(ultar_bus::messages::mesh_media::MediaPcmIn),
+    /// The other end of a "play there" session pressed a control.
+    MediaControl(ultar_bus::messages::mesh_media::MediaControl),
+    /// A "play there" session ended.
+    MediaProgress(ultar_bus::messages::mesh_media::MediaProgress),
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -149,13 +157,17 @@ pub struct Node {
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
     pub(crate) calls: crate::calls::Calls,
+    pub(crate) media: crate::media_link::Media,
 }
 
 impl Node {
     /// The device with the static public key `key`.
     pub fn new(config: Config, key: &[u8], trust: Trust) -> Self {
+        let id = device::id_of(key);
         Self {
-            id: device::id_of(key),
+            calls: crate::calls::Calls::salted(&id),
+            media: crate::media_link::Media::salted(&id),
+            id,
             key: key.to_owned(),
             config,
             enabled: true,
@@ -169,7 +181,6 @@ impl Node {
             clip_remote: None,
             thinking: 0,
             serving: 0,
-            calls: crate::calls::Calls::default(),
         }
     }
 
@@ -255,6 +266,7 @@ impl Node {
         }
         let mut effects = self.drop_offers(peer);
         effects.extend(self.calls.peer_down(peer));
+        effects.extend(self.media.peer_down(peer));
         effects.push(Effect::Changed);
         effects
     }
@@ -373,6 +385,9 @@ impl Node {
             | Frame::CallEnd { .. }
             | Frame::CallAudio { .. }
             | Frame::Note { .. } => self.on_call_frame(peer, frame),
+            Frame::MediaOpen { .. } | Frame::MediaPcm { .. } | Frame::MediaCtl { .. } => {
+                self.on_media_frame(peer, frame)
+            }
             other => self.on_offer_frame(peer, other, now),
         }
     }

@@ -4,9 +4,10 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use crate::emergency;
+use crate::mesh_relay::MeshRelay;
 use crate::mono;
 use crate::session::Session;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use ultar_bus::messages::call::{
     self as contract, Answer, Block, CallError, CallState, ClearLog, Decline, Dial, DialReply,
     Done, Dtmf, Emergency, Forget, Hangup, Hold, Log, LogReply, Mute, NextCamera, SendText,
@@ -37,6 +38,8 @@ pub struct Service {
     mono: mono::Switch,
     /// The settings service answered for `accessibility.mono_audio`.
     mono_known: bool,
+    /// Calls between the person's devices (`--mesh-calls`).
+    relay: Option<MeshRelay>,
 }
 
 fn code(e: CallError) -> ErrorCode {
@@ -79,7 +82,14 @@ impl Service {
                 std::path::Path::new("/"),
             )),
             mono_known: false,
+            relay: None,
         })
+    }
+
+    /// Lets the call be offered to, answered on and carried over the person's other devices.
+    pub fn with_mesh_relay(mut self, relay: MeshRelay) -> Self {
+        self.relay = Some(relay);
+        self
     }
 
     /// The kernel's mono switch at `node` (tests: a file).
@@ -111,12 +121,20 @@ impl Service {
     /// One step: wait up to one tick for a request, answer it, poll the lines, publish.
     pub fn step(&mut self) -> Result<(), BusError> {
         self.follow_settings();
-        match self.endpoint.recv_timeout(self.tick) {
+        // While a call is carried over the mesh the voice keeps its 20 ms beat.
+        let wait = match &self.relay {
+            Some(r) if r.busy() => self.tick.min(Duration::from_millis(10)),
+            _ => self.tick,
+        };
+        match self.endpoint.recv_timeout(wait) {
             Ok(request) => self.handle(request),
             Err(BusError::Timeout) => {}
             Err(e) => return Err(e),
         }
         self.session.pump();
+        if let Some(relay) = self.relay.as_mut() {
+            relay.step(&mut self.session, Instant::now());
+        }
         self.publish_if_changed()?;
         Ok(())
     }
@@ -222,6 +240,12 @@ impl Service {
             }),
             "block" => request.respond::<Block>(|b| done(s.block(&b.number, b.on))),
             "snapshot" => request.respond::<Snapshot>(|_| Ok(s.state())),
+            "mesh_mute" => match self.relay.as_mut() {
+                Some(relay) => relay
+                    .request(request)
+                    .map_or(Ok(()), |r| r.fail(ErrorCode::UnknownMethod)),
+                None => request.fail(ErrorCode::UnknownMethod),
+            },
             _ => request.fail(ErrorCode::UnknownMethod),
         };
         // A failed answer concerns one request only (caller gone, hostile payload answered

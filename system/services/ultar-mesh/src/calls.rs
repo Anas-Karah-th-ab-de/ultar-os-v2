@@ -60,6 +60,18 @@ pub(crate) struct Calls {
 }
 
 impl Calls {
+    /// Offer ids start at a number of the device's own, so that the offers of two phones
+    /// never meet on the desk (the desk keys its incoming offers by id alone).
+    pub(crate) fn salted(device_id: &str) -> Calls {
+        let salt = device_id.bytes().fold(0x811c_9dc5_u32, |h, b| {
+            (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+        });
+        Calls {
+            next: u64::from(salt) << 32,
+            ..Calls::default()
+        }
+    }
+
     /// Removes every call with `peer` and reports them failed (the link is gone).
     pub(crate) fn peer_down(&mut self, peer: &str) -> Vec<Effect> {
         let mut effects = Vec::new();

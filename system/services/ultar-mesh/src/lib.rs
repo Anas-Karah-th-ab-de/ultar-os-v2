@@ -20,6 +20,8 @@ pub mod compute;
 pub mod device;
 pub mod handoff;
 mod lending;
+pub mod media_link;
+mod media_service;
 pub mod model;
 pub mod net;
 pub mod node;

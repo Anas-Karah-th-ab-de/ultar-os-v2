@@ -228,6 +228,31 @@ pub enum Frame {
         /// The source asks to show it only on an unlocked target.
         hide_on_locked: bool,
     },
+    /// Start playing the sound of a media session here ("play there").
+    MediaOpen {
+        /// Id chosen by the source.
+        id: u64,
+        /// What plays (data).
+        title: String,
+        /// By whom (data).
+        artist: String,
+    },
+    /// One 20 ms of the media sound: PCM 16-bit, 48 kHz mono, base64.
+    MediaPcm {
+        /// The session.
+        id: u64,
+        /// Frame counter.
+        seq: u64,
+        /// The PCM bytes.
+        pcm: String,
+    },
+    /// Pause, resume, volume or stop (either end).
+    MediaCtl {
+        /// The session.
+        id: u64,
+        /// What to do.
+        ctl: ultar_bus::messages::mesh_media::MediaCtl,
+    },
     /// Anything this version does not know.
     #[serde(other)]
     Unknown,
