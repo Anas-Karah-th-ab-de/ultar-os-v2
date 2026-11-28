@@ -59,7 +59,7 @@ Ratenbegrenzung · Baukasten: 10 kleinere Verhaltensfehler (Schieber mit NaN, Ze
 Die vollständigen Berichte mit Fundstellen: `docs/review/ultar-ui-runde-1.md`; die Angriffs-Programme liegen unter
 `tools/kern-test/attacks/` und in den Testordnern (`*review*`, `*sec_review*`).
 
-## Sicherheit P0 – behoben am 28.11.2026 (Branch `claude/sicherheit-p0`)
+## Sicherheit P0 – behoben am 28.11.2026
 
 | # | Befund | Korrektur | Nachweis |
 |---|---|---|---|
@@ -69,6 +69,10 @@ Die vollständigen Berichte mit Fundstellen: `docs/review/ultar-ui-runde-1.md`; 
 | S-5 | Anruf-Bildschirm bildschirmfüllend über der PIN-Eingabe | gesperrt nur ein Band oben (30 %), darunter gehören Bild und Berührung der Sperre; Sperren/Entsperren meldet die Größe neu | `call_screen_is_a_band_above_the_lock_…` (Tipp unter dem Band erreicht nur die Sperre) |
 | S-10 | firstboot `.users.tmp` folgte Verknüpfungen | alte Datei entfernen, `O_EXCL` + `O_NOFOLLOW`, `fchown` am offenen Deskriptor | Installer-Tests |
 | S-12 | `window_action` während der Sperre | abgelehnt (`Permission`) | `no_window_action_under_the_lock` |
+| R2-3, S-9 | Gruppen-Ende per pid (Wettlauf), je App statt je Rolle, 5 s Warten unter der Sperre | Ultar-Kern hat `cgroup.kill` (ganze Untergruppe unter einer Sperre der Prozesstabelle, nicht für Wurzel und feste Äste); jede Rolle eigene Gruppe `apps/<app>/<rolle>`; hartes Ende nach dem Loslassen der Sperre; `ultar-init` (`kill_all`) wirkt jetzt auch auf dem Ultar-Kern | `grenztest grenzen` (QEMU ALLES OK), Starter-Tests |
+| R2-2 | Signierer nur 64 Bit des Schlüssel-Hashs | voller SHA-256 als Signierer (Zustandsformat 3, Format 2 wird gelesen; Kurz-Kennung nur noch einmal gegen den eigenen Schlüssel) | `only_the_same_signer_replaces_…`, `format_2_is_read_…` |
+| R2-4 | Telefon-Link `org.ultar.settings` ungültig, `app.phone` ohne `launcher.start` | Kennung `settings`, ohne URI (Einstellungen haben noch kein Schema), Regel und Manifest um `launcher.start` ergänzt | Telefon-Tests |
+| R2-5 | langsamer Start blockiert den Busfaden | `start` läuft auf vier dauerhaften Start-Fäden (Stufe 1 endet mit ihrem Faden), bei voller Schlange wie bisher | Starter-Tests |
 
 Noch offen dazu: der Anruf-Bildschirm erscheint weiterhin ohne Bindung an ein „klingelt“-Ereignis von `ril`/`calld`; `mprotect` ist im Ultar-Kern noch ohne Wirkung (Seitenrechte ändern sich nicht – eigene Aufgabe, W^X); Bluetooth-Tastaturen über `btd` werden jetzt wie alle virtuellen Geräte abgewiesen, bis devd/Compositor sie über eine feste Kennung des Erzeugers zulassen und Sicherheitstasten nur von Hardware nehmen.
 
@@ -82,9 +86,8 @@ alle), S-16, L-1…L-11 und R2-1 des App-Starters, Kennungs-Kollision 813 (calld
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| R2-2…R2-5 | Starter | 64-Bit-Signaturkennung; Gruppen-Ende ohne `cgroup.kill` (pid-Wettlauf, je App statt je Rolle, 5 s unter Sperre); Telefon-Link `org.ultar.settings` ist keine Starter-Kennung, `app.phone` ohne `launcher.start`; ein langsamer Start blockiert den Busfaden | siehe `launcher-runde-2.md` |
 
-Leichter: S-9 (Gruppen-Ende per pid), S-11 (beliebige
+Leichter: S-11 (beliebige
 HCI-Herstellerbefehle), S-13 (`--input-ack` nur für Tests), S-14
 (`ultar.profile` unter Linux aus der Bootzeile), S-15 (`ui.client-header` nur für System-Apps) · der Starter kann
 `ui.call-screen`/`ui.client-header`/`ui.output-config` nicht erteilen · „Im Ordner zeigen“ des Browsers ruft
