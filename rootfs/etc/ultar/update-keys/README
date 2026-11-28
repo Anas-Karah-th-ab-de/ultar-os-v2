@@ -1,0 +1,4 @@
+Public keys a system update must be signed with (one hex Ed25519 key per line, docs/SYSTEM-UPDATE.md §2.3).
+km-code-craft.ed25519: the KM Code Craft update key. The private half stays on the release server
+(/var/lib/ultar-sign/update/update.secret, root, 0400); tools/release/vps/publish-update.sh signs with it.
+Replace a key only through a signed rotation (uupdate-sign rotate), never by editing this file alone.

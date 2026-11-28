@@ -36,22 +36,29 @@ kommt an; scp 1 MiB hin und zurück (sha256 gleich); sftp `ls`; fremder Schlüss
 Kennwort abgewiesen; 3 Sitzungen nacheinander und 2 gleichzeitig. Grün auf .12 (mehrfach, auch im
 Gesamtlauf von `ci.sh`).
 
-## Messwerte (QEMU, slirp-Netz)
+## Messwerte (QEMU, slirp-Netz, 16 MiB per scp)
 
-| Richtung | 16 MiB |
-|---|---|
-| Gerät → PC (scp herunter) | 3,4–5,0 s |
-| PC → Gerät (scp hoch) | 52,8–58,9 s |
-| PC → Gerät ohne Platte (`cat > /dev/null`) | 43,7–55,7 s |
+| Rechner | hoch (PC → Gerät) | herunter | hoch ohne Platte (`cat > /dev/null`) |
+|---|---|---|---|
+| .12, vorher | 52,8–58,9 s | 3,4–5,0 s | 43,7–55,7 s |
+| .12, jetzt | 5,8–6,0 s | 4,6–5,0 s | 8,8–9,1 s |
+| .8, jetzt | 2,3 s | 1,6 s | 7,2 s |
+
+**Ursache des langsamen Empfangs (gemessen mit einem Mitschnitt des Gast-Netzes):** von 28 412 Datensegmenten
+zum Gerät waren 10 921 Wiederholungen, dazu Pausen von 1,4–3 s (Zeitablauf des Senders). Der eigene TCP-Stapel
+verwarf jedes Segment, das nach einem Verlust vorauseilte – ein Verlust kostete so das ganze Fenster und einen
+Zeitablauf. Jetzt (`kernel/ultar-kern/src/socket.rs`):
+- vorauseilende Segmente werden begrenzt aufbewahrt (`ooo`, höchstens 64 je Verbindung, innerhalb des Fensters)
+  und beim Schließen der Lücke in den Strom übernommen; Überlappungen von Wiederholungen werden richtig zugeschnitten;
+- das angekündigte Fenster ist der freie Empfangspuffer (statt fest 65535) – der Sender schickt nie mehr, als Platz ist;
+- öffnet sich ein geschrumpftes Fenster wieder, geht sofort eine Fenster-Meldung hinaus.
+`ssh-e2e.sh` prüft das: Hochladen darf nicht weit hinter dem Herunterladen liegen (≤ 3 × herunter + 5 s).
 
 ## Offen
 
-1. **Empfangen ist ~15× langsamer als Senden** (≈ 0,3 MB/s). Die Platte ist es nicht (Messung ohne Platte
-   gleich langsam); 256 statt 64 Rahmen je Abfrage und ein größerer virtio-Empfangsring ändern nichts.
-   Verdächtig im eigenen TCP (`kernel/ultar-kern/src/socket.rs`): das Fenster ist fest 65535 (auch bei
-   vollem Empfangspuffer), Segmente außer der Reihe werden verworfen, Bestätigungen nur beim
-   Netz-Abfragen (~100 Hz). Nächster Schritt: Fenster/Segmente je Abfrage messen, dann beheben.
-2. Auf `.8` scheitert `ssh-e2e.sh` vor dem Start beim Bauen der Testplatte (`mkfs.ext4: Could not allocate
-   block`), auf `.12` nicht – Ursache in der Testumgebung (Host-Werkzeuge in der Platte), nicht im Kern.
-3. Schlüssel auf ein frisch installiertes Gerät bringen: heute über die Web-Verwaltung oder das Abbild;
+1. Weiterhin viele Wiederholungen im Mitschnitt (der erste Verlust selbst – Empfangsring/Abfragetakt ~100 Hz);
+   jetzt billig, aber eine Ursache für noch mehr Tempo. Fensterskalierung (> 64 KiB) fehlt.
+2. Schlüssel auf ein frisch installiertes Gerät bringen: heute über die Web-Verwaltung oder das Abbild;
    ein Schritt im Installer fehlt.
+3. Testplatte (`make-test-disk.sh`): auf Rechnern mit Rust-Coreutils (ein 11-MB-Programm für alle Befehle,
+   Ubuntu 26.04) wird es jetzt nur einmal kopiert, die anderen Namen verweisen darauf – vorher lief die Platte über.

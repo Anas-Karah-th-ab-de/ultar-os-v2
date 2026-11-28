@@ -465,3 +465,7 @@ desk.desk.rename.title = Rename shortcut
 desk.desk.rename.name = Name
 desk.desk.rename.save = Rename
 desk.desk.rename.cancel = Cancel
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Copied on {arg0}
+mesh.clip.body = Paste with Ctrl+V

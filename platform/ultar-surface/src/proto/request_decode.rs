@@ -180,6 +180,12 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             },
         },
         43 => decode_layouts(r)?,
+        59 => Request::BridgeSetSelection {
+            mimes: decode_mimes(r)?,
+        },
+        60 => Request::BridgeReadSelection {
+            mime: r.str(MAX_MIME)?,
+        },
         _ => return Err(WireError::BadValue),
     })
 }

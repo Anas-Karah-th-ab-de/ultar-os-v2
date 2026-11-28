@@ -48,6 +48,8 @@ pub struct Sock {
     last_tx: u64,
     tries: u32,
     pub rx: VecDeque<u8>,
+    /// TCP segments that arrived ahead of `rcv_nxt` (after a loss), kept until the gap is filled
+    ooo: Vec<(u32, Vec<u8>)>,
     pub dgrams: VecDeque<([u8; 4], u16, Vec<u8>)>,
     pub fin_rcvd: bool,
     pub err: i64,
@@ -78,6 +80,7 @@ impl Sock {
             last_tx: 0,
             tries: 0,
             rx: VecDeque::new(),
+            ooo: Vec::new(),
             dgrams: VecDeque::new(),
             fin_rcvd: false,
             err: 0,
@@ -100,6 +103,59 @@ impl Sock {
         }
         ok
     }
+
+    /// Receive space advertised to the peer: what the stream buffer can still take (no window scaling,
+    /// so at most 65535). The peer never sends more than fits – nothing has to be dropped for room.
+    fn rcv_wnd(&self) -> u16 {
+        let used = self.rx.len() + self.ooo.iter().map(|o| o.1.len()).sum::<usize>();
+        MAX_RX.saturating_sub(used).min(65535) as u16
+    }
+
+    /// Payload of a segment that starts at `seq`. The part at `rcv_nxt` goes into the stream, followed by
+    /// whatever already waits behind it; a segment ahead of `rcv_nxt` (an earlier one was lost) is kept,
+    /// bounded, until the gap is filled – otherwise one loss costs the whole window and a timeout of the
+    /// peer. Old bytes (a repetition) are ignored.
+    fn accept(&mut self, seq: u32, data: &[u8]) {
+        let behind = self.rcv_nxt.wrapping_sub(seq);
+        if behind < 0x8000_0000 {
+            let skip = behind as usize;
+            if skip < data.len() && self.rx.len() + data.len() - skip <= MAX_RX && self.take(&data[skip..]) {
+                self.rcv_nxt = self.rcv_nxt.wrapping_add((data.len() - skip) as u32);
+                self.drain_ooo();
+            }
+            return;
+        }
+        let ahead = seq.wrapping_sub(self.rcv_nxt) as usize;
+        let room = MAX_RX.saturating_sub(self.rx.len());
+        let kept: usize = self.ooo.iter().map(|o| o.1.len()).sum();
+        if ahead + data.len() > room || kept + data.len() > room || self.ooo.len() >= MAX_OOO || self.ooo.iter().any(|o| o.0 == seq) {
+            return;
+        }
+        let ooo = &mut self.ooo;
+        crate::heap::scope(self.owner, || {
+            if let Some(copy) = crate::mem::try_copy(data) {
+                if crate::heap::fallible(|| ooo.try_reserve(1)).is_ok() {
+                    ooo.push((seq, copy));
+                }
+            }
+        });
+    }
+
+    /// Move the kept segments that now reach `rcv_nxt` into the stream; drop the ones that are old.
+    fn drain_ooo(&mut self) {
+        loop {
+            let nxt = self.rcv_nxt;
+            // keep only segments that end after rcv_nxt
+            self.ooo.retain(|o| (o.0.wrapping_add(o.1.len() as u32).wrapping_sub(nxt) as i32) > 0);
+            let Some(i) = self.ooo.iter().position(|o| nxt.wrapping_sub(o.0) < 0x8000_0000) else { return };
+            let (start, d) = self.ooo.swap_remove(i);
+            let skip = nxt.wrapping_sub(start) as usize;
+            if self.rx.len() + d.len() - skip > MAX_RX || !self.take(&d[skip..]) {
+                return; // no room or memory: the peer repeats it
+            }
+            self.rcv_nxt = nxt.wrapping_add((d.len() - skip) as u32);
+        }
+    }
 }
 
 pub static SOCKS: Mutex<BTreeMap<usize, Sock>> = Mutex::new(BTreeMap::new());
@@ -113,6 +169,8 @@ const MAX_TXQ_BYTES: usize = 4 << 20;
 const MAX_DGRAM: usize = 65507;
 const MAX_HALBOFFEN: usize = 64;
 const MAX_RX: usize = 256 * 1024;
+/// Segments kept ahead of a gap per socket (a full window of 1460-byte segments is 45)
+const MAX_OOO: usize = 64;
 const MAX_ARP: usize = 256;
 const MAX_TXQ: usize = 1024;
 
@@ -307,7 +365,7 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
         t[12] = 5 << 4;
     }
     t[13] = flags;
-    t[14..16].copy_from_slice(&65535u16.to_be_bytes());
+    t[14..16].copy_from_slice(&s.rcv_wnd().to_be_bytes());
     t.extend_from_slice(data);
     let src = if s.rip[0] == 127 { [127, 0, 0, 1] } else { my_ip() };
     let c = tcp_csum(src, s.rip, &t);
@@ -613,12 +671,11 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
             }
         }
     }
-    // Daten in Reihenfolge annehmen
+    // Daten annehmen (in Reihenfolge, Vorauseilendes bis zum Schließen der Lücke aufbewahrt); jedes
+    // Segment wird sofort bestätigt – doppelte Bestätigungen lösen beim Sender die schnelle Wiederholung aus
     let mut need_ack = false;
     if !data.is_empty() {
-        if seq == s.rcv_nxt && s.rx.len() + data.len() <= MAX_RX && s.take(data) {
-            s.rcv_nxt = s.rcv_nxt.wrapping_add(data.len() as u32);
-        }
+        s.accept(seq, data);
         need_ack = true;
     }
     if fl & FIN != 0 && seq.wrapping_add(data.len() as u32) == s.rcv_nxt {
@@ -863,7 +920,12 @@ pub fn recv(id: usize, max: usize, peek: bool) -> Recv {
         if peek {
             d.extend(s.rx.iter().take(n).copied());
         } else {
+            let before = s.rcv_wnd();
             d.extend(s.rx.drain(..n));
+            // the window had shrunk and opened again: tell the peer now, not at its next window probe
+            if before < 16384 && s.rcv_wnd() >= 16384 && matches!(s.st, Tcp::Established | Tcp::FinWait) {
+                tcp_out(s, s.snd_nxt, ACK, &[]);
+            }
         }
         return Recv::Data(d, None);
     }

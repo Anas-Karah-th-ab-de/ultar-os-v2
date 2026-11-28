@@ -230,7 +230,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("apps.toml");
         let all = "ui.shell,ui.input-method,ui.lock-screen,ui.capture,ui.overlay,ui.system-dialog,\
-                   ui.output-config,ui.call-screen,ui.client-header";
+                   ui.output-config,ui.call-screen,ui.client-header,ui.clipboard-bridge";
         std::fs::write(&file, format!("20003 = \"{all}\"\n")).unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
         let me = std::fs::metadata(&file).unwrap().uid();
@@ -245,6 +245,7 @@ mod tests {
             Rights::SYSTEM_DIALOG,
             Rights::OUTPUT_CONFIG,
             Rights::CALL_SCREEN,
+            Rights::CLIPBOARD_BRIDGE,
         ] {
             assert!(!apps.rights_of(20003).contains(system));
         }

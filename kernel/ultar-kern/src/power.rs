@@ -48,6 +48,8 @@ unsafe fn r64(a: u64) -> u64 {
 /// Unterbrechungen aus, Seitentabelle des Kerns (volle 1:1-Abbildung) laden
 unsafe fn vorbereiten() {
     core::arch::asm!("cli");
+    // the data key does not survive the power-off or restart in memory
+    crate::crypt::wipe_keys();
     let k = crate::paging::kernel_pml4();
     if k != 0 {
         core::arch::asm!("mov cr3, {}", in(reg) k);

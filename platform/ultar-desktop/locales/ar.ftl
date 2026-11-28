@@ -465,3 +465,7 @@ desk.desk.rename.title = إعادة تسمية الاختصار
 desk.desk.rename.name = الاسم
 desk.desk.rename.save = إعادة التسمية
 desk.desk.rename.cancel = إلغاء
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = تم النسخ على {arg0}
+mesh.clip.body = للصق اضغط Ctrl+V

@@ -465,3 +465,7 @@ desk.desk.rename.title = Verknüpfung umbenennen
 desk.desk.rename.name = Name
 desk.desk.rename.save = Umbenennen
 desk.desk.rename.cancel = Abbrechen
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Auf {arg0} kopiert
+mesh.clip.body = Mit Strg+V einfügen

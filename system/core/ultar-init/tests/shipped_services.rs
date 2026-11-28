@@ -9,7 +9,7 @@ use ultar_init::spec::{ServiceSpec, ALL_RIGHTS, RIGHT_NAMES};
 
 /// Services that still run as root, with the exact reason (the file
 /// repeats it in a `# root:` comment).
-const ROOT_ALLOWED: [(&str, &str); 19] = [
+const ROOT_ALLOWED: [(&str, &str); 20] = [
     ("compat-bind", "bind mount of the compat tree"),
     ("drivers", "module loading (finit_module) and /sys driver files"),
     ("entwickler", "remote administrator shell (developer access)"),
@@ -25,6 +25,7 @@ const ROOT_ALLOWED: [(&str, &str); 19] = [
     ("selftest", "root-only control socket, dpkg and programs in the compat tree"),
     ("shell", "emergency administrator shell at the console"),
     ("tontest", "root-only control socket (power off after the tone)"),
+    ("updated", "writes the inactive A/B slot and the boot control (raw nodes open for root only)"),
     ("ui", "the surface still administers the system itself (drivers, Wi-Fi, cells, packages, clock, reboot)"),
     ("verbund", "screen and file exchange through root-only files of the surface in /run/ultar"),
     ("webtest", "root-only control socket and the compat runner"),

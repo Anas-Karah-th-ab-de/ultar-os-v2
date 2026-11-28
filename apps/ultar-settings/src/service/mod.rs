@@ -88,6 +88,11 @@ pub trait DevicesPort {
 pub trait UpdatePort {
     /// Starts a check; the result arrives as progress.
     fn check(&mut self) -> PortResult<()>;
+    /// Starts the download of the release found by the check (also over a metered network:
+    /// the person asked for it); the course arrives as progress.
+    fn download(&mut self) -> PortResult<()>;
+    /// Installs the downloaded release into the other slot; a restart then starts it.
+    fn apply(&mut self) -> PortResult<()>;
     /// Installs an update bundle from a drive (signature checked by the service).
     fn offline(&mut self, path: &str) -> PortResult<()>;
     /// The last progress: phase key, error key.
