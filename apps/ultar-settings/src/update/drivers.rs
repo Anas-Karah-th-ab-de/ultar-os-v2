@@ -38,6 +38,8 @@ pub fn owns(act: Act) -> bool {
             | Act::DriverPlan(_)
             | Act::FirmwareCheck
             | Act::FirmwareUsb
+            | Act::UpdateDownload
+            | Act::UpdateInstall
             | Act::SelfTest
     )
 }
@@ -67,9 +69,23 @@ pub fn handle(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
             Err(e) => Outcome::error(&e),
         },
         (Act::FirmwareUsb, ActionKind::Activated) => ask(c.state, DialogPurpose::FirmwareUsb),
+        (Act::UpdateDownload, ActionKind::Activated) => match c.ports.update.download() {
+            Ok(()) => started(c.state, "update.state.downloading"),
+            Err(e) => Outcome::error(&e),
+        },
+        (Act::UpdateInstall, ActionKind::Activated) => match c.ports.update.apply() {
+            Ok(()) => started(c.state, "update.state.applying"),
+            Err(e) => Outcome::error(&e),
+        },
         (Act::SelfTest, ActionKind::Activated) => self_test(c),
         _ => Outcome::default(),
     }
+}
+
+/// An update operation the service accepted: shows its phase until the first progress arrives.
+fn started(state: &mut State, phase: &str) -> Outcome {
+    state.drivers.firmware = Some((phase.to_owned(), None));
+    Outcome::rebuild()
 }
 
 fn replace(state: &mut State, info: DeviceInfo) {

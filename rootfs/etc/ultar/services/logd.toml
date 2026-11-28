@@ -44,6 +44,8 @@ args = [
     "--listen", "/run/ultar/log/agentd.sock=system.agentd", "--mode", "0660", "--group", "834",
     "--listen", "/run/ultar/log/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835",
     "--listen", "/run/ultar/log/llmcloud.sock=system.llmcloud", "--mode", "0660", "--group", "837",
+    # The update service (root).
+    "--listen", "/run/ultar/log/updated.sock=system.updated", "--mode", "0600",
     # Standard output and error of the services, from ultar-init (root).
     "--listen-output", "/run/ultar/log/init.sock", "--mode", "0600",
     "--bus", "/run/ultar/bus/logd.sock",

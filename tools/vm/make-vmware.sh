@@ -89,6 +89,12 @@ PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web
 INSTALLER_IMG=${INSTALLER_IMG:-}
 [ -n "$INSTALLER_IMG" ] && PROGRAMS="$PROGRAMS ultar-installer-ui ultar-firstboot"
 SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd call mesh agentd llmbus llmcloud"
+# The system updater (A/B slots of the Ultar kernel, docs/SYSTEM-UPDATE.md): not in a TREE_ONLY tree (the Galaxy A30
+# on its Linux kernel has no A/B layout).
+if [ -z "$TREE_ONLY" ]; then
+  PROGRAMS="$PROGRAMS ultar-updated uupdate"
+  SERVICES_UP="$SERVICES_UP updated"
+fi
 # launcher id : program : manifest arguments (the launcher passes no environment of its own;
 # the apps reach the compositor and the apps' bus socket, app.shared, through these). The phone draws its
 # own window header: its manifest asks for ui.client-header (granted to system apps at installation).
@@ -99,7 +105,7 @@ if [ -z "${BIN:-}" ]; then
     -p ultar-init -p ultar-luks -p ultar-unlock -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
     -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-pkg \
-    -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-terminal ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
+    -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-terminal -p ultar-update ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
@@ -222,6 +228,38 @@ printf 'init\n' >"$R/etc/ultar/session"
 printf '%s\n' "$LANG_CODE" >"$R/etc/ultar/sprache"
 printf 'ultar\n' >"$R/etc/hostname"
 ULTAR_VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+# The updater's configuration: what this image is (version, rollback index from the version, so every
+# release has a higher one), the A/B partitions, the release server and the keys an update must be signed
+# with (rootfs/etc/ultar/update-keys; the private key stays on the release server). The settings app may
+# download and install (admin=app.settings); a release must answer from settingsd and devd before it is kept.
+if [ -z "$TREE_ONLY" ]; then
+  IFS=. read -r V_MAJ V_MIN V_PAT <<<"$ULTAR_VERSION"
+  [ -n "$V_PAT" ] || fail "version $ULTAR_VERSION"
+  ROLLBACK_INDEX=$((V_MAJ * 1000000 + V_MIN * 1000 + V_PAT))
+  ls rootfs/etc/ultar/update-keys/*.ed25519 >/dev/null 2>&1 || fail "no update key in rootfs/etc/ultar/update-keys"
+  cp -r rootfs/etc/ultar/update-keys "$R/etc/ultar/"
+  mkdir -p "$R/media"
+  cat >"$R/etc/ultar/update.conf" <<CONF
+# written by tools/vm/make-vmware.sh (docs/SYSTEM-UPDATE.md)
+device=pc-uefi
+arch=x86_64
+edition=$EDITION
+version=$ULTAR_VERSION
+rollback_index=$ROLLBACK_INDEX
+image_time=$(date +%s)
+roles=kernel,system
+partition_dir=/dev/ultar/part
+running_slot_file=/proc/ultar/boot_slot
+state_dir=/data/ultar/update
+keys_dir=/etc/ultar/update-keys
+server=https://ultar.code-craft.tech
+admin=app.settings
+admin=system.admin
+offline_root=/media
+health_service=settings
+health_service=devices
+CONF
+fi
 printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS %s"\nID=ultar\nVERSION_ID="%s"\nHOME_URL="https://code-craft.tech"\n' "$ULTAR_VERSION" "$ULTAR_VERSION" >"$R/etc/os-release"
 mkdir -p "$R/usr/lib" && cp "$R/etc/os-release" "$R/usr/lib/os-release"
 printf '%s %s\n' "$(sed -n 's/^version = "\(.*\)"/\1/p' kernel/ultar-kern/Cargo.toml | head -1)" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" >"$R/etc/ultar/release"
@@ -305,6 +343,14 @@ printf 'Ultar OS\n' >"$W/inst"; mcopy -i "$W/esp.fat" "$W/inst" ::/ultar/install
 printf '%s\n' "$LANG_CODE" >"$W/lang"; mcopy -i "$W/esp.fat" "$W/lang" ::/ultar/sprache
 python3 tools/kern-test/gptimg.py "$W/medium.img" "ULTAR-INSTALL:esp:$W/install.fat" "ULTAR-EFI:esp:$W/esp.fat" \
   "ultar-kernel:raw:$KERNEL" "ultar-compat:linux:$W/system.ext4" "ultar-data:linux:$W/data.ext4" >/dev/null
+# UPDATE_OUT=<dir>: the payloads of a system update with exactly this image's kernel and system tree
+# (tools/release/build-release.sh makes the update manifest from them)
+if [ -n "${UPDATE_OUT:-}" ]; then
+  mkdir -p "$UPDATE_OUT"
+  cp "$KERNEL" "$UPDATE_OUT/kernel.efi"
+  cp "$W/system.ext4" "$UPDATE_OUT/system.ext4"
+  printf '%s\n' "$ULTAR_VERSION" >"$UPDATE_OUT/version"
+fi
 rm -rf "$R" "$W/data-root" "$W"/*.fat "$W"/*.ext4
 if [ -n "$INSTALLER_IMG" ]; then
   echo "== installer image: start in QEMU with an empty NVMe disk"
