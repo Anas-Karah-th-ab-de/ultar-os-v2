@@ -188,6 +188,9 @@ impl Hc {
                 if bt::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
+                if rndis::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
+                    continue;
+                }
                 if uvc::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }

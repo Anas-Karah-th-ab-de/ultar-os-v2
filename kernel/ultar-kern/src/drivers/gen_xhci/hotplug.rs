@@ -61,6 +61,7 @@ fn detach(hc: &mut Hc, port: u32) {
         super::pointer::remove(hc, slot);
         super::bt::remove(hc, slot);
         super::uvc::remove(hc, slot);
+        super::rndis::remove(hc.index, slot);
         crate::input::usb_removed(hc.index, slot);
         hc.rings.retain(|r| r.0 != slot);
         hc.command(0, (TRB_DISABLE_SLOT << 10) | (slot << 24));
