@@ -122,9 +122,9 @@ for p in $PROGRAMS; do [ "$p" = ultar-init ] || cp "$BIN/$p" "$R/usr/bin/"; done
 for f in init.toml ids.toml bus-policy.toml compositor-rights.toml devd-seat.toml; do cp "rootfs/etc/ultar/$f" "$R/etc/ultar/"; done
 cp -r rootfs/etc/ultar/trusted-keys "$R/etc/ultar/"
 for s in $SERVICES_UP; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
-# The launcher as shipped, but accepting what the Ultar kernel does not have yet: network
-# namespaces (an app without the permission `network` gets no network of its own on Linux;
-# here it has none anyway: no app has a bus right to the network services).
+# The launcher as shipped, but accepting a missing network namespace. The Ultar kernel has them now
+# (docs/integration/zell-netz.md) – the probe finds them and apps without `network` get their own
+# loopback only; the acceptance only keeps an image bootable with an older kernel.
 sed 's/^accept_missing = \[\]$/accept_missing = ["net"]/' rootfs/etc/ultar/launcher.toml >"$R/etc/ultar/launcher.toml"
 grep -q '^accept_missing = \["net"\]$' "$R/etc/ultar/launcher.toml" || fail "launcher.toml: accept_missing"
 # The system apps: each a package signed with the system key (profile app.system), installed
