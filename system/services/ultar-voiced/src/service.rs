@@ -29,6 +29,8 @@ const CALL_TIME: Duration = Duration::from_secs(5);
 pub const VERIFY_WINDOW: Duration = Duration::from_secs(60);
 /// The microphone stream counts as lost after this long without a chunk.
 const MIC_LOST: Duration = Duration::from_secs(5);
+/// How often a running microphone request is repeated (the lease at the sound server is 60 s).
+const MIC_RENEW: Duration = Duration::from_secs(20);
 /// The Settings test gives up after this long even without audio.
 const TEST_WALL: Duration = Duration::from_secs(14);
 
@@ -179,7 +181,9 @@ impl VoiceService {
         let want = self.want_capture();
         let retry =
             want && !self.mic.ready && self.mic.asked.is_none_or(|t| t.elapsed() >= MIC_LOST);
-        if want == self.mic.on && !retry {
+        // the sound server ends the lease after 60 s without a new request
+        let renew = want && self.mic.asked.is_some_and(|t| t.elapsed() >= MIC_RENEW);
+        if want == self.mic.on && !retry && !renew {
             return;
         }
         self.mic.on = want;

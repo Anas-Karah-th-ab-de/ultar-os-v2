@@ -92,10 +92,23 @@ pub struct AudioReply {
     pub outcome: AudioOutcome,
 }
 
+/// `audio.mic_state` - who is recording the microphone right now (retained). The shell
+/// shows its microphone mark while `in_use` is true; `users` are bus identities (data, not
+/// interface text) for the page that explains who listens. Only `ultar-audiod` publishes
+/// it, and it is the one place that knows: every recording goes through the sound server.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct MicState {
+    /// At least one program records the microphone.
+    pub in_use: bool,
+    /// The identities that record (sorted, each once).
+    pub users: Vec<String>,
+}
+
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
 version_one!(
+    MicState,
     AudioState,
     Output,
     SetVolume,
@@ -108,6 +121,11 @@ version_one!(
 
 impl Topic for AudioState {
     const TOPIC: &'static str = "audio.state";
+    const RETAINED: bool = true;
+}
+
+impl Topic for MicState {
+    const TOPIC: &'static str = "audio.mic_state";
     const RETAINED: bool = true;
 }
 
@@ -153,5 +171,12 @@ mod tests {
             outcome: AudioOutcome::NoDevice,
         };
         assert_eq!(decode::<AudioReply>(&encode(&r).unwrap()).unwrap(), r);
+        let m = MicState {
+            in_use: true,
+            users: vec!["system.calld".into(), "system.voiced".into()],
+        };
+        assert_eq!(decode::<MicState>(&encode(&m).unwrap()).unwrap(), m);
+        assert_eq!(MicState::TOPIC, "audio.mic_state");
+        assert!(!MicState::default().in_use);
     }
 }

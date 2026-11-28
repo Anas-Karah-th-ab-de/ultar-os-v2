@@ -119,6 +119,34 @@ fn every_kept_right_is_justified_and_every_right_only_for_admin_shells() {
     }
 }
 
+/// The sound server is the only holder of the kernel's pcm node: every other program plays and
+/// records through its stream socket (docs/integration/ultar-audiod.md).
+#[test]
+fn only_the_sound_server_keeps_the_sound_right() {
+    let bit = RIGHT_NAMES.iter().position(|n| *n == "sound").unwrap();
+    let holders: Vec<String> = shipped()
+        .into_iter()
+        .filter(|(_, _, spec)| spec.confinement.rights & (1 << bit) != 0)
+        .map(|(_, _, spec)| spec.name)
+        .filter(|name| !FULL_RIGHTS_ALLOWED.contains(&name.as_str()))
+        .collect();
+    assert_eq!(holders, ["audiod"], "who keeps the right sound");
+}
+
+#[test]
+fn the_sound_server_gives_its_stream_sockets_to_the_groups_of_its_clients() {
+    let audiod = shipped()
+        .into_iter()
+        .find(|(_, _, spec)| spec.name == "audiod")
+        .unwrap();
+    let text = audiod.1;
+    for client in ["calld:829", "mediad:824"] {
+        assert!(text.contains(client), "no stream socket for {client}");
+    }
+    assert!(audiod.2.confinement.groups.contains(&829) && audiod.2.confinement.groups.contains(&824));
+    assert!(text.contains("--device") && text.contains("/dev/ultar/pcm"));
+}
+
 #[test]
 fn the_allow_lists_name_only_shipped_services() {
     let names: Vec<String> = shipped()

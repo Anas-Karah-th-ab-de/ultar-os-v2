@@ -21,6 +21,7 @@ ultar-svckit = { path = "../../core/ultar-svckit" }
 serde = { version = "1", features = ["derive"] }
 ultar-hal = { path = "../../hal/ultar-hal" }
 ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+ultar-audio-stream = { path = "stream" }
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

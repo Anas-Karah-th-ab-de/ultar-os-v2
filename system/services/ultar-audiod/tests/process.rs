@@ -13,6 +13,8 @@ const POLICY: &str = r#"
 identity = "system.audiod"
 register = ["audio"]
 publish = ["audio.state"]
+subscribe = ["settings.changed"]
+call = ["settings.get"]
 
 [[rule]]
 identity = "system.shell"

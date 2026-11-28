@@ -77,11 +77,49 @@ fn mark(m: i16) -> String {
     encode(&vec![m; FRAME])
 }
 
-/// What the file speaker was given, as the left channel, one entry per 20 ms frame.
+/// A stand-in for the sound server: it takes every media stream of the daemon (hello, reply)
+/// and writes the PCM it receives to `out`.
+fn sound_server(socket: &Path, out: &Path) {
+    use std::io::{Read, Write};
+    let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+    let out = out.to_owned();
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { return };
+            let mut hello = [0u8; ultar_audio_stream::HELLO_LEN];
+            if s.read_exact(&mut hello).is_err() {
+                continue;
+            }
+            let ok = ultar_audio_stream::Hello::decode(&hello).is_some_and(|h| {
+                h.class == ultar_audio_stream::Class::Media && h.rate == 48_000 && h.channels == 1
+            });
+            let status = if ok {
+                ultar_audio_stream::Status::Ok
+            } else {
+                ultar_audio_stream::Status::BadHello
+            };
+            let _ = s.write_all(&status.encode());
+            let out = out.clone();
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 4096];
+                while let Ok(n) = s.read(&mut buf) {
+                    if n == 0 {
+                        return;
+                    }
+                    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&out) {
+                        let _ = f.write_all(&buf[..n]);
+                    }
+                }
+            });
+        }
+    });
+}
+
+/// What the speaker was given (mono), one entry per 20 ms frame.
 fn played(path: &Path) -> Vec<i16> {
     let bytes = std::fs::read(path).unwrap_or_default();
     let left: Vec<i16> = bytes
-        .chunks_exact(4)
+        .chunks_exact(2)
         .map(|c| i16::from_le_bytes([c[0], c[1]]))
         .collect();
     left.chunks_exact(FRAME)
@@ -208,7 +246,9 @@ fn rig() -> Rig {
     );
     let speaker = snk.subdir("card").join("pcm");
     std::fs::write(&speaker, []).unwrap();
-    let desk_daemon = start(&snk, Some(&speaker));
+    let socket = snk.subdir("card").join("mediad.sock");
+    sound_server(&socket, &speaker);
+    let desk_daemon = start(&snk, Some(&socket));
     let phone_daemon = start(&src, None);
     let into_phone = stand_in_meshes(&src, &snk);
     let shell = src.client("system.shell");

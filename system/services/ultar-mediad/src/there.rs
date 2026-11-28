@@ -7,11 +7,9 @@
 use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
 use base64::Engine;
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use ultar_audio_stream::{Class, Direction, Hello, Stream};
 use ultar_bus::messages::mesh::{Capability, MeshState};
 use ultar_bus::messages::mesh_media::{ThereOutput, MAX_OUTPUTS};
 
@@ -21,8 +19,6 @@ pub const FRAME: usize = 960;
 const DEPTH: usize = 3;
 /// Frames the buffer keeps at most (the sound must not lag).
 const MAX_HELD: usize = 12;
-/// `O_NONBLOCK`.
-const NONBLOCK: i32 = 0o4000;
 
 /// The speaker of this device.
 pub trait Sink: Send {
@@ -34,46 +30,40 @@ pub trait Sink: Send {
     fn close(&mut self);
 }
 
-/// The sound card's running streams (`/dev/ultar/pcm`: 48 kHz, 16 bit, stereo, right
-/// `sound`). Opened for a session only, so that a call can have the card in between.
-pub struct CardSink {
+/// A media stream of the sound server (`ultar-audiod`: 48 kHz mono, class media). Opened for
+/// a session only; the server mixes it with everything else, ducks it under a call and owns
+/// the card (this service holds no kernel sound right).
+pub struct StreamSink {
     path: PathBuf,
-    node: Option<File>,
+    stream: Option<Stream>,
 }
 
-impl CardSink {
-    /// A sink on the node at `path`.
+impl StreamSink {
+    /// A sink on the sound server's stream socket at `path`.
     pub fn new(path: PathBuf) -> Self {
-        Self { path, node: None }
+        Self { path, stream: None }
     }
 }
 
-impl Sink for CardSink {
+impl Sink for StreamSink {
     fn open(&mut self) -> bool {
-        self.node = OpenOptions::new()
-            .write(true)
-            .custom_flags(NONBLOCK)
-            .open(&self.path)
-            .ok();
-        self.node.is_some()
+        let hello = Hello::new(Class::Media, Direction::Play, 48_000, 1);
+        self.stream = Stream::connect(&self.path, hello).ok();
+        self.stream.is_some()
     }
 
     fn play(&mut self, frame: &[i16]) {
-        if let Some(node) = self.node.as_mut() {
-            let bytes: Vec<u8> = frame
-                .iter()
-                .flat_map(|s| {
-                    let b = s.to_le_bytes();
-                    [b[0], b[1], b[0], b[1]]
-                })
-                .collect();
-            // What does not fit is dropped: late sound is worse than a gap.
-            let _ = node.write(&bytes);
+        // What does not fit is dropped: late sound is worse than a gap. A server that went
+        // away ends the stream; the next session opens a new one.
+        if let Some(stream) = self.stream.as_mut() {
+            if stream.push(frame).is_err() {
+                self.stream = None;
+            }
         }
     }
 
     fn close(&mut self) {
-        self.node = None;
+        self.stream = None;
     }
 }
 
@@ -341,23 +331,35 @@ mod tests {
     }
 
     #[test]
-    fn the_buffer_is_bounded_and_the_card_gets_stereo() {
+    fn the_buffer_is_bounded_and_the_server_gets_a_media_stream() {
         let mut p = Playback::new(1, "d".into(), "Desk".into());
         for seq in 0..100 {
             p.put(seq, frame(1));
         }
         assert!(p.frames.len() <= MAX_HELD);
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pcm");
-        std::fs::write(&path, []).unwrap();
-        let mut card = CardSink::new(path.clone());
-        assert!(card.open());
-        card.play(&[1, -2]);
-        card.close();
+        let path = dir.path().join("mediad.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let (mut s, _) = listener.accept().unwrap();
+            let mut hello = [0u8; ultar_audio_stream::HELLO_LEN];
+            s.read_exact(&mut hello).unwrap();
+            s.write_all(&ultar_audio_stream::Status::Ok.encode()).unwrap();
+            let mut pcm = Vec::new();
+            s.read_to_end(&mut pcm).unwrap();
+            (Hello::decode(&hello), pcm)
+        });
+        let mut sink = StreamSink::new(path);
+        assert!(sink.open());
+        sink.play(&[1, -2]);
+        sink.close();
+        let (hello, pcm) = server.join().unwrap();
         assert_eq!(
-            std::fs::read(&path).unwrap(),
-            [1, 0, 1, 0, 254, 255, 254, 255]
+            hello,
+            Some(Hello::new(Class::Media, Direction::Play, 48_000, 1))
         );
-        assert!(!CardSink::new(dir.path().join("none")).open());
+        assert_eq!(pcm, [1, 0, 254, 255]);
+        assert!(!StreamSink::new(dir.path().join("none")).open());
     }
 }

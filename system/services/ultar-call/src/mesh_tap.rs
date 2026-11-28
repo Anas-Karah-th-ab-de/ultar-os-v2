@@ -1,8 +1,9 @@
 //! The sound of a call that is led on another device: the places the voice is taken from and
 //! put to while it travels over the mesh (48 kHz mono, 20 ms frames of [`FRAME`] samples).
 //!
-//! * [`CardTap`]: the sound card's running streams (`/dev/ultar/pcm`: 48 kHz stereo) - the
-//!   desk's microphone and speaker for a call answered there.
+//! * [`StreamTap`]: a stream of the sound server (`ultar-audiod`) - the desk's microphone and
+//!   speaker for a call answered there.
+//! * [`CardTap`]: a card node (48 kHz stereo) opened directly - the modem's voice stream.
 //! * [`Bridge`]: lets the voice of an Ultar-number call (16 kHz mono, [`crate::pcm`]) go to
 //!   the mesh instead of the phone's own card while the call is answered on another device;
 //!   [`RelayAudio`] is the call's audio port that follows the switch, [`BridgeTap`] the
@@ -17,6 +18,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+use ultar_audio_stream::{Class, Direction, Hello, Stream};
 
 /// Samples of one frame of the mesh voice: 20 ms at 48 kHz mono.
 pub const FRAME: usize = 960;
@@ -124,6 +126,67 @@ impl MeshTap for CardTap {
         // what does not fit is dropped: late voice is worse than a gap
         if let Some(node) = self.node.as_mut() {
             let _ = node.write(&bytes);
+        }
+    }
+}
+
+/// The sound server's stream as a tap (48 kHz mono, a call, with echo cancellation: the desk's
+/// speaker is heard by its microphone).
+pub struct StreamTap {
+    path: PathBuf,
+    stream: Option<Stream>,
+    recorded: Vec<i16>,
+}
+
+impl StreamTap {
+    /// A tap that opens a stream at the server's socket when a call begins and closes it when
+    /// the call ends.
+    pub fn lazy(path: PathBuf) -> Self {
+        Self {
+            path,
+            stream: None,
+            recorded: Vec::new(),
+        }
+    }
+}
+
+impl MeshTap for StreamTap {
+    fn begin(&mut self) {
+        self.recorded.clear();
+        if self.stream.is_none() {
+            // without the server the call still runs: nothing is heard or recorded
+            let mut hello = Hello::new(Class::Call, Direction::Duplex, 48_000, 1);
+            hello.echo_cancel = true;
+            self.stream = crate::pcm::open_stream(&self.path, hello).ok();
+        }
+    }
+
+    fn end(&mut self) {
+        self.stream = None;
+        self.recorded.clear();
+    }
+
+    fn capture(&mut self) -> Option<Vec<i16>> {
+        let stream = self.stream.as_mut()?;
+        if stream.pull(&mut self.recorded).is_err() {
+            self.stream = None;
+            return None;
+        }
+        if self.recorded.len() > FRAME * 8 {
+            let cut = self.recorded.len() - FRAME;
+            self.recorded.drain(..cut);
+        }
+        if self.recorded.len() < FRAME {
+            return None;
+        }
+        Some(self.recorded.drain(..FRAME).collect())
+    }
+
+    fn play(&mut self, frame: &[i16]) {
+        if let Some(stream) = self.stream.as_mut() {
+            if stream.push(frame).is_err() {
+                self.stream = None;
+            }
         }
     }
 }
