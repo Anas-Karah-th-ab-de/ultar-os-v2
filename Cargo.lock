@@ -8679,7 +8679,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-ext4grow"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "ultar-face"
@@ -9278,7 +9278,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-unlock"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ultar-brand",
  "ultar-compositor",
