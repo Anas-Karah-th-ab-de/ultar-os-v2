@@ -3,3 +3,5 @@
 # also on Windows with core.autocrlf=true.
 rootfs/** text=auto eol=lf
 *.sh text eol=lf
+# the Windows app wrapper goes into the Linux area as a shell script (#! needs LF)
+tools/foreign/wine/** text eol=lf

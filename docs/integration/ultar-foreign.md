@@ -136,6 +136,7 @@ them). No network without the person's permission (same rules as Linux programs)
 |---|---|---|
 | readers, service, launcher | `cargo test -p ultar-foreign -p ultar-launcher -p ultar-bus` | `test result: ok` |
 | Windows end to end (root, real cells) | `tools/foreign/windows-e2e.sh [OUT]` | `FOREIGN-WINDOWS-E2E: ALLES OK` |
+| Wine on the Ultar kernel (QEMU) | `AREA=OUT DEB= tools/kern-test/foreign-e2e.sh` | `FOREIGN: windows-programs ok` (today: `FEHLT`, see below) |
 
 The end to end builds the area with `COMPONENTS=windows` and, for the test only, `TEST_EXTRA="xvfb
 x11-apps"` (an X server inside the cell for a screenshot – the real display is the bridge), downloads
@@ -145,6 +146,26 @@ nothing, confirmed: registered with its own installer, first start installs it i
 `lo`, installer read-only, drives only `c:`, `Z:` refused, a host file unreadable through `\\?\unix\`), its
 window shows (screenshot with content, `OUT/shots/*.png`), removal through Settings leaves no data, installer
 or icon and the area's packages unchanged.
+
+### The Ultar kernel and Wine (QEMU, 28.11.2026)
+
+`AREA=<area with COMPONENTS=windows> DEB= tools/kern-test/foreign-e2e.sh` also runs `windows-programs`
+(foreigntest: the area as root in a private mount namespace with its own `/proc`, `/tmp` and device nodes –
+no cell, since the kernel has no network namespace). Result: `wine --version` runs (`wine-10.0`), the new
+prefix does not: `wineboot -i` ends with `err:virtual:virtual_alloc_first_teb wine: failed to map the shared
+user data: c0000018` (`STATUS_CONFLICTING_ADDRESSES`), nothing of the prefix is made.
+
+| Missing for Wine | Seen | Why Wine needs it |
+|---|---|---|
+| `mmap` at a chosen address: hints are ignored (`MAP_FIXED_NOREPLACE` included, the kernel places at its own next address), `MAP_FIXED` only in 4–256 MiB and from 16 TiB | run | Windows' fixed addresses: `KUSER_SHARED_DATA` at `0x7ffe0000`, the reserved low 1 MiB, the lower 4 GiB of 32-bit programs, image bases (`0x140000000`, `0x180000000`) |
+| `waitid` (247) | run (`noch nicht umgesetzt: 247`) | waiting for the started `wineserver`/children |
+| `arch_prctl(ARCH_SET_GS)` (only `SET_FS`/`GET_FS`) | code | Windows x64 code finds its TEB through `%gs` |
+| `sigaltstack` (131) answers 0 and does nothing | code | Wine handles signals (exceptions of Windows code) on its own signal stack |
+| 32-bit programs: a user code selector `0x23` (the kernel has 32-bit code at `0x1b`) and `modify_ldt` (154) | code | WoW64 switches to 32-bit code and gives it its `%fs` TEB through an LDT entry |
+
+"code" means read in the kernel's sources and not yet reached by the run (it stops at the first
+mapping). Until these exist, Windows programs run on the Linux kernel only (like apps with network without
+the barrier of stage P0).
 
 ## Open points
 

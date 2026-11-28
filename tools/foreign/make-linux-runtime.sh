@@ -153,7 +153,10 @@ case " $COMPONENTS " in
   *" windows "*)
     in_chroot chroot "$TREE" apt-get install -y -q --no-install-recommends wine wine64 fonts-wine \
       >"$OUT/windows.log" 2>&1 || { tail -20 "$OUT/windows.log"; fail "component windows"; }
-    install -D -m 0755 "$HERE/wine/ultar-wine-app" "$TREE/usr/lib/ultar/wine/ultar-wine-app"
+    # LF only (a checkout on Windows may have given the script CR LF: its #! would not run)
+    mkdir -p "$TREE/usr/lib/ultar/wine"
+    tr -d '\r' <"$HERE/wine/ultar-wine-app" >"$TREE/usr/lib/ultar/wine/ultar-wine-app"
+    chmod 0755 "$TREE/usr/lib/ultar/wine/ultar-wine-app"
     ;;
 esac
 if [ -n "${TEST_EXTRA:-}" ]; then
