@@ -235,29 +235,29 @@ fn windows_programs(area: &Path, private: impl Fn() -> Result<(), String>) -> Re
     }
     std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
     std::env::set_current_dir("/").map_err(|e| e.to_string())?;
-    let steps: [(&[&str], &str, u64); 3] = [
-        (&["/usr/bin/wine", "--version"], "wine-", 300),
-        (&["/usr/bin/wineboot", "-i"], "", 1500),
-        (
-            &["/usr/bin/wine", "cmd", "/c", "echo", "ultar-wine"],
-            "ultar-wine",
-            900,
-        ),
-    ];
-    let mut result = Ok(());
+    let mut steps: Vec<(&[&str], &str, u64)> = Vec::new();
+    steps.push((&["/usr/bin/wine", "--version"], "wine-", 300));
+    steps.push((&["/usr/bin/wineboot", "-i"], "", 1500));
+    steps.push((&["/usr/bin/wine", "cmd", "/c", "echo", "ultar-wine"], "ultar-wine", 900));
+    // a real program when the test put one into the area (foreign-e2e.sh WIN_MSI=…): 7-Zip's MSI
+    if Path::new("/opt/ultar-test/program.msi").exists() {
+        steps.push((&["/usr/bin/wine", "msiexec", "/i", "Z:\\opt\\ultar-test\\program.msi", "/qn"], "", 1500));
+        steps.push((&["/usr/bin/wine", "C:\\Program Files\\7-Zip\\7z.exe", "i"], "7-Zip", 600));
+    }
+    // every step runs (a prefix that stops half-way can still run a 64-bit program); each says how it went
+    let mut failed: Vec<String> = Vec::new();
     for (program, expect, secs) in steps {
-        match run_for(program, secs) {
-            Ok(out) if out.contains(expect) => {}
-            Ok(out) => {
-                result = Err(format!("{}: {}", program.join(" "), tail(&out)));
-                break;
-            }
-            Err(e) => {
-                result = Err(format!("{}: {e}", program.join(" ")));
-                break;
-            }
+        let why = match run_for(program, secs) {
+            Ok(out) if out.contains(expect) => None,
+            Ok(out) => Some(tail(&out)),
+            Err(e) => Some(e),
+        };
+        println!("FOREIGN-WINDOWS: {} {}", program.join(" "), if why.is_none() { "ok" } else { "FEHLT" });
+        if let Some(why) = why {
+            failed.push(format!("{}: {why}", program.join(" ")));
         }
     }
+    let result = if failed.is_empty() { Ok(()) } else { Err(failed.join(" || ")) };
     // Ubuntu keeps the server out of PATH
     if let Some(server) = [
         "/usr/lib/x86_64-linux-gnu/wine/wineserver",

@@ -37,6 +37,8 @@ done
 # the data disk: the area (owners and modes kept) and the package
 mkdir -p "$WORK/data/foreign"
 cp -a "$AREA/linux" "$WORK/data/foreign/linux"
+# WIN_MSI=<file>: a Windows program (7-Zip's MSI) that foreigntest installs and starts with Wine
+if [ -n "${WIN_MSI:-}" ]; then mkdir -p "$WORK/data/foreign/linux/opt/ultar-test"; cp "$WIN_MSI" "$WORK/data/foreign/linux/opt/ultar-test/program.msi"; fi
 DEB_ARG=""
 if [ -n "$DEB" ]; then cp "$DEB" "$WORK/data/foreign/mousepad.deb"; DEB_ARG="--deb /data/foreign/mousepad.deb"; fi
 size=$(( $(du -sm "$WORK/data" | cut -f1) * 3 / 2 + 128 ))
