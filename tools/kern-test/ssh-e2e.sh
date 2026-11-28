@@ -179,6 +179,20 @@ else
   bad "two parallel connections (A: $(cat "$WORK/parA.out" 2>/dev/null | tr '\n' ' '), B: $(cat "$WORK/parB.out" 2>/dev/null | tr '\n' ' '))"
 fi
 
+# h) switching off closes the access at run time (no service restart): `ultar-sshd aus` over SSH, then
+#    within a few seconds a new connection must fail (the service watches its switch every 2 s)
+"${SSH[@]}" 'ultar-sshd aus' > "$WORK/aus.out" 2>&1 || true
+closed=0
+for _ in $(seq 1 15); do
+  sleep 1
+  if ! "${SSH[@]}" -o ConnectTimeout=3 'echo still-open' 2>/dev/null | grep -q still-open; then closed=1; break; fi
+done
+if [ "$closed" = 1 ] && grep -q "Entwickler-Zugang aus" "$WORK/aus.out"; then
+  ok "ultar-sshd aus closes the access at run time"
+else
+  bad "access still open after ultar-sshd aus ($(tr '\n' ' ' < "$WORK/aus.out" | head -c 120))"
+fi
+
 if [ -n "${SSH_KEEP:-}" ]; then
   cp "$LOG" "$SSH_KEEP"; echo "SSH-KEEP: $LOG → $SSH_KEEP"
 fi
