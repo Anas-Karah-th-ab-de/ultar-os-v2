@@ -279,15 +279,20 @@ impl World {
 
     /// The processes of the app's cell (its memory group, or by name without groups).
     pub fn cell_pids(&self) -> Vec<u32> {
+        // the app's group and its programs by name (a kernel whose group file stays empty)
+        let mut pids = named(&["mousepad", "ultar-wayland"]);
         if self.groups {
             let procs = Path::new(ultar_sys::machine::GROUP_ROOT).join("apps").join(APP).join("cgroup.procs");
-            return std::fs::read_to_string(procs)
-                .unwrap_or_default()
-                .lines()
-                .filter_map(|l| l.trim().parse().ok())
-                .collect();
+            pids.extend(
+                std::fs::read_to_string(procs)
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|l| l.trim().parse::<u32>().ok()),
+            );
         }
-        named(&["mousepad", "ultar-wayland"])
+        pids.sort_unstable();
+        pids.dedup();
+        pids
     }
 
     /// The program itself runs in the cell (not only the bridge).

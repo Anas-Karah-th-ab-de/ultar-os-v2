@@ -135,7 +135,7 @@ fn main() {
         .unwrap_or_else(|e| fail(&format!("start: {e:?}")));
     check(
         world::poll(Duration::from_secs(600), || !world.cell_pids().is_empty()),
-        "the cell has no process",
+        &format!("the cell has no process (launcher: {:?})", world.app()),
     );
     check(
         world::poll(Duration::from_secs(600), || world.window_drawn()),
