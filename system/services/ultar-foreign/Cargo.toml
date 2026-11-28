@@ -14,6 +14,14 @@ path = "src/lib.rs"
 name = "ultar-foreign"
 path = "src/bin/ultar-foreign.rs"
 
+[features]
+# APK test signing (src/apk/testsign.rs, examples/apk-variant.rs) – never in the service
+test-sign = []
+
+[[example]]
+name = "apk-variant"
+required-features = ["test-sign"]
+
 [dependencies]
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }

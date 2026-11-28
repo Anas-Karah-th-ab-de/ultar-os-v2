@@ -12,6 +12,8 @@
 pub mod arsc;
 pub mod axml;
 pub mod sig;
+#[cfg(any(test, feature = "test-sign"))]
+pub mod testsign;
 pub mod zip;
 
 use std::io::Write;
@@ -686,6 +688,16 @@ mod tests {
             r.refusal(),
             Some(ultar_bus::messages::foreign::Refusal::Unsigned)
         );
+        assert_eq!(Report::from_lines(&r.to_lines()), Some(r));
+        // signed: nothing refused, the signer is known
+        let signed = crate::apk::testsign::resign(&apk, "Ultar Test A").unwrap();
+        std::fs::write(&path, &signed).unwrap();
+        let r = analyze(std::fs::File::open(&path).unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(r.sig, Sig::Valid(2));
+        assert_eq!(r.refusal(), None);
+        assert_eq!(r.signers.len(), 1);
+        assert_eq!(r.signers[0].1, "Ultar Test A");
         assert_eq!(Report::from_lines(&r.to_lines()), Some(r));
     }
 }

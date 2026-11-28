@@ -13,8 +13,8 @@ use super::zip::{Archive, EOCD_SIZE};
 
 /// Largest signing block read.
 const MAX_BLOCK: u64 = 16 << 20;
-const MAGIC: &[u8; 16] = b"APK Sig Block 42";
-const V2: u32 = 0x7109_871a;
+pub(super) const MAGIC: &[u8; 16] = b"APK Sig Block 42";
+pub(super) const V2: u32 = 0x7109_871a;
 const V3: u32 = 0xf053_68c0;
 const CHUNK: u64 = 1 << 20;
 
@@ -111,7 +111,7 @@ impl<'a> Cur<'a> {
 /// The ID-value pairs of a signing block.
 type Pairs = Vec<(u32, Vec<u8>)>;
 
-fn signing_block<R: Read + Seek>(a: &mut Archive<R>) -> Option<(u64, Pairs)> {
+pub(super) fn signing_block<R: Read + Seek>(a: &mut Archive<R>) -> Option<(u64, Pairs)> {
     if a.central < 32 {
         return None;
     }
@@ -141,13 +141,18 @@ fn signing_block<R: Read + Seek>(a: &mut Archive<R>) -> Option<(u64, Pairs)> {
     Some((start, pairs))
 }
 
-/// The content digest of v2/v3 over the three sections in 1 MiB chunks.
-fn content_digest<R: Read + Seek>(
+/// The content digest of v2/v3 over the three sections in 1 MiB chunks (the end record
+/// with its comment, its directory offset taken as the signing block's).
+pub(super) fn content_digest<R: Read + Seek>(
     a: &mut Archive<R>,
     block_start: u64,
     sha512: bool,
 ) -> Option<Vec<u8>> {
-    let mut eocd = a.raw(a.eocd, EOCD_SIZE as usize).ok()?;
+    let end = a
+        .len
+        .checked_sub(a.eocd)
+        .filter(|n| (EOCD_SIZE..=EOCD_SIZE + 0xffff).contains(n))?;
+    let mut eocd = a.raw(a.eocd, end as usize).ok()?;
     eocd[16..20].copy_from_slice(&u32::try_from(block_start).ok()?.to_le_bytes());
     let mut chunks: Vec<Vec<u8>> = Vec::new();
     let digest = |data: &[u8]| -> Vec<u8> {
