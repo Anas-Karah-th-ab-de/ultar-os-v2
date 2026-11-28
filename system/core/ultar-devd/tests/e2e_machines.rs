@@ -235,11 +235,13 @@ fn thinkpad_capabilities_and_driver_states_are_published() {
         ]
     );
     let states = last_states(&published);
-    assert_eq!(states.len(), 26);
+    // The four devices the kernel's own drivers run (two bridges, the switch, SMBus) are not
+    // reported as missing a driver.
+    assert_eq!(states.len(), 22);
     let count = |phase: DriverPhase| states.values().filter(|(_, p)| *p == phase).count();
     assert_eq!(count(DriverPhase::Active), 6);
     assert_eq!(count(DriverPhase::Failed), 5);
-    assert_eq!(count(DriverPhase::Missing), 15);
+    assert_eq!(count(DriverPhase::Missing), 11);
 }
 
 #[test]
