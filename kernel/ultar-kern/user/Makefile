@@ -86,4 +86,4 @@ fremdtest: fremdtest.c
 
 # what Wine and other programs need: mmap placement, waitid, GS base, sigaltstack, fault siginfo, MAP_SHARED files (tools/kern-test/wine-kern.sh)
 winetest: winetest.c
-	gcc -O2 -Wall -Wextra -static -o $@ $<
+	gcc -O2 -Wall -Wextra -static -pthread -o $@ $<

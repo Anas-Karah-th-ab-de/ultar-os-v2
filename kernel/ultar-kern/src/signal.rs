@@ -35,9 +35,12 @@ pub fn send_locked(ps: &mut Vec<Box<Proc>>, tgid: u64, tid: u64, sig: u64) -> bo
     let Some(lead) = ps.iter().find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)) else { return false };
     let act = lead.g.sigact[sig as usize];
     crate::socket::bump();
-    // von allen Fäden gesperrt: nur vormerken (z. B. für signalfd), keine Standardaktion
+    // von allen Fäden gesperrt: nur vormerken (z. B. für signalfd), keine Standardaktion. A signal for one
+    // thread waits at that thread: glibc's raise()/abort() block every signal around tgkill and
+    // unblock afterwards – the signal must then reach the caller, not the group's first thread
+    // (which may sleep in a futex for ever: the program did not end after abort())
     if sig != SIGKILL && ps.iter().filter(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)).all(|p| p.sigmask & bit(sig) != 0) {
-        if let Some(p) = ps.iter_mut().find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)) {
+        if let Some(p) = ps.iter_mut().find(|p| p.tgid == tgid && (tid == 0 || p.pid == tid) && !matches!(p.state, State::Zombie(_) | State::Dead)) {
             p.pending |= bit(sig);
         }
         return true;

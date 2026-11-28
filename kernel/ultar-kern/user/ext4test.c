@@ -2,7 +2,9 @@
  *  write : fragments the free space (256 KiB files, every other one removed), then writes a 64 MiB
  *          file and an 18 MiB file, each with fsync – both must succeed and be on the medium when
  *          fsync returns (extent trees of depth 1); then a file larger than the free space: fsync
- *          and close must fail with ENOSPC (nothing kept in memory as if it were stored).
+ *          and close must fail with ENOSPC (nothing kept in memory as if it were stored); statvfs
+ *          shows the ext4's own counts, and the 64 MiB file can still be changed although the free
+ *          space holds no second copy of it (its own blocks are reused).
  *          Prints "EXT4TEST: GESCHRIEBEN"; the machine is then stopped hard.
  *  verify: after the restart both files read back byte for byte: "EXT4TEST: ALLES OK". */
 #define _GNU_SOURCE
@@ -12,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 #define MIB (1024L * 1024L)
@@ -90,6 +93,21 @@ int main(int argc, char **argv) {
         char msg[80];
         snprintf(msg, sizeof msg, "file larger than the free space: fsync fails (%s)", r ? strerror(errno) : "succeeded");
         check(r != 0 && errno == ENOSPC, msg);
+        // statvfs reports the ext4 itself (not the machine's memory); a file larger than the free
+        // space can still be changed: its own blocks take the new bytes
+        struct statvfs sv;
+        int sr = statvfs(dir, &sv);
+        unsigned long long size = (unsigned long long)sv.f_blocks * sv.f_frsize, room = (unsigned long long)sv.f_bavail * sv.f_frsize;
+        check(sr == 0 && size > 100 * MIB && size <= 170 * MIB && sv.f_files > 0 && sv.f_ffree < sv.f_files,
+              "statvfs: the ext4's own size and inode counts");
+        check(sr == 0 && room < 64 * MIB, "statvfs: less room than the 64 MiB file");
+        unsigned char *b = malloc(MIB);
+        for (long i = 0; i < MIB; i++) b[i] = pattern(i, 1);
+        int fd = open(big, O_RDWR);
+        int done = fd >= 0 && pwrite(fd, b, MIB, 0) == MIB && fsync(fd) == 0 && close(fd) == 0;
+        free(b);
+        check(done, "64 MiB file changed although the free space holds no second copy of it");
+        check(same(big, 64 * MIB, 1), "the changed 64 MiB file reads back");
         printf(failures ? "EXT4TEST: FEHLER (%d)\n" : "EXT4TEST: GESCHRIEBEN\n", failures);
     } else {
         check(same(big, 64 * MIB, 1), "64 MiB file intact after the hard stop");

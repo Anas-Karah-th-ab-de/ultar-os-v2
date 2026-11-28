@@ -76,6 +76,16 @@ impl View {
         Loc { view, host: t.host, read_only: t.opts.read_only, no_exec: t.opts.no_exec, confined: self.confined, tag: self.tag, mount_point: t.mount_point }
     }
 
+    /// The view path that shows the host path `host` (what `/proc/self/fd/N` reads in a cell), or
+    /// `None` when this view does not reach it.
+    pub fn view_of(&self, host: &str) -> Option<String> {
+        self.mnt.paths_of(host).into_iter().find_map(|ns| {
+            let rest = crate::isolation::mount::below(&ns, &self.root)?;
+            let view = join("/", rest);
+            (self.host_of(&view) == host).then_some(view)
+        })
+    }
+
     /// Host path of the absolute, already resolved view path `view_path`.
     pub fn host_of(&self, view_path: &str) -> String {
         self.mnt.translate(&join(&self.root, view_path)).host

@@ -185,6 +185,21 @@ impl MountNs {
         }
     }
 
+    /// Namespace paths that may show the host path `host`, most specific mount first (to be checked
+    /// with [`MountNs::translate`]: a later mount can cover them).
+    pub fn paths_of(&self, host: &str) -> Vec<String> {
+        let mounts = self.mounts.lock();
+        let mut found: Vec<(usize, String)> = mounts
+            .iter()
+            .filter_map(|m| {
+                let root = m.source.host_root();
+                below(host, &root).map(|rest| (root.len(), join(&m.at, rest)))
+            })
+            .collect();
+        found.sort_by(|a, b| b.0.cmp(&a.0));
+        found.into_iter().map(|f| f.1).collect()
+    }
+
     /// What a bind mount of the namespace path `path` shows: the covering mount's source, narrowed to
     /// `path`, and that mount's flags.
     pub fn source_of(&self, path: &str) -> (Source, Opts) {

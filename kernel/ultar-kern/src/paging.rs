@@ -385,6 +385,72 @@ impl AddrSpace {
         }
     }
 
+    /// Every range of the address space for `/proc/<pid>/maps`: (start, end, writable, executable,
+    /// shared), sorted – reserved ranges, shared mappings and the mapped pages outside them (program
+    /// image, heap, stack). Neighbours with the same rights are joined.
+    pub fn ranges(&self) -> alloc::vec::Vec<(u64, u64, bool, bool, bool)> {
+        use alloc::vec::Vec;
+        let mut prim: Vec<(u64, u64, bool, bool, bool)> = self.lazy.lock().iter().map(|r| (r.0, r.1, r.2, r.3, false)).collect();
+        prim.extend(self.shared.lock().iter().map(|r| (r.0, r.1, true, false, true)));
+        prim.sort_by_key(|r| r.0);
+        let mut runs: Vec<(u64, u64, bool, bool)> = Vec::new();
+        for (lo, hi) in [(USER_LOW, USER_LOW_END), (WIN_LOW, WIN_END), (USER_HIGH, USER_TOP)] {
+            self.page_runs(lo, hi, &mut runs);
+        }
+        let mut out = prim.clone();
+        let mut j = 0;
+        for (mut a, b, w, x) in runs {
+            while j < prim.len() && prim[j].1 <= a {
+                j += 1;
+            }
+            let mut k = j;
+            while a < b {
+                if k < prim.len() && prim[k].0 <= a {
+                    a = a.max(prim[k].1);
+                    k += 1;
+                    continue;
+                }
+                let end = if k < prim.len() { b.min(prim[k].0) } else { b };
+                out.push((a, end, w, x, false));
+                a = end;
+            }
+        }
+        out.sort_by_key(|r| r.0);
+        let mut merged: Vec<(u64, u64, bool, bool, bool)> = Vec::new();
+        for r in out {
+            match merged.last_mut() {
+                Some(l) if l.1 == r.0 && (l.2, l.3, l.4) == (r.2, r.3, r.4) => l.1 = r.1,
+                _ => merged.push(r),
+            }
+        }
+        merged
+    }
+
+    /// Runs of own, mapped user pages in `[va, end)`: (start, end, writable, executable).
+    fn page_runs(&self, va: u64, end: u64, out: &mut alloc::vec::Vec<(u64, u64, bool, bool)>) {
+        let mut a = va;
+        'outer: while a < end {
+            let mut t = self.pml4;
+            for sh in [39u64, 30, 21] {
+                let e = tab(t)[((a >> sh) & 511) as usize];
+                if e & P == 0 || e & OWN == 0 || e & HUGE != 0 {
+                    a = ((a >> sh) + 1) << sh;
+                    continue 'outer;
+                }
+                t = e & ADDR;
+            }
+            let e = tab(t)[((a >> 12) & 511) as usize];
+            if e & P != 0 && e & U != 0 && e & OWN != 0 {
+                let (w, x) = (e & W != 0, e & nx() == 0);
+                match out.last_mut() {
+                    Some(l) if l.1 == a && l.2 == w && l.3 == x => l.1 = a + 4096,
+                    _ => out.push((a, a + 4096, w, x)),
+                }
+            }
+            a += 4096;
+        }
+    }
+
     /// Unmaps every page of `[va, end)`; levels without own tables are skipped whole (a 64-GiB
     /// reservation is gone in a few steps, not 16 million).
     pub fn unmap_range(&self, va: u64, end: u64) {

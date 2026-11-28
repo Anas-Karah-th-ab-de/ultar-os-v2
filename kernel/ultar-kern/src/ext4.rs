@@ -927,15 +927,119 @@ impl Ext4 {
         Ok(runs)
     }
 
+    /// Data runs (in file order) and extent tree blocks of an extent inode; `None` for other inodes.
+    fn data_and_tree(&self, raw: &[u8]) -> Option<(Vec<(u64, u64)>, Vec<(u64, u64)>)> {
+        if le32(raw, 32) & 0x80000 == 0 {
+            return None;
+        }
+        fn walk(fs: &Ext4, node: &[u8], data: &mut Vec<(u64, u64)>, tree: &mut Vec<(u64, u64)>, depth: u32) -> Option<()> {
+            if le16(node, 0) != 0xF30A || depth > 8 {
+                return None;
+            }
+            let d = le16(node, 6);
+            for k in 0..le16(node, 2) as usize {
+                let e = node.get(12 + k * 12..24 + k * 12)?;
+                if d == 0 {
+                    let len = le16(e, 4);
+                    data.push((le32(e, 8) | le16(e, 6) << 32, if len > 32768 { len - 32768 } else { len }));
+                } else {
+                    let leaf = le32(e, 4) | le16(e, 8) << 32;
+                    tree.push((leaf, 1));
+                    walk(fs, &fs.read_blocks(leaf, 1)?, data, tree, depth + 1)?;
+                }
+            }
+            Some(())
+        }
+        let (mut data, mut tree) = (Vec::new(), Vec::new());
+        walk(self, &raw[40..100], &mut data, &mut tree, 0)?;
+        Some((data, tree))
+    }
+
+    /// Like [`Ext4::set_data`] when the free space cannot hold a second copy of the file: the data goes
+    /// into the file's own blocks (more are taken only for growth, the rest is freed). A stop while it
+    /// writes leaves a mix of old and new bytes – the file system itself stays consistent (the inode
+    /// changes last). Only used when the copy found no room (a file larger than the free space could
+    /// otherwise never be changed again: `ENOSPC` on a half-empty disk).
+    fn set_data_in_place(&self, ino: u64, raw: &mut [u8], data: &[u8]) -> WResult<()> {
+        let Some((old, tree)) = self.data_and_tree(raw) else { return Err(NO_SPACE) };
+        let need = (data.len() as u64).div_ceil(self.bs);
+        let have: u64 = old.iter().map(|r| r.1).sum();
+        // growth first: without room for it nothing has changed yet
+        let extra = if need > have { self.alloc_blocks(need - have)? } else { Vec::new() };
+        let (mut runs, mut tail) = (Vec::new(), Vec::new());
+        let mut left = need;
+        for &(start, len) in &old {
+            let take = len.min(left);
+            if take > 0 {
+                runs.push((start, take));
+            }
+            if take < len {
+                tail.push((start + take, len - take));
+            }
+            left -= take;
+        }
+        runs.extend_from_slice(&extra);
+        let mut logical = 0u64;
+        for &(start, len) in &runs {
+            let s = ((logical * self.bs) as usize).min(data.len());
+            let e = (((logical + len) * self.bs) as usize).min(data.len());
+            let mut chunk = data[s..e].to_vec();
+            chunk.resize((len * self.bs) as usize, 0);
+            self.put_block_n(start, &chunk)?;
+            logical += len;
+        }
+        let (root, leaves) = match self.extent_tree(ino, raw, &runs) {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = self.free_runs(&extra);
+                return Err(e);
+            }
+        };
+        raw[40..100].copy_from_slice(&root);
+        let flags = (le32(raw, 32) | 0x80000) & !0x1000;
+        put32(raw, 32, flags);
+        put32(raw, 4, data.len() as u64);
+        put32(raw, 108, (data.len() as u64) >> 32);
+        let sectors = (need + leaves.len() as u64) * self.bs / 512;
+        put32(raw, 0x1C, sectors);
+        put16(raw, 0x74, sectors >> 32);
+        let now = now_secs();
+        put32(raw, 0x0C, now);
+        put32(raw, 0x10, now);
+        self.put_inode(ino, raw)?;
+        tail.extend_from_slice(&tree);
+        if !tail.is_empty() {
+            self.free_runs(&tail)?;
+        }
+        Ok(())
+    }
+
+    /// Size of the file system for `statfs`: (block size, blocks, free blocks, free blocks for
+    /// everyone – without the reserved ones –, inodes, free inodes).
+    pub fn space(&self) -> Option<(u64, u64, u64, u64, u64, u64)> {
+        let sb = self.sb()?;
+        let wide = le32(&sb, 96) & 0x80 != 0;
+        let hi = |o: usize| if wide { le32(&sb, o) << 32 } else { 0 };
+        let blocks = le32(&sb, 4) | hi(0x150);
+        let reserved = le32(&sb, 8) | hi(0x154);
+        let free = le32(&sb, 12) | hi(0x158);
+        Some((self.bs, blocks, free, free.saturating_sub(reserved), le32(&sb, 0), le32(&sb, 16)))
+    }
+
     /// Inhalt eines Inodes vollständig ersetzen. Order: data blocks, extent leaves, inode, then
     /// the old blocks are freed – a stop in between leaves the old content (and leaked blocks).
+    /// Without room for that copy the file's own blocks are reused ([`Ext4::set_data_in_place`]).
     fn set_data(&self, ino: u64, data: &[u8]) -> WResult<()> {
         let mut raw = self.get_raw(ino)?;
         if le32(&raw, 32) & 0x1000_0000 != 0 {
             return Err("Inline-Daten nicht unterstützt");
         }
         let old = self.inode_blocks(&raw);
-        let runs = self.write_runs(data)?;
+        let runs = match self.write_runs(data) {
+            Ok(r) => r,
+            Err(e) if e == NO_SPACE && !old.is_empty() => return self.set_data_in_place(ino, &mut raw, data),
+            Err(e) => return Err(e),
+        };
         let (root, leaves) = match self.extent_tree(ino, &raw, &runs) {
             Ok(t) => t,
             Err(e) => {

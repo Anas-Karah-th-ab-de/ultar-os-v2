@@ -1248,7 +1248,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     if nofollow && link_at(&loc).is_some() {
         return -ELOOP;
     }
-    let path = loc.host.clone();
+    let mut path = loc.host.clone();
     let acc = flags & 3;
     let (creat, excl, trunc, append, dironly, cloexec) = (flags & 0x40 != 0, flags & 0x80 != 0, flags & 0x200 != 0, flags & 0x400 != 0, flags & 0x10000 != 0, flags & 0x80000 != 0);
     let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::NONE);
@@ -1258,6 +1258,32 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if let Some(kind) = entry.strip_prefix("ns/") {
                 let Some(ns) = proc::ns_ref(tgid, kind) else { return -ENOENT };
                 return with(|p| p.add_fd(Fd { kind: FdKind::Ns(ns), cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF);
+            }
+            // /proc/self/fd/N of the own group: a file or directory opens anew (own position), any
+            // other descriptor (pipe, socket, eventfd …) is the same object, as Linux follows the link
+            if let Some(n) = entry.strip_prefix("fd/").and_then(|n| n.parse::<u64>().ok()) {
+                if tgid != proc::current_group() {
+                    return -EACCES;
+                }
+                enum Again {
+                    Path(String),
+                    Same(Fd),
+                }
+                let again = with(|p| {
+                    p.fd(n).map(|d| match &d.kind {
+                        FdKind::File { path, .. } | FdKind::Dir { path, .. } => Again::Path(path.clone()),
+                        _ => Again::Same(d.dup()),
+                    })
+                })
+                .flatten();
+                match again {
+                    None => return -ENOENT,
+                    Some(Again::Path(h)) => path = h,
+                    Some(Again::Same(mut d)) => {
+                        d.cloexec = cloexec;
+                        return with(|p| p.add_fd(d, 0)).unwrap_or(-EBADF);
+                    }
+                }
             }
         }
         if acc != 0 && (path == "/proc/ultar/firewall" || path == "/proc/ultar/verbund") && !rights.has(Rights::NET_ADMIN) {
@@ -1630,8 +1656,23 @@ fn sys_readlink(dirfd: i64, path: u64, buf: u64, n: u64) -> i64 {
     };
     // /proc/<pid>/exe (own process) and /proc/<pid>/ns/*; otherwise a symbolic link of the file tree
     let entry = if loc.host.starts_with("/proc/") { crate::procfs::pid_entry(&loc.host) } else { None };
+    let own = |tgid: u64| tgid == proc::current_group();
     let t = match entry {
-        Some((tgid, "exe")) if tgid == proc::current_group() => with(|p| p.g.exe.clone()).unwrap_or_default(),
+        Some((tgid, "exe")) if own(tgid) => with(|p| p.g.exe.clone()).unwrap_or_default(),
+        Some((tgid, "cwd")) if own(tgid) => with(|p| p.g.cwd.clone()).unwrap_or_default(),
+        Some((tgid, "root")) if own(tgid) => String::from("/"),
+        Some((tgid, e)) if own(tgid) && e.starts_with("fd/") => {
+            let Some(n) = e[3..].parse::<u64>().ok() else { return -ENOENT };
+            match with(|p| {
+                let v = View::of(&p.g.iso);
+                p.fd(n).map(|d| crate::procfs::fd_link(d, &v))
+            })
+            .flatten()
+            {
+                Some(t) => t,
+                None => return -ENOENT,
+            }
+        }
         Some((tgid, "ns/mnt")) | Some((tgid, "ns/pid")) => match crate::procfs::ns_name(tgid, &loc.host[loc.host.len() - 3..]) {
             Some(name) => name,
             None => return -ENOENT,
@@ -1726,21 +1767,28 @@ fn sys_statfs(by_fd: bool, what: u64, buf: u64) -> i64 {
     } else {
         ustr(what).and_then(|p| locate(-100, &p, true).ok()).map(|l| l.host)
     };
-    let (mut total, mut free, mut kind) = (crate::mem::total_bytes(), crate::mem::free_bytes(), 0xEF53u64);
-    if let Some((used, quota)) = host.as_deref().and_then(fs::ram_usage) {
-        (total, free, kind) = (quota, quota.saturating_sub(used), 0x0102_1994);
-    }
+    let (total, free, kind) = (crate::mem::total_bytes(), crate::mem::free_bytes(), 0xEF53u64);
+    // RAM trees: their quota; an ext4: its own counts (a program that checks for room before it
+    // writes – an installer, ART – must not see the machine's memory instead); else the memory
+    let (kind, bs, blocks, bfree, bavail, files, ffree) = if let Some((used, quota)) = host.as_deref().and_then(fs::ram_usage) {
+        let free = quota.saturating_sub(used) / 4096;
+        (0x0102_1994, 4096, quota / 4096, free, free, 1 << 20, 1 << 19)
+    } else if let Some((bs, blocks, free, avail, inodes, ifree)) = host.as_deref().and_then(fs::ext4_space) {
+        (kind, bs, blocks, free, avail, inodes, ifree)
+    } else {
+        (kind, 4096, total / 4096, free / 4096, free / 4096, 1 << 20, 1 << 19)
+    };
     let mut b = vec![0u8; 120];
     let w = |b: &mut Vec<u8>, o: usize, v: u64| b[o..o + 8].copy_from_slice(&v.to_le_bytes());
     w(&mut b, 0, kind);
-    w(&mut b, 8, 4096);
-    w(&mut b, 16, total / 4096);
-    w(&mut b, 24, free / 4096);
-    w(&mut b, 32, free / 4096);
-    w(&mut b, 40, 1 << 20);
-    w(&mut b, 48, 1 << 19);
+    w(&mut b, 8, bs);
+    w(&mut b, 16, blocks);
+    w(&mut b, 24, bfree);
+    w(&mut b, 32, bavail);
+    w(&mut b, 40, files);
+    w(&mut b, 48, ffree);
     w(&mut b, 64, 255);
-    w(&mut b, 72, 4096);
+    w(&mut b, 72, bs);
     if put(buf, &b) {
         0
     } else {
@@ -3707,7 +3755,8 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
         p.gs_base = 0;
         p.altstack = proc::AltStack::default();
         p.name = argv.first().cloned().unwrap_or_default();
-        p.g.exe = String::from(path);
+        // the absolute path the process sees (readlink /proc/self/exe – also inside a cell)
+        p.g.exe = loc.view.clone();
         p.g.exe_host = loc.host.clone();
         p.g.cmdline = argv.clone();
         for d in p.g.fds.iter_mut() {

@@ -2,10 +2,18 @@
 // mmap with an address wish, MAP_FIXED_NOREPLACE, MAP_FIXED over mappings, partial munmap, mremap in
 // place, MAP_32BIT, large MAP_NORESERVE reservations, the second low window (Windows shared user data at
 // 0x7ffe0000), waitid, arch_prctl(ARCH_SET_GS) across task switches, sigaltstack with SA_ONSTACK and
-// SS_AUTODISARM, siginfo of faults (si_addr, si_code, cr2) and shared file mappings (MAP_SHARED).
+// SS_AUTODISARM, siginfo of faults (si_addr, si_code, cr2), shared file mappings (MAP_SHARED),
+// /proc/self (exe, cwd, fd/N, maps – also in a cell's own proc mount), fatal signals that end every
+// thread (abort, blocked or ignored faults) and Unix sockets through SCM_RIGHTS.
 // Verdict line: "WINETEST: ALLES OK".
 #define _GNU_SOURCE
 #include <asm/prctl.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <sys/mount.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
@@ -266,8 +274,266 @@ static void shared_files(const char *path) {
     unlink(path);
 }
 
-int main(void) {
+// ---- /proc/self: exe, cwd, fd/N (readlink and open), the pid, maps (ART, Wine) -------------------
+
+static int link_is(const char *path, const char *want) {
+    char b[256];
+    ssize_t n = readlink(path, b, sizeof b - 1);
+    if (n < 0) return 0;
+    b[n] = 0;
+    return want[strlen(want) - 1] == '[' ? strncmp(b, want, strlen(want)) == 0 : strcmp(b, want) == 0;
+}
+
+// the line of /proc/self/maps that holds `addr`: its rights and name (or 0)
+static int maps_line(uintptr_t addr, char *perms, char *name) {
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f) return 0;
+    char line[512];
+    int found = 0;
+    while (fgets(line, sizeof line, f)) {
+        unsigned long a, b;
+        char pr[8] = "", nm[256] = "";
+        if (sscanf(line, "%lx-%lx %7s %*s %*s %*s %255s", &a, &b, pr, nm) >= 3 && a <= addr && addr < b) {
+            strcpy(perms, pr);
+            strcpy(name, nm);
+            found = 1;
+            break;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+static void proc_self(const char *exe, const char *dir, const char *where) {
+    char what[160], path[128], fdp[64];
+    snprintf(what, sizeof what, "%s: readlink /proc/self/exe = %s", where, exe);
+    check(link_is("/proc/self/exe", exe), what);
+    char pid[32];
+    snprintf(pid, sizeof pid, "%d", getpid());
+    snprintf(what, sizeof what, "%s: readlink /proc/self = the pid", where);
+    check(link_is("/proc/self", pid), what);
+    check(chdir(dir) == 0, "chdir");
+    snprintf(what, sizeof what, "%s: readlink /proc/self/cwd", where);
+    check(link_is("/proc/self/cwd", dir), what);
+    snprintf(path, sizeof path, "%s/wt-fd", strcmp(dir, "/") ? dir : "");
+    int fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
+    if (fd >= 0 && write(fd, "ultar", 5) != 5) fd = -1;
+    snprintf(fdp, sizeof fdp, "/proc/self/fd/%d", fd);
+    snprintf(what, sizeof what, "%s: readlink /proc/self/fd/N of a file", where);
+    check(fd >= 0 && link_is(fdp, path), what);
+    int again = open(fdp, O_RDONLY);
+    char b[8] = "";
+    snprintf(what, sizeof what, "%s: open /proc/self/fd/N opens the file anew", where);
+    check(again >= 0 && again != fd && read(again, b, 5) == 5 && memcmp(b, "ultar", 5) == 0, what);
+    int pp[2];
+    check(pipe(pp) == 0, "pipe");
+    snprintf(fdp, sizeof fdp, "/proc/self/fd/%d", pp[0]);
+    snprintf(what, sizeof what, "%s: readlink /proc/self/fd/N of a pipe", where);
+    check(link_is(fdp, "pipe:["), what);
+    int seen = 0;
+    DIR *d = opendir("/proc/self/fd");
+    struct dirent *e;
+    while (d && (e = readdir(d)))
+        if (atoi(e->d_name) == fd) seen = 1;
+    if (d) closedir(d);
+    snprintf(what, sizeof what, "%s: /proc/self/fd lists the descriptor", where);
+    check(seen, what);
+    close(pp[0]);
+    close(pp[1]);
+    close(fd);
+    if (again >= 0) close(again);
+    unlink(path);
+    // maps: the stack, an anonymous mapping, the code
+    int local = 0;
+    char pr[8], nm[256];
+    snprintf(what, sizeof what, "%s: /proc/self/maps: the stack is [stack], rw", where);
+    check(maps_line((uintptr_t)&local, pr, nm) && strcmp(nm, "[stack]") == 0 && pr[1] == 'w', what);
+    char *m = mmap(NULL, 3 * PG, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    snprintf(what, sizeof what, "%s: /proc/self/maps: an anonymous mapping, rw-p", where);
+    check(m != MAP_FAILED && maps_line((uintptr_t)m + PG, pr, nm) && strcmp(pr, "rw-p") == 0, what);
+    if (m != MAP_FAILED) munmap(m, 3 * PG);
+    snprintf(what, sizeof what, "%s: /proc/self/maps: the code is executable", where);
+    check(maps_line((uintptr_t)&proc_self, pr, nm) && pr[2] == 'x', what);
+    pthread_attr_t at;
+    void *st = NULL;
+    size_t sz = 0;
+    int r = pthread_getattr_np(pthread_self(), &at);
+    if (r == 0) {
+        pthread_attr_getstack(&at, &st, &sz);
+        pthread_attr_destroy(&at);
+    }
+    snprintf(what, sizeof what, "%s: pthread_getattr_np finds the main stack", where);
+    check(r == 0 && (char *)st <= (char *)&local && (char *)&local < (char *)st + sz, what);
+}
+
+// the same in a cell: own mount and pid namespace, a tmpfs root (pivot_root), /bin bound, proc mounted
+static void proc_in_cell(void) {
+    pid_t c = fork();
+    if (c == 0) {
+        if (unshare(CLONE_NEWNS | CLONE_NEWPID) != 0) { printf("FEHLER unshare: %s\n", strerror(errno)); _exit(9); }
+        pid_t g = fork();
+        if (g == 0) {
+            const char *r = "/tmp/wt-cell";
+            mkdir(r, 0755);
+            int ok = mount("tmpfs", r, "tmpfs", 0, NULL) == 0 && mkdir("/tmp/wt-cell/bin", 0755) == 0 && mkdir("/tmp/wt-cell/proc", 0755) == 0 &&
+                     mkdir("/tmp/wt-cell/old", 0755) == 0 && mount("/bin", "/tmp/wt-cell/bin", NULL, MS_BIND, NULL) == 0 &&
+                     mount("proc", "/tmp/wt-cell/proc", "proc", 0, NULL) == 0 && syscall(SYS_pivot_root, r, "/tmp/wt-cell/old") == 0 && chdir("/") == 0;
+            if (!ok) { printf("FEHLER cell set-up: %s\n", strerror(errno)); _exit(9); }
+            umount2("/old", MNT_DETACH);
+            execl("/bin/winetest", "winetest", "--zelle", (char *)NULL);
+            _exit(8);
+        }
+        int st = 0;
+        waitpid(g, &st, 0);
+        _exit(WIFEXITED(st) ? WEXITSTATUS(st) : 7);
+    }
+    int st = 0;
+    waitpid(c, &st, 0);
+    check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "cell: /proc/self in a cell's own proc mount (lines above)");
+}
+
+// ---- fatal signals end the whole process (ART kept running after abort()) ------------------------
+
+static void *abort_thread(void *a) {
+    (void)a;
+    abort();
+}
+static void *null_thread(void *a) {
+    (void)a;
+    *(volatile int *)0 = 1;
+    return NULL;
+}
+static void *sleeper(void *a) {
+    (void)a;
+    for (;;) pause();
+    return NULL;
+}
+static void returning(int s) { (void)s; }
+
+static int ends_by(int how) {
+    pid_t c = fork();
+    if (c == 0) {
+        alarm(20);
+        pthread_t t;
+        sigset_t set;
+        sigemptyset(&set);
+        switch (how) {
+        case 1:  // a second thread calls abort(), the main thread waits for it
+            pthread_create(&t, NULL, abort_thread, NULL);
+            pthread_join(t, NULL);
+            break;
+        case 2:  // SIGABRT blocked: abort() unblocks it
+            sigaddset(&set, SIGABRT);
+            sigprocmask(SIG_BLOCK, &set, NULL);
+            abort();
+        case 3:  // a handler that returns: abort() still ends the process
+            signal(SIGABRT, returning);
+            abort();
+        case 4:  // SIGSEGV blocked: the fault still ends the process
+            sigaddset(&set, SIGSEGV);
+            sigprocmask(SIG_BLOCK, &set, NULL);
+            *(volatile int *)0 = 1;
+            break;
+        case 5:  // SIGSEGV ignored: the same
+            signal(SIGSEGV, SIG_IGN);
+            *(volatile int *)0 = 1;
+            break;
+        case 6:  // a fault in a second thread ends all threads
+            pthread_create(&t, NULL, null_thread, NULL);
+            pthread_join(t, NULL);
+            break;
+        case 7:  // SIGTERM blocked in the main thread, not in a second one: the process ends
+            pthread_create(&t, NULL, sleeper, NULL);
+            sigaddset(&set, SIGTERM);
+            pthread_sigmask(SIG_BLOCK, &set, NULL);
+            for (;;) pause();
+        }
+        _exit(0);
+    }
+    if (how == 7) {
+        usleep(300 * 1000);
+        kill(c, SIGTERM);
+    }
+    int st = 0;
+    waitpid(c, &st, 0);
+    return WIFSIGNALED(st) ? WTERMSIG(st) : -1;
+}
+
+static void fatal_signals(void) {
+    check(ends_by(1) == SIGABRT, "abort() in a second thread ends the process (SIGABRT)");
+    check(ends_by(2) == SIGABRT, "abort() with SIGABRT blocked ends the process");
+    check(ends_by(3) == SIGABRT, "abort() with a returning handler ends the process");
+    check(ends_by(4) == SIGSEGV, "a fault with SIGSEGV blocked ends the process");
+    check(ends_by(5) == SIGSEGV, "a fault with SIGSEGV ignored ends the process");
+    check(ends_by(6) == SIGSEGV, "a fault in a second thread ends all threads");
+    check(ends_by(7) == SIGTERM, "SIGTERM blocked in the main thread reaches another thread and ends the process");
+}
+
+// ---- Unix sockets travel through SCM_RIGHTS (Wine hands the server a socket per new process) ------
+
+static int send_fd(int over, int fd) {
+    char c = 'x';
+    struct iovec v = {&c, 1};
+    char ctl[CMSG_SPACE(sizeof(int))];
+    memset(ctl, 0, sizeof ctl);
+    struct msghdr m = {0};
+    m.msg_iov = &v;
+    m.msg_iovlen = 1;
+    m.msg_control = ctl;
+    m.msg_controllen = sizeof ctl;
+    struct cmsghdr *h = CMSG_FIRSTHDR(&m);
+    h->cmsg_level = SOL_SOCKET;
+    h->cmsg_type = SCM_RIGHTS;
+    h->cmsg_len = CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(h), &fd, sizeof fd);
+    return sendmsg(over, &m, 0) == 1 ? 0 : -errno;
+}
+
+static int recv_fd(int from) {
+    char c;
+    struct iovec v = {&c, 1};
+    char ctl[CMSG_SPACE(sizeof(int))];
+    struct msghdr m = {0};
+    m.msg_iov = &v;
+    m.msg_iovlen = 1;
+    m.msg_control = ctl;
+    m.msg_controllen = sizeof ctl;
+    if (recvmsg(from, &m, 0) != 1) return -1;
+    struct cmsghdr *h = CMSG_FIRSTHDR(&m);
+    int fd = -1;
+    if (h && h->cmsg_type == SCM_RIGHTS) memcpy(&fd, CMSG_DATA(h), sizeof fd);
+    return fd;
+}
+
+static void socket_rights(void) {
+    int a[2], b[2], c[2];
+    check(socketpair(AF_UNIX, SOCK_STREAM, 0, a) == 0 && socketpair(AF_UNIX, SOCK_STREAM, 0, b) == 0 && socketpair(AF_UNIX, SOCK_STREAM, 0, c) == 0, "socketpairs");
+    check(send_fd(a[0], b[1]) == 0, "SCM_RIGHTS: a connected Unix socket travels");
+    int got = recv_fd(a[1]);
+    char buf[4] = "";
+    check(got >= 0 && write(got, "ok", 2) == 2 && read(b[0], buf, 2) == 2 && memcmp(buf, "ok", 2) == 0, "SCM_RIGHTS: the received socket is the same connection");
+    check(send_fd(a[0], a[1]) == -EOPNOTSUPP, "SCM_RIGHTS: a socket never lands in itself (EOPNOTSUPP)");
+    check(send_fd(a[0], c[1]) == 0, "SCM_RIGHTS: a socket waits in a queue");
+    check(send_fd(c[0], a[1]) == -EOPNOTSUPP, "SCM_RIGHTS: a socket that carries a socket stays (no ring without a collector)");
+    int l = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un sa = {.sun_family = AF_UNIX};
+    strcpy(sa.sun_path, "/tmp/wt-listen");
+    unlink(sa.sun_path);
+    check(l >= 0 && bind(l, (struct sockaddr *)&sa, sizeof sa) == 0 && listen(l, 1) == 0 && send_fd(b[0], l) == -EOPNOTSUPP, "SCM_RIGHTS: a listening socket stays");
+    int got2 = recv_fd(a[1]);
+    check(got2 >= 0, "SCM_RIGHTS: the waiting socket arrives");
+    int all[] = {a[0], a[1], b[0], b[1], c[0], c[1], got, got2, l};
+    for (unsigned i = 0; i < sizeof all / sizeof *all; i++)
+        if (all[i] >= 0) close(all[i]);
+    unlink(sa.sun_path);
+}
+
+int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
+    if (argc > 1 && strcmp(argv[1], "--zelle") == 0) {
+        proc_self("/bin/winetest", "/", "cell");
+        return failures != 0;
+    }
     placement();
     partial_and_faults();
     waits();
@@ -275,6 +541,10 @@ int main(void) {
     alt_stack();
     shared_files("/tmp/wt-shared");
     if (access("/data", W_OK) == 0) shared_files("/data/wt-shared");
+    proc_self("/bin/winetest", "/tmp", "proc");
+    proc_in_cell();
+    fatal_signals();
+    socket_rights();
     if (failures == 0)
         printf("WINETEST: ALLES OK\n");
     else

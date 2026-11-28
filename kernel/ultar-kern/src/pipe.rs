@@ -142,6 +142,12 @@ impl Pipe {
         Some((out, fds))
     }
 
+    /// Whether a Unix socket travels in this direction (a descriptor sent but not yet received).
+    pub fn carries_sockets(&self) -> bool {
+        use crate::proc::FdKind;
+        self.rights.lock().iter().any(|(_, fds)| fds.iter().any(|d| matches!(d.kind, FdKind::UnixConn(..) | FdKind::UnixSock(_))))
+    }
+
     /// Append like [`Pipe::push`]; `fds` travel with the first byte. On error the descriptors come back.
     pub fn push_with_rights(&self, data: &[u8], fds: alloc::vec::Vec<crate::proc::Fd>) -> Result<usize, (PushError, alloc::vec::Vec<crate::proc::Fd>)> {
         let mut b = self.buf.lock();

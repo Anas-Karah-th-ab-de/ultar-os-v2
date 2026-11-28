@@ -98,17 +98,25 @@ fn may_claim(p: &Proc, (pid, uid, gid): (i32, u32, u32)) -> bool {
     privileged || (own_pid && cred.uid.contains(&uid) && cred.gid.contains(&gid))
 }
 
-/// Copies of the caller's descriptors `nums` (they stay open in the caller). Unix sockets cannot be
-/// passed (`EOPNOTSUPP`): a socket in flight inside itself would never be freed (no collector).
-fn copies(p: &mut Proc, nums: &[i32]) -> Result<Vec<Fd>, i64> {
+/// Copies of the caller's descriptors `nums` (they stay open in the caller), to travel in `into`.
+///
+/// A connected Unix socket may travel (Wine hands the server one end of a socket pair for every new
+/// process) when no Unix socket travels in its own receiving direction and it would not land in that
+/// direction itself. Then no ring of sockets that only hold each other can form – the last socket
+/// sent into such a ring would already carry the next one – and every socket is freed without a
+/// collector. Listening sockets (`EOPNOTSUPP`) never travel: their waiting connections could hold them.
+/// The caller holds the process lock, so two sends cannot pass the check crosswise.
+fn copies(p: &mut Proc, nums: &[i32], into: &alloc::sync::Arc<crate::proc::Pipe>) -> Result<Vec<Fd>, i64> {
     let mut out = Vec::new();
     if !crate::mem::try_reserve(&mut out, nums.len()) {
         return Err(-ENOMEM);
     }
     for &n in nums {
         let Some(d) = (n >= 0).then(|| p.fd(n as u64)).flatten() else { return Err(-EBADF) };
-        if matches!(d.kind, FdKind::UnixConn(..) | FdKind::UnixSock(_)) {
-            return Err(-EOPNOTSUPP);
+        match &d.kind {
+            FdKind::UnixSock(_) => return Err(-EOPNOTSUPP),
+            FdKind::UnixConn(rx, _) if alloc::sync::Arc::ptr_eq(rx, into) || rx.carries_sockets() => return Err(-EOPNOTSUPP),
+            _ => {}
         }
         out.push(d.dup());
     }
@@ -127,14 +135,14 @@ pub fn send(fd: u64, data: &[u8], ctl: &[u8], flags: u64) -> Step {
         if !claimed.iter().all(|&c| may_claim(p, c)) {
             return Step::Val(-EPERM);
         }
-        let fds = match copies(p, &nums) {
-            Ok(f) => f,
-            Err(e) => return Step::Val(e),
-        };
         let Some(d) = p.fd(fd) else { return Step::Val(-EBADF) };
         let nonblock = d.flags & 0x800 != 0 || flags & MSG_DONTWAIT != 0;
         let FdKind::UnixConn(_, tx) = &d.kind else { return Step::Val(-EBADF) };
         let tx = tx.clone();
+        let fds = match copies(p, &nums, &tx) {
+            Ok(f) => f,
+            Err(e) => return Step::Val(e),
+        };
         if tx.read_closed() {
             if flags & MSG_NOSIGNAL == 0 {
                 p.pending |= 1 << (crate::signal::SIGPIPE - 1);
