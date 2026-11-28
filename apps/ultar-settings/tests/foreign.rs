@@ -77,14 +77,15 @@ fn without_the_service_or_the_area_the_page_says_so() {
     assert!(app.view.node(Act::ForeignUpdate).is_none());
     assert!(app.state.status.foreign.error.is_some());
     let (world, mut app) = open(Lang::En, ThemeKind::Dark, Some(world_with(false)));
-    assert!(app.view.node(Act::ForeignUpdate).is_none(), "nothing to update");
+    // the area is installed from the component (a drive or the Store's downloads)
+    assert!(app.view.node(Act::ForeignUpdate).is_some(), "install the component");
     assert!(app.view.node(Act::ForeignApp(0)).is_none());
     // the service answers "missing" too if asked
     assert!(!app.state.status.foreign.runtime.as_ref().unwrap().installed);
     app.poll().unwrap();
     assert!(
         !log(&world).iter().any(|l| l.starts_with("foreign.")),
-        "nothing asked of the service"
+        "nothing asked of the service before the person chooses"
     );
 }
 
