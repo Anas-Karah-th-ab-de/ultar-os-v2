@@ -210,10 +210,17 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
     }
     println!("\nmodel  group     mean accuracy  mean seconds");
     let mut best_english = 0.0f32;
-    for model in all.iter().map(|m| m.model.clone()).collect::<std::collections::BTreeSet<_>>() {
+    for model in all
+        .iter()
+        .map(|m| m.model.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+    {
         for group in GROUPS {
             let (acc, secs) = mean(&all, &model, group);
-            println!("{model:<6} {group:<8}  {:>12.0}%  {secs:>10.1}", acc * 100.0);
+            println!(
+                "{model:<6} {group:<8}  {:>12.0}%  {secs:>10.1}",
+                acc * 100.0
+            );
             if group == "en" {
                 best_english = best_english.max(acc);
             }
@@ -221,7 +228,10 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
     }
     // English is the sanity check of the whole chain (the best model must read it);
     // Arabic and German are only reported
-    assert!(best_english >= 0.5, "English at {best_english}: chain broken?");
+    assert!(
+        best_english >= 0.5,
+        "English at {best_english}: chain broken?"
+    );
 }
 
 /// Mean accuracy and seconds of a model on a group.
