@@ -33,7 +33,7 @@ static HANDLERS: Mutex<[Option<fn(u8)>; POOL_LEN]> = Mutex::new([None; POOL_LEN]
 
 /// Nächster zu vergebender Index (einfacher fortlaufender Zeiger, es werden nie welche frei, außer
 /// ein Gerät gibt sie beim Abbau zurück – dann bleibt die Lücke bis zum nächsten Rundlauf).
-fn find_free(table: &[Option<fn()>; POOL_LEN]) -> Option<usize> {
+fn find_free(table: &[Option<fn(u8)>; POOL_LEN]) -> Option<usize> {
     table.iter().position(|h| h.is_none())
 }
 
