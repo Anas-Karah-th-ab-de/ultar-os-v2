@@ -228,7 +228,7 @@ impl<'a> Cfb<'a> {
 
 fn entry(b: &[u8]) -> Option<Entry> {
     let name_len = usize::from(u16::from_le_bytes([b[64], b[65]]));
-    if name_len < 2 || name_len > 64 {
+    if !(2..=64).contains(&name_len) {
         return None;
     }
     let (text, _) = utf16_z(&b[..name_len], 0, 31)?;
@@ -494,7 +494,7 @@ mod tests {
             let mut f = base.clone();
             for _ in 0..1 + rng.below(12) {
                 let at = rng.below(f.len());
-                f[at] = rng.next() as u8;
+                f[at] = rng.step() as u8;
             }
             if rng.below(8) == 0 {
                 f.truncate(rng.below(f.len()));

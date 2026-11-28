@@ -5,6 +5,10 @@
 pub trait ReadAt {
     /// Its length in bytes.
     fn len(&self) -> u64;
+    /// Whether it has no bytes.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// `n` bytes at `at`; `None` when they are not all there (or `n` is unreasonable).
     fn bytes(&self, at: u64, n: usize) -> Option<Vec<u8>>;
 
@@ -58,10 +62,7 @@ impl ReadAt for std::fs::File {
 pub fn utf16_z(b: &[u8], at: usize, max: usize) -> Option<(String, usize)> {
     let mut units = Vec::new();
     let mut i = at;
-    loop {
-        let Some(pair) = b.get(i..i.checked_add(2)?) else {
-            break;
-        };
+    while let Some(pair) = b.get(i..i.checked_add(2)?) {
         i += 2;
         let unit = u16::from_le_bytes([pair[0], pair[1]]);
         if unit == 0 {
@@ -82,7 +83,7 @@ pub struct Rng(pub u64);
 #[cfg(test)]
 impl Rng {
     /// The next number.
-    pub fn next(&mut self) -> u64 {
+    pub fn step(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 7;
@@ -93,7 +94,7 @@ impl Rng {
 
     /// A number below `n` (`n` > 0).
     pub fn below(&mut self, n: usize) -> usize {
-        (self.next() % n.max(1) as u64) as usize
+        (self.step() % n.max(1) as u64) as usize
     }
 }
 

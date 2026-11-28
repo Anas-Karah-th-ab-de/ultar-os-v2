@@ -26,6 +26,7 @@ pub mod msi;
 pub mod pe;
 pub mod service;
 pub mod state;
+pub mod windows;
 pub mod winread;
 
 pub use service::ForeignService;

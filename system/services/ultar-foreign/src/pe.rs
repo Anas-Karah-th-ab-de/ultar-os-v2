@@ -219,7 +219,10 @@ fn named_entries(rsrc: &[u8], dir: usize) -> Vec<(u32, u32)> {
 
 /// The targets of the entries of the directory at `dir`.
 fn entries(rsrc: &[u8], dir: usize) -> Vec<u32> {
-    named_entries(rsrc, dir).into_iter().map(|(_, t)| t).collect()
+    named_entries(rsrc, dir)
+        .into_iter()
+        .map(|(_, t)| t)
+        .collect()
 }
 
 /// The entry `wanted` (an id) of the directory at `dir`, or its first entry.
@@ -305,16 +308,14 @@ fn fill(info: &mut PeInfo, block: &[u8]) {
         if child.key != "StringFileInfo" {
             continue;
         }
-        for table in nodes(child.children) {
-            for s in nodes(table.children) {
-                if s.text {
-                    let words = s.value.len() / 2;
-                    if let Some((v, _)) = utf16_z(s.value, 0, words.min(1024)) {
-                        strings.push((s.key, clean(&v)));
-                    }
+        // the first string table (the file's first language)
+        if let Some(table) = nodes(child.children).into_iter().next() {
+            for s in nodes(table.children).into_iter().filter(|s| s.text) {
+                let words = s.value.len() / 2;
+                if let Some((v, _)) = utf16_z(s.value, 0, words.min(1024)) {
+                    strings.push((s.key, clean(&v)));
                 }
             }
-            break;
         }
     }
     let get = |k: &str| {
@@ -405,7 +406,7 @@ pub(crate) mod tests {
     }
 
     fn pad(b: &mut Vec<u8>) {
-        while b.len() % 4 != 0 {
+        while !b.len().is_multiple_of(4) {
             b.push(0);
         }
     }
@@ -609,7 +610,7 @@ pub(crate) mod tests {
             let mut f = base.clone();
             for _ in 0..1 + rng.below(16) {
                 let at = rng.below(f.len());
-                f[at] = rng.next() as u8;
+                f[at] = rng.step() as u8;
             }
             if rng.below(8) == 0 {
                 f.truncate(rng.below(f.len()));

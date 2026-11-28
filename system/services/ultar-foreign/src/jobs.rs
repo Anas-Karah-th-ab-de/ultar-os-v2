@@ -144,6 +144,16 @@ pub fn inspect(ctx: &Ctx, path: &str, job: u64) -> InspectOutcome {
     }
     let runtime = ctx.layout.runtime_installed();
     let (mut name, mut version, mut publisher) = (detect::stem(file), String::new(), String::new());
+    let mut installable = source.installable() && runtime;
+    if matches!(source, Source::Exe | Source::Msi) {
+        match crate::windows::describe(&opened, file) {
+            Ok(d) => {
+                (name, version, publisher) = (d.name, d.version, d.publisher);
+                installable &= ctx.layout.windows_installed();
+            }
+            Err(_) => return InspectOutcome::Unreadable,
+        }
+    }
     if source == Source::Deb && runtime {
         match read_deb(ctx, opened, job) {
             Ok(c) => {
@@ -161,7 +171,7 @@ pub fn inspect(ctx: &Ctx, path: &str, job: u64) -> InspectOutcome {
         publisher,
         size_bytes: size,
         verified: false,
-        installable: source.installable() && runtime,
+        installable,
         suggested: Choices::default(),
     })
 }
@@ -177,7 +187,7 @@ pub fn step(client: &Client, job: u64, step: Step, percent: u8, apps: Vec<String
 }
 
 /// The dialog's question for installing `name` of `source` with `choices`.
-fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Text {
+pub(crate) fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Text {
     let net = match (choices.network, choices.lan) {
         (NetworkChoice::None, _) => "foreign.net.none",
         (NetworkChoice::Internet, false) => "foreign.net.internet",
@@ -205,7 +215,7 @@ fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Tex
 }
 
 /// Asks an administrator; `Ok(true)`: authorised.
-fn confirm(client: &Client, caller: &str, text: Text) -> Result<bool, Failure> {
+pub(crate) fn confirm(client: &Client, caller: &str, text: Text) -> Result<bool, Failure> {
     let ask = Authenticate {
         app_id: caller.to_owned(),
         app_name: caller.to_owned(),
@@ -439,11 +449,18 @@ mod tests {
             InspectOutcome::Unreadable
         );
         let exe = dir.join("setup.exe");
+        std::fs::write(&exe, crate::pe::tests::sample(&[], &[])).unwrap();
+        // a head that only looks like a program is unreadable, not a program
+        let fake = dir.join("fake.exe");
         let mut head = vec![0u8; 256];
         head[..2].copy_from_slice(b"MZ");
         head[0x3c..0x40].copy_from_slice(&128u32.to_le_bytes());
         head[128..132].copy_from_slice(b"PE\0\0");
-        std::fs::write(&exe, &head).unwrap();
+        std::fs::write(&fake, &head).unwrap();
+        assert_eq!(
+            inspect(&ctx, fake.to_str().unwrap(), 1),
+            InspectOutcome::Unreadable
+        );
         match inspect(&ctx, exe.to_str().unwrap(), 1) {
             InspectOutcome::Found(i) => {
                 assert_eq!(i.source, Source::Exe);
