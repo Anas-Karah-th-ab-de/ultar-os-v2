@@ -1,0 +1,6 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+MeshSend	38	mesh.send.target	radio	KM Oneمحرر النصوص مثبَّت هناك · يُفتح في الموضع نفسه	0	true	505	374.81	430	61.58	38,43,54	1440	900	dark	ar	0
+MeshSend	39	mesh.send.target	radio	beelinkلا يوجد محرر النصوص هناك · يُرسل الملف فقط	0	false	505	448.39	430	59.58	31,35,44	1440	900	dark	ar	0
+MeshSend	40	mesh.send.target	radio	ultar-officeغير متصل الآن	1	false	505	519.97	430	59.58	31,35,44	1440	900	dark	ar	0
+MeshSend	41	mesh.send.cancel	button	إلغاء المتابعة على جهاز آخر	0	-	604.05	595.55	57.03	32	31,35,44	1440	900	dark	ar	0
+MeshSend	42	mesh.send	button	إرسال	0	-	505	595.55	91.05	32	212,175,55	1440	900	dark	ar	0

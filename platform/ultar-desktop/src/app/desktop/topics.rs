@@ -69,7 +69,7 @@ impl ServiceTopics {
 
     /// Takes what arrived; returns whether anything changed and whether the shown calendar
     /// day must be asked for again (`calendar.changed`).
-    pub fn poll(&self, d: &mut Desktop, now: u64) -> (bool, bool) {
+    pub fn poll(&self, d: &mut Desktop) -> (bool, bool) {
         let svc = &mut d.svc;
         let mut any = drain(&self.power, |m| svc.power = Some(m));
         any |= drain(&self.session, |m| svc.session = Some(m));
@@ -87,7 +87,7 @@ impl ServiceTopics {
         any |= drain(&self.mesh, |m| svc.mesh.state = Some(m));
         let mut progress = Vec::new();
         any |= drain(&self.handoff, |m| progress.push(m));
-        crate::model::mesh::report(d, &progress, now);
+        crate::model::mesh::report(d, &progress);
         let overview = &mut d.overview;
         let (sources, helper) = (&mut overview.sources, &mut overview.helper);
         any |= drain(&self.helper, |m| {

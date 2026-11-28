@@ -3,6 +3,7 @@
 mod banners;
 mod effects;
 pub mod link;
+mod mesh_toasts;
 mod panels;
 mod slow;
 mod topics;
@@ -60,6 +61,8 @@ pub struct DesktopApp {
     popup: Option<PopupSurface>,
     /// The banners' surface and when their clocks were last looked at.
     banners: BannerSurface,
+    /// The mesh's toasts (board MeshStates).
+    mesh_toasts: mesh_toasts::ToastSurface,
     link: Option<Link>,
     displays: Vec<(OutputId, String)>,
     pending: Option<(String, Opening, u64)>,
@@ -160,6 +163,7 @@ impl DesktopApp {
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
+            mesh_toasts: mesh_toasts::ToastSurface::default(),
             link,
             displays: Vec::new(),
             pending: None,
@@ -376,6 +380,9 @@ impl DesktopApp {
         if self.banners.surface.is_some_and(|(b, _)| b == id) {
             return self.on_banner(&target, kind);
         }
+        if target == Target::MeshToasts {
+            return self.on_mesh_toast(kind);
+        }
         match (kind, &target) {
             (ActionKind::MenuChosen(item), t) if !matches!(t, Target::AppItem(_)) => {
                 self.shell.on_menu(*item)
@@ -411,7 +418,10 @@ impl DesktopApp {
     fn compositor(&mut self, event: Event) -> Result<Outcome, AppError> {
         let d = &mut self.shell.d;
         Ok(match event {
-            Event::ShellKey { code, .. } => self.shell.on_shell_key(code),
+            Event::ShellKey { code, modifiers, .. } => {
+                let shift = modifiers.has(ultar_surface::proto::Modifiers::SHIFT);
+                self.shell.on_shell_key_with(code, shift)
+            }
             Event::WindowsChanged { windows } => self.shell.on_windows(windows),
             Event::Workspaces { current, count } => {
                 d.overview.workspaces = Some((current, count));

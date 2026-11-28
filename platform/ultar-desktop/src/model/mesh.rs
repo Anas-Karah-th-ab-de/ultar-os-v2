@@ -1,15 +1,112 @@
 //! The mesh as the shell sees it (docs/ui/mesh.md §2.5, §2.6): whether something can be
 //! continued on another device, what is in front, the choice of devices (board MeshSend)
-//! and the notices about an offer (board MeshStates).
+//! and the toasts about an offer (board MeshStates: waiting with Cancel, opened, declined,
+//! nobody answered and connection lost with Retry, a file arrived with Open).
 
 use super::services::Services;
 use super::{Desktop, Open};
 use ultar_bus::messages::mesh::{
     HandoffProgress, MeshState, OfferState, SendOutcome, Stage, Target,
 };
+use ultar_ui::widgets::{Tone, MAX_TOASTS};
 
-/// The shell's own notices.
-const SHELL: &str = "org.ultar.shell";
+/// How long a toast with a button stays (the toolkit's `motion.toast_action`, ms).
+pub const TOAST_LIFE_MS: u64 = 10_000;
+/// A toast that closes this much before its time is over closed by itself.
+const TIMEOUT_SLACK_MS: u64 = 500;
+
+/// What a toast says (its text is the catalog key `desk.mesh.toast.<kind>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// The offer is on its way and the other device asks its person.
+    Waiting,
+    /// The activity is open on the other device.
+    Opened,
+    /// The other person declined.
+    Declined,
+    /// Nobody answered within a minute.
+    Expired,
+    /// The connection was lost, nothing was stored there.
+    Failed,
+    /// A file arrived from another device.
+    Received,
+    /// No device can take it now.
+    NoTarget,
+    /// Nothing in front can be continued.
+    NoActivity,
+}
+
+impl Kind {
+    /// The meaning (icon and colour) of the toast.
+    pub fn tone(self) -> Tone {
+        match self {
+            Kind::Waiting | Kind::NoActivity => Tone::Info,
+            Kind::Opened | Kind::Received => Tone::Success,
+            Kind::Declined | Kind::Expired | Kind::NoTarget => Tone::Warning,
+            Kind::Failed => Tone::Danger,
+        }
+    }
+
+    /// The catalog key of its one line.
+    pub fn key(self) -> &'static str {
+        match self {
+            Kind::Waiting => "desk.mesh.toast.waiting",
+            Kind::Opened => "desk.mesh.toast.opened",
+            Kind::Declined => "desk.mesh.toast.declined",
+            Kind::Expired => "desk.mesh.toast.expired",
+            Kind::Failed => "desk.mesh.toast.failed",
+            Kind::Received => "desk.mesh.toast.received",
+            Kind::NoTarget => "desk.mesh.toast.no_target",
+            Kind::NoActivity => "desk.mesh.toast.no_activity",
+        }
+    }
+}
+
+/// The button of a toast.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Act {
+    /// Take the waiting offer back (`mesh.offer_cancel`).
+    Cancel(u64),
+    /// Send the offer to this device again (`mesh.handoff_send`).
+    Retry(String),
+    /// Open what arrived (`launcher.start` with this URI).
+    Open(String),
+}
+
+impl Act {
+    /// The catalog key of the button's label.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Act::Cancel(_) => "desk.mesh.cancel",
+            Act::Retry(_) => "desk.mesh.retry",
+            Act::Open(_) => "desk.mesh.open",
+        }
+    }
+}
+
+/// One toast of the mesh (board MeshStates).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Toast {
+    /// Its id on the toasts' surface.
+    pub id: u32,
+    /// What it says.
+    pub kind: Kind,
+    /// The other device's name (data).
+    pub name: String,
+    /// What was offered or arrived (data).
+    pub title: String,
+    /// Its button.
+    pub act: Option<Act>,
+}
+
+/// An offer this device sent: who got it and what it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Sent {
+    offer: u64,
+    device: String,
+    name: String,
+    title: String,
+}
 
 /// What the shell knows of the mesh.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -20,6 +117,12 @@ pub struct Mesh {
     pub targets: Vec<Target>,
     /// The chosen device (index into `targets`).
     pub chosen: usize,
+    /// The toasts shown, oldest first.
+    pub toasts: Vec<Toast>,
+    /// When the toasts' surface was built (ms): their clocks start then.
+    pub built_at: u64,
+    next_toast: u32,
+    sent: Vec<Sent>,
 }
 
 impl Mesh {
@@ -35,6 +138,54 @@ impl Mesh {
         }
         self.chosen = index;
         true
+    }
+
+    /// Shows a toast (the oldest goes beyond the toolkit's limit).
+    pub fn toast(&mut self, kind: Kind, name: &str, title: &str, act: Option<Act>) {
+        self.next_toast = self.next_toast.wrapping_add(1);
+        let name: String = name.chars().take(64).collect();
+        let title: String = title.chars().take(96).collect();
+        self.toasts.push(Toast {
+            id: self.next_toast,
+            kind,
+            name,
+            title,
+            act,
+        });
+        while self.toasts.len() > MAX_TOASTS {
+            self.toasts.remove(0);
+        }
+    }
+
+    /// A toast's button was pressed: the toast goes and its button's meaning is returned.
+    pub fn take_act(&mut self, id: u32) -> Option<Act> {
+        let at = self.toasts.iter().position(|t| t.id == id)?;
+        self.toasts.remove(at).act
+    }
+
+    /// The toolkit closed a toast (the person, or its time). Returns whether the toasts'
+    /// surface must be built again. A waiting toast that only timed out stays: the offer
+    /// still waits and the person must be able to take it back.
+    pub fn closed(&mut self, id: u32, now: u64) -> bool {
+        let Some(at) = self.toasts.iter().position(|t| t.id == id) else {
+            return false;
+        };
+        let timed_out = now.saturating_sub(self.built_at) + TIMEOUT_SLACK_MS >= TOAST_LIFE_MS;
+        if self.toasts[at].kind == Kind::Waiting && timed_out {
+            return true;
+        }
+        self.toasts.remove(at);
+        true
+    }
+
+    /// Forgets the waiting toast of an offer (its end arrived).
+    fn end_waiting(&mut self, offer: u64) {
+        self.toasts.retain(|t| t.act != Some(Act::Cancel(offer)));
+    }
+
+    /// A file arrived from another device (`mesh.received`): the toast with Open.
+    pub fn received(&mut self, from: &str, title: &str, uri: Option<String>) {
+        self.toast(Kind::Received, from, title, uri.map(Act::Open));
     }
 }
 
@@ -55,7 +206,7 @@ pub fn in_front(d: &Desktop) -> Option<(String, String)> {
 }
 
 /// What will happen on a device, as the line of the choice (board MeshSend: name, then
-/// this line below it).
+/// this line below it; `{ $app }` is the app that is offered).
 pub fn stage_key(stage: Stage) -> &'static str {
     match stage {
         Stage::State => "desk.mesh.target.state",
@@ -64,55 +215,65 @@ pub fn stage_key(stage: Stage) -> &'static str {
     }
 }
 
-/// The id of a mesh notice button: the action the local notice carries.
-fn action_id(kind: &str, what: &str) -> String {
-    format!("mesh:{kind}:{what}")
+/// The name of a device as the person knows it.
+fn name_of(svc: &Services, device: &str) -> String {
+    svc.mesh
+        .state
+        .iter()
+        .flat_map(|m| &m.peers)
+        .find(|p| p.id == device)
+        .map_or_else(|| device.to_owned(), |p| p.name.clone())
 }
 
-/// The mesh answered "continue on another device": a notice, or the choice of devices.
-pub fn sent(d: &mut Desktop, outcome: SendOutcome, now: u64) {
-    let notice = match outcome {
-        // Waiting: the sender can take the offer back (mesh.offer.cancel).
-        SendOutcome::Offered { offer, .. } => {
-            let cancel = ultar_bus::messages::notify::Action {
-                id: action_id("cancel", &offer.to_string()),
-                label: ultar_bus::Text::key("desk.mesh.offer.cancel"),
-            };
-            d.notes.post_actions(SHELL, "desk.mesh.waiting", vec![cancel], now);
-            return;
+/// The mesh answered "continue on another device": a toast, or the choice of devices.
+pub fn sent(d: &mut Desktop, outcome: SendOutcome) {
+    let title = in_front(d).map(|(_, t)| t).unwrap_or_default();
+    let mesh = &mut d.svc.mesh;
+    match outcome {
+        // Waiting: the sender can take the offer back (mesh.offer_cancel).
+        SendOutcome::Offered { offer, target } => {
+            mesh.sent.retain(|s| s.offer != offer);
+            mesh.sent.push(Sent {
+                offer,
+                device: target.device.clone(),
+                name: target.name.clone(),
+                title: title.clone(),
+            });
+            let cancel = Some(Act::Cancel(offer));
+            mesh.toast(Kind::Waiting, &target.name, &title, cancel);
         }
-        SendOutcome::NoTarget => "desk.mesh.no_target",
-        SendOutcome::NoActivity => "desk.mesh.no_activity",
+        SendOutcome::NoTarget => mesh.toast(Kind::NoTarget, "", "", None),
+        SendOutcome::NoActivity => mesh.toast(Kind::NoActivity, "", "", None),
         SendOutcome::Choose(targets) => {
-            d.svc.mesh.targets = targets;
-            d.svc.mesh.chosen = 0;
+            mesh.targets = targets;
+            mesh.chosen = 0;
             d.open = Open::MeshSend;
-            return;
         }
-    };
-    d.notes.post_notice(SHELL, notice, now);
+    }
 }
 
 /// What became of the offers this device sent (`mesh.handoff_progress`).
-pub fn report(d: &mut Desktop, progress: &[HandoffProgress], now: u64) {
+pub fn report(d: &mut Desktop, progress: &[HandoffProgress]) {
     for p in progress.iter().filter(|p| p.outgoing) {
-        let notice = match p.state {
-            OfferState::Opened => "desk.mesh.opened",
-            OfferState::Declined => "desk.mesh.declined",
-            OfferState::Expired => "desk.mesh.expired",
-            OfferState::Failed => "desk.mesh.failed",
+        let kind = match p.state {
+            OfferState::Opened => Kind::Opened,
+            OfferState::Declined => Kind::Declined,
+            OfferState::Expired => Kind::Expired,
+            OfferState::Failed => Kind::Failed,
             OfferState::Asked | OfferState::Accepted => continue,
         };
+        let known = d.svc.mesh.sent.iter().find(|s| s.offer == p.offer).cloned();
+        let name = known
+            .as_ref()
+            .map_or_else(|| name_of(&d.svc, &p.device), |s| s.name.clone());
+        let title = known.map(|s| s.title).unwrap_or_default();
+        let mesh = &mut d.svc.mesh;
+        mesh.end_waiting(p.offer);
+        mesh.sent.retain(|s| s.offer != p.offer);
         // Nobody answered or the connection was lost: one click sends the offer again.
-        if matches!(p.state, OfferState::Expired | OfferState::Failed) {
-            let retry = ultar_bus::messages::notify::Action {
-                id: action_id("retry", &p.device),
-                label: ultar_bus::Text::key("desk.mesh.retry"),
-            };
-            d.notes.post_actions(SHELL, notice, vec![retry], now);
-        } else {
-            d.notes.post_notice(SHELL, notice, now);
-        }
+        let retry = matches!(kind, Kind::Expired | Kind::Failed);
+        let act = retry.then(|| Act::Retry(p.device.clone()));
+        mesh.toast(kind, &name, &title, act);
     }
 }
 
@@ -154,6 +315,15 @@ mod tests {
         }
     }
 
+    fn progress(state: OfferState) -> HandoffProgress {
+        HandoffProgress {
+            offer: 1,
+            device: "p".into(),
+            outgoing: true,
+            state,
+        }
+    }
+
     #[test]
     fn sending_needs_the_mesh_on_and_a_connected_paired_device() {
         assert!(!can_send(&Services::default()));
@@ -164,51 +334,102 @@ mod tests {
     }
 
     #[test]
-    fn several_possible_devices_open_the_choice_and_one_answer_is_a_notice() {
+    fn several_possible_devices_open_the_choice_and_one_answer_is_a_toast() {
         let mut d = Desktop::new(ultar_i18n::Lang::En);
-        sent(&mut d, SendOutcome::Choose(vec![target("a"), target("b")]), 5);
+        sent(&mut d, SendOutcome::Choose(vec![target("a"), target("b")]));
         assert_eq!(d.open, Open::MeshSend);
         assert_eq!(d.svc.mesh.targets.len(), 2);
         assert_eq!(d.svc.mesh.chosen, 0);
         assert!(d.svc.mesh.choose(1) && !d.svc.mesh.choose(2));
         assert_eq!(d.svc.mesh.confirm().as_deref(), Some("b"));
-        let before = d.notes.banners(5).len();
-        sent(&mut d, SendOutcome::NoActivity, 5);
-        assert_eq!(d.notes.banners(5).len(), before + 1);
+        assert!(d.svc.mesh.toasts.is_empty());
+        sent(&mut d, SendOutcome::NoActivity);
+        assert_eq!(d.svc.mesh.toasts.len(), 1);
+        assert_eq!(d.svc.mesh.toasts[0].kind, Kind::NoActivity);
+        sent(&mut d, SendOutcome::NoTarget);
+        assert_eq!(d.svc.mesh.toasts[1].kind, Kind::NoTarget);
     }
 
     #[test]
     fn only_the_end_of_an_own_offer_is_reported() {
         let mut d = Desktop::new(ultar_i18n::Lang::En);
-        let p = |outgoing, state| HandoffProgress {
-            offer: 1,
-            device: "p".into(),
-            outgoing,
-            state,
-        };
-        let quiet = [p(true, OfferState::Asked), p(false, OfferState::Opened)];
-        report(&mut d, &quiet, 0);
-        assert!(d.notes.banners(0).is_empty());
-        report(&mut d, &[p(true, OfferState::Declined)], 0);
-        assert_eq!(d.notes.banners(0).len(), 1);
+        let quiet = [
+            progress(OfferState::Asked),
+            HandoffProgress {
+                outgoing: false,
+                ..progress(OfferState::Opened)
+            },
+        ];
+        report(&mut d, &quiet);
+        assert!(d.svc.mesh.toasts.is_empty());
+        report(&mut d, &[progress(OfferState::Declined)]);
+        assert_eq!(d.svc.mesh.toasts.len(), 1);
+        assert_eq!(d.svc.mesh.toasts[0].kind, Kind::Declined);
+        assert_eq!(d.svc.mesh.toasts[0].act, None);
     }
 
     #[test]
-    fn failed_and_expired_offers_carry_a_retry_button() {
+    fn waiting_has_cancel_and_its_end_replaces_it_with_retry_where_it_helps() {
         let mut d = Desktop::new(ultar_i18n::Lang::En);
-        let offered = 1;
-        sent(&mut d, SendOutcome::Offered { offer: offered, target: target("p") }, 0);
-        let waiting = d.notes.banners(0).pop().unwrap();
-        assert_eq!(waiting.actions.len(), 1);
-        assert_eq!(waiting.actions[0].id, "mesh:cancel:1");
-        let p = |state| HandoffProgress {
-            offer: offered,
-            device: "p".into(),
-            outgoing: true,
-            state,
+        let offer = SendOutcome::Offered {
+            offer: 1,
+            target: target("p"),
         };
-        report(&mut d, &[p(OfferState::Expired)], 0);
-        let expired = d.notes.banners(0).pop().unwrap();
-        assert_eq!(expired.actions[0].id, "mesh:retry:p");
+        sent(&mut d, offer);
+        let waiting = d.svc.mesh.toasts[0].clone();
+        assert_eq!(waiting.kind, Kind::Waiting);
+        assert_eq!(waiting.act, Some(Act::Cancel(1)));
+        report(&mut d, &[progress(OfferState::Expired)]);
+        assert_eq!(d.svc.mesh.toasts.len(), 1, "the waiting toast is gone");
+        let expired = &d.svc.mesh.toasts[0];
+        assert_eq!((expired.kind, expired.act.clone()), (Kind::Expired, Some(Act::Retry("p".into()))));
+        report(&mut d, &[progress(OfferState::Failed)]);
+        assert_eq!(d.svc.mesh.toasts[1].act, Some(Act::Retry("p".into())));
+        report(&mut d, &[progress(OfferState::Opened)]);
+        assert_eq!(d.svc.mesh.toasts[2].act, None);
+    }
+
+    #[test]
+    fn a_waiting_toast_that_only_timed_out_stays_but_a_closed_one_goes() {
+        let mut m = Mesh::default();
+        m.toast(Kind::Waiting, "KM One", "notes.txt", Some(Act::Cancel(7)));
+        let id = m.toasts[0].id;
+        m.built_at = 1_000;
+        // The person closed it after two seconds.
+        assert!(m.closed(id, 3_000) && m.toasts.is_empty());
+        m.toast(Kind::Waiting, "KM One", "notes.txt", Some(Act::Cancel(7)));
+        let id = m.toasts[0].id;
+        // Its ten seconds ran out: the offer still waits, the toast comes back.
+        assert!(m.closed(id, 1_000 + TOAST_LIFE_MS));
+        assert_eq!(m.toasts.len(), 1);
+        // Pressing Cancel takes it, whatever the clock says.
+        assert_eq!(m.take_act(id), Some(Act::Cancel(7)));
+        assert!(m.toasts.is_empty() && !m.closed(id, 0));
+        // Other toasts always go when they close.
+        m.toast(Kind::Declined, "KM One", "", None);
+        let id = m.toasts[0].id;
+        assert!(m.closed(id, 1_000 + TOAST_LIFE_MS) && m.toasts.is_empty());
+    }
+
+    #[test]
+    fn no_more_toasts_than_the_toolkit_shows() {
+        let mut m = Mesh::default();
+        for _ in 0..5 {
+            m.toast(Kind::Opened, "x", "y", None);
+        }
+        assert_eq!(m.toasts.len(), MAX_TOASTS);
+        assert_eq!(m.toasts[0].id, 3, "the oldest went");
+    }
+
+    #[test]
+    fn a_received_file_offers_open_when_its_place_is_known() {
+        let mut m = Mesh::default();
+        m.received("beelink", "report.pdf", Some("file:///data/inbox/report.pdf".into()));
+        m.received("beelink", "b.pdf", None);
+        assert_eq!(
+            m.toasts[0].act,
+            Some(Act::Open("file:///data/inbox/report.pdf".into()))
+        );
+        assert_eq!(m.toasts[1].act, None);
     }
 }

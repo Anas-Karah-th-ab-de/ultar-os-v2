@@ -2,7 +2,7 @@
 //! the active app's menu, the choice dialog when more than one device can take it (board
 //! MeshSend), the send call, and the buttons of the mesh notices (board MeshStates).
 
-use super::{Effect, Outcome, Shell};
+use super::{Effect, Opening, Outcome, Shell};
 use crate::model::services::Call;
 use crate::model::{mesh, Open};
 use crate::view::Target;
@@ -35,7 +35,7 @@ pub(super) fn send(s: &mut Shell, device: Option<String>) -> Outcome {
 /// A click inside the open choice dialog.
 pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Option<Outcome> {
     match (target, kind) {
-        (Target::MeshTarget(i), ActionKind::Activated) if s.d.svc.mesh.choose(*i) => {
+        (Target::MeshTargets, ActionKind::Selected(i)) if s.d.svc.mesh.choose(*i) => {
             Some(Outcome::surfaces())
         }
         (Target::MeshSend, ActionKind::Activated) => {
@@ -54,20 +54,20 @@ fn confirm(s: &mut Shell, device: Option<String>) -> Outcome {
     send(s, device)
 }
 
-/// A mesh notice button (`mesh:…`); `None` when the action is not the mesh's.
-pub(super) fn note_action(s: &mut Shell, action: &str) -> Option<Outcome> {
-    let rest = action.strip_prefix("mesh:")?;
-    if let Some(offer) = rest.strip_prefix("cancel:") {
-        let offer = offer.parse().ok()?;
-        return Some(Outcome::effect(Effect::Service(Call::OfferCancel(offer))));
-    }
-    if let Some(device) = rest.strip_prefix("retry:") {
+/// The button of a mesh toast (board MeshStates): take the waiting offer back, send it
+/// again, or open what arrived.
+pub fn toast_action(s: &mut Shell, act: mesh::Act) -> Outcome {
+    match act {
+        mesh::Act::Cancel(offer) => Outcome::effect(Effect::Service(Call::OfferCancel(offer))),
         // Nobody answered or the connection was lost: send the offer again.
-        let front = mesh::in_front(&s.d);
-        return Some(Outcome::effect(Effect::Service(Call::MeshSend(
-            Some(device.to_owned()),
-            front,
-        ))));
+        mesh::Act::Retry(device) => {
+            let front = mesh::in_front(&s.d);
+            Outcome::effect(Effect::Service(Call::MeshSend(Some(device), front)))
+        }
+        // What arrived opens in Files, which hands it to the file's app.
+        mesh::Act::Open(uri) => Outcome::effect(Effect::Launch {
+            app: super::bar::FILES.to_owned(),
+            open: Opening::uri(uri),
+        }),
     }
-    None
 }

@@ -86,27 +86,6 @@ impl Notes {
         self.post_said(app, key, Text::key(&format!("{key}.body")), now);
     }
 
-    /// The shell's own notice with the title `key`, the body `<key>.body` and the given
-    /// action buttons (board MeshStates: Cancel, Retry, Open), shown as a banner.
-    pub fn post_actions(&mut self, app: &str, key: &str, actions: Vec<Action>, now: u64) {
-        self.local = self.local.wrapping_add(1) % 1024;
-        let id = LOCAL_IDS - self.local;
-        self.add(Posted {
-            id,
-            timestamp_ms: now,
-            sender: "system.shell".to_owned(),
-            post: Post {
-                urgency: Urgency::High,
-                category: Category::System,
-                app_id: app.to_owned(),
-                title: Text::key(key),
-                body: Body::Localized(Text::key(&format!("{key}.body"))),
-                actions,
-            },
-        });
-        self.show_banner(id, now);
-    }
-
     /// The shell's own notice with the title `key` and `body` as its text (an answer of
     /// the helper), shown as a banner and kept in the list.
     pub fn post_said(&mut self, app: &str, key: &str, body: Text, now: u64) {

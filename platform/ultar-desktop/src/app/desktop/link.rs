@@ -90,7 +90,7 @@ impl Link {
     /// arrive (their banners start then).
     pub fn poll(&self, d: &mut Desktop, now: u64) -> (Vec<String>, bool, bool) {
         let mut keys = Vec::new();
-        let (mut any, calendar) = self.services.poll(d, now);
+        let (mut any, calendar) = self.services.poll(d);
         while let Some(Ok(Some(c))) = self.changed.as_ref().map(|s| s.try_recv()) {
             d.presence.settings = true;
             apply_setting(d, &c.key, &c.value);

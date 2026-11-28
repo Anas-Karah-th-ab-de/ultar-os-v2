@@ -13,6 +13,7 @@ pub mod geometry;
 pub mod helper;
 pub mod menu;
 pub mod mesh_send;
+pub mod mesh_toasts;
 pub mod note;
 pub mod overview;
 pub mod projection;
@@ -192,12 +193,14 @@ pub enum Target {
     NoteAction(u64, u8),
     /// Lock screen: a control of the playing medium (0 previous, 1 play/pause, 2 next).
     Media(u8),
-    /// Continue on another device: choose this device of the list (board MeshSend).
-    MeshTarget(usize),
+    /// Continue on another device: the radio group of devices (board MeshSend).
+    MeshTargets,
     /// Continue on another device: send to the chosen device.
     MeshSend,
     /// Continue on another device: cancel.
     MeshSendCancel,
+    /// The mesh's toasts (the toolkit's toast reports its button and closing here).
+    MeshToasts,
 }
 
 /// A built tree and what its nodes mean.

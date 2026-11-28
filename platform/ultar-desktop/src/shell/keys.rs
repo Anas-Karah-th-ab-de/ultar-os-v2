@@ -1,6 +1,6 @@
 //! Keys of the shell (DESKTOP-SPEC §5.4): Super = overview, Super+A = all apps,
 //! Super+P = display modes (steps; Enter confirms, Esc cancels), Super+1…9 = app n of the
-//! bar, Super+I = Settings, Super+E = Files, Super+M = continue on another device, Super+H = the helper, Super+V clipboard history (no service yet),
+//! bar, Super+I = Settings, Super+E = Files, Super+Shift+M = continue on another device, Super+H = the helper, Super+V clipboard history (no service yet),
 //! Esc closes what is open.
 
 use super::bar::{launch, FILES, SETTINGS};
@@ -24,14 +24,15 @@ mod code {
     pub const NINE: u16 = 10;
 }
 
-pub(super) fn on_shell_key(s: &mut Shell, key: u16) -> Outcome {
+pub(super) fn on_shell_key(s: &mut Shell, key: u16, shift: bool) -> Outcome {
     match key {
         code::SUPER_L | code::SUPER_R => s.toggle(Open::Overview),
         code::A => s.toggle(Open::Apps(None)),
         code::P => step_projection(s),
         code::I => launch(s, SETTINGS, Opening::start()),
         code::E => launch(s, FILES, Opening::start()),
-        code::M => super::handoff::send(s, None),
+        // Board MeshSend: Super+Shift+M.
+        code::M if shift => super::handoff::send(s, None),
         code::H => super::helper::toggle(s),
         n @ code::ONE..=code::NINE => {
             let index = usize::from(n - code::ONE);

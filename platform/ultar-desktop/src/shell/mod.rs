@@ -260,7 +260,10 @@ impl Shell {
                 grid::app_menu(self, &app.clone(), *id)
             }
             (Target::Categories, ActionKind::Selected(i)) => grid::category(self, *i),
-            _ => sheets::on_popup(self, target, kind),
+            _ => match handoff::on_popup(self, target, kind) {
+                Some(out) => out,
+                None => sheets::on_popup(self, target, kind),
+            },
         }
     }
 
@@ -314,7 +317,12 @@ impl Shell {
 
     /// A shell shortcut from the compositor.
     pub fn on_shell_key(&mut self, code: u16) -> Outcome {
-        keys::on_shell_key(self, code)
+        keys::on_shell_key(self, code, false)
+    }
+
+    /// A shell shortcut with the state of Shift (Super+Shift+M: continue on another device).
+    pub fn on_shell_key_with(&mut self, code: u16, shift: bool) -> Outcome {
+        keys::on_shell_key(self, code, shift)
     }
 
     /// A key the open popup did not use (Esc, Enter, Super+P inside the panel).
@@ -338,6 +346,11 @@ impl Shell {
         media::inserted(self)
     }
 
+    /// The button of a mesh toast was pressed (board MeshStates).
+    pub fn on_mesh_toast(&mut self, act: crate::model::mesh::Act) -> Outcome {
+        handoff::toast_action(self, act)
+    }
+
     /// A notification's button was pressed: the shell's own notice opens its place (a
     /// plugged-in drive) in Files; a service notification's button goes back to the sender.
     pub fn note_action(&mut self, id: u64, index: u8) -> Outcome {
@@ -346,10 +359,6 @@ impl Shell {
         };
         if id >= crate::model::notes::LOCAL_IDS - 1024 {
             self.d.notes.dismiss(id);
-            // A mesh notice button (Cancel waiting, Retry) goes back to the mesh.
-            if let Some(out) = handoff::note_action(self, &action) {
-                return out;
-            }
             // A plugged-in drive's notice opens Files at its place.
             Outcome::effect_and_close(Effect::Launch {
                 app: bar::FILES.to_owned(),

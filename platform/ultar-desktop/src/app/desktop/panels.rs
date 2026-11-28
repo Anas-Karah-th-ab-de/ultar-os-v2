@@ -71,7 +71,12 @@ impl DesktopApp {
         self.shell.d.open = crate::model::Open::None;
         let popup = self.popup.take().map(|p| p.id);
         let banners = self.banners.surface.take().map(|b| b.0);
-        for id in [popup, banners, self.second.take()].into_iter().flatten() {
+        let toasts = self.mesh_toasts.surface.take().map(|b| b.0);
+        self.mesh_toasts = Default::default();
+        for id in [popup, banners, toasts, self.second.take()]
+            .into_iter()
+            .flatten()
+        {
             self.host.close(id)?;
         }
         self.host.close(self.bar)?;
@@ -79,7 +84,8 @@ impl DesktopApp {
         let view = build_bar(&self.shell, self.look, screen(&self.host).w)?;
         self.bar = self.host.open(&bar_config(shape), view, None)?;
         self.open_side_panels()?;
-        self.sync_banners()
+        self.sync_banners()?;
+        self.sync_mesh_toasts()
     }
 
     /// How far the banners move down when the first panel is at the top: popups are

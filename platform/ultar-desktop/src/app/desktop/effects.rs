@@ -142,7 +142,7 @@ impl DesktopApp {
             Ok(Answer::Networks(networks)) => d.svc.wifi.set_networks(networks),
             Ok(Answer::Known(ssids)) => d.svc.wifi.set_known(ssids),
             Ok(Answer::Joined(_)) => {}
-            Ok(Answer::Sent(outcome)) => crate::model::mesh::sent(d, outcome, now),
+            Ok(Answer::Sent(outcome)) => crate::model::mesh::sent(d, outcome),
             Ok(Answer::Helper(answer)) => {
                 // asked in the helper's sheet: the answer goes there, and into a
                 // notification only when the sheet was closed meanwhile
@@ -370,7 +370,8 @@ impl DesktopApp {
         if outcome.popup {
             self.sync_popup(screen)?;
         }
-        self.sync_banners()
+        self.sync_banners()?;
+        self.sync_mesh_toasts()
     }
 
     fn sync_popup(&mut self, screen: ultar_ui::geom::Size) -> Result<(), AppError> {
