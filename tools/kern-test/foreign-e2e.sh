@@ -8,6 +8,8 @@
 # AREA=<out dir of make-linux-runtime.sh with TEST_PACKAGE=mousepad> (default out/foreign-linux, built when
 # missing); IMG=<esp image> (else scripts/build-kern.sh builds one); FOREIGN_BIN=<dir> with static
 # ultar-foreign and examples/foreigntest (else built here). Without KVM QEMU emulates: WAIT defaults to 1500 s.
+# With the component "Android apps" (AREA = out dir of tools/foreign/make-android-runtime.sh, with its
+# hello.dex and a mousepad.deb copied in) foreigntest also lets ART run hello.dex (check android-art).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 AREA="${AREA:-out/foreign-linux}"
@@ -33,6 +35,8 @@ done
 mkdir -p "$WORK/data/foreign"
 cp -a "$AREA/linux" "$WORK/data/foreign/linux"
 cp "$AREA/mousepad.deb" "$WORK/data/foreign/mousepad.deb"
+DEXARG=""
+if [ -f "$AREA/hello.dex" ]; then cp "$AREA/hello.dex" "$WORK/data/foreign/hello.dex"; DEXARG="--dex /data/foreign/hello.dex"; fi
 size=$(( $(du -sm "$WORK/data" | cut -f1) * 3 / 2 + 128 ))
 mke2fs -q -t ext4 -m 0 -E root_owner=0:0 -d "$WORK/data" "$WORK/data.ext4" "${size}M"
 rm -rf "$WORK/data"
@@ -41,7 +45,7 @@ rm -f "$WORK/data.ext4"
 LOG="${LOG:-$WORK/foreign-e2e.log}"
 QARGS="-drive file=$WORK/disk.img,if=none,id=c,format=raw -device virtio-blk-pci,drive=c" \
   SMP="${SMP:-2}" MEM="${MEM:-2048}" WAIT="${WAIT:-1500}" timeout 2400 python3 tools/kern-test/qtest.py "$WORK/esp.img" \
-  "/bin/foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux --deb /data/foreign/mousepad.deb" \
+  "/bin/foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux --deb /data/foreign/mousepad.deb $DEXARG" \
   > "$LOG" 2>&1 || true
 grep -aE "^FOREIGN" "$LOG" | tr -d '\r' || true
 if grep -aiqE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; grep -aiE -A5 "kernel panic|PANIK" "$LOG" | head -20; exit 1; fi

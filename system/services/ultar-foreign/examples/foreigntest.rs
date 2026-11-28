@@ -3,7 +3,7 @@
 //! root it should say `FOREIGN: ALLES OK` but for the network barrier of stage P0).
 //!
 //! ```text
-//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE]
+//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE] [--dex FILE]
 //! ```
 //!
 //! Each kernel feature is tried in its own child process; the cells are the service's
@@ -187,6 +187,54 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
     }
 }
 
+/// The Android runtime of the area (component "Android apps", stage P5): ART runs a
+/// program of its own (`hello.dex` of `make-android-runtime.sh`), chrooted into the area as
+/// root – what ART needs of the kernel, before any cell.
+fn art(area: &Path, dex: &Path) -> Result<(), String> {
+    let work = area.join("tmp/ultar-art");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(work.join("dalvik-cache")).map_err(|e| format!("mkdir {e}"))?;
+    std::fs::copy(dex, work.join("hello.dex")).map_err(|e| format!("copy {e}"))?;
+    std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
+    std::env::set_current_dir("/").map_err(|e| e.to_string())?;
+    let run = |program: &str, args: &[&str]| {
+        Command::new(program)
+            .args(args)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("ANDROID_DATA", "/tmp/ultar-art")
+            .stdin(std::process::Stdio::piped())
+            .output()
+    };
+    let proc_mounted =
+        run("/usr/bin/mount", &["-t", "proc", "proc", "/proc"]).is_ok_and(|o| o.status.success());
+    let out = run(
+        "/usr/bin/dalvikvm64",
+        &["-cp", "/tmp/ultar-art/hello.dex", "Hello"],
+    );
+    if proc_mounted {
+        let _ = run("/usr/bin/umount", &["/proc"]);
+    }
+    let _ = std::fs::remove_dir_all("/tmp/ultar-art");
+    let out = out.map_err(|e| format!("dalvikvm64: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    if text.lines().any(|l| l == "ultar-art-ok 42") {
+        return Ok(());
+    }
+    let err = String::from_utf8_lossy(&out.stderr);
+    let last: Vec<&str> = err.lines().rev().take(4).collect();
+    Err(format!(
+        "(ART runs a program: dalvikvm64 {:?}, /proc {}) {}",
+        out.status.code(),
+        if proc_mounted {
+            "mounted"
+        } else {
+            "NOT mounted"
+        },
+        last.into_iter().rev().collect::<Vec<_>>().join(" | ")
+    ))
+}
+
 fn arg(words: &[String], name: &str) -> Option<String> {
     let at = words.iter().position(|w| w == name)?;
     words.get(at + 1).cloned()
@@ -221,7 +269,11 @@ fn main() {
     let words: Vec<String> = std::env::args().skip(1).collect();
     let area = PathBuf::from(arg(&words, "--area").unwrap_or_else(|| "/data/foreign/linux".into()));
     if let Some(name) = arg(&words, "--check") {
-        std::process::exit(match raw(&name, &area) {
+        let result = match (name.as_str(), arg(&words, "--dex")) {
+            ("android-art", Some(dex)) => art(&area, Path::new(&dex)),
+            _ => raw(&name, &area),
+        };
+        std::process::exit(match result {
             Ok(()) => 0,
             Err(detail) => {
                 eprintln!("{detail}");
@@ -254,6 +306,22 @@ fn main() {
             Err(e) => Err(format!("({what}): {e}")),
         };
         report(name, result);
+    }
+    // the Android runtime (stage P5), when the area has it
+    if let Some(dex) = arg(&words, "--dex") {
+        let out = Command::new(&me)
+            .args(["--check", "android-art", "--area"])
+            .arg(&area)
+            .args(["--dex", &dex])
+            .output();
+        report(
+            "android-art",
+            match out {
+                Ok(o) if o.status.success() => Ok(()),
+                Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_owned()),
+                Err(e) => Err(e.to_string()),
+            },
+        );
     }
     // the kernel's barrier "internet only" (stage P0) has no interface yet
     report(
