@@ -132,6 +132,7 @@ struct RndisHandle {
     name: String,
     hc_index: usize,
     slot: u32,
+    in_dci: u32,
     out_dci: u32,
     mac: [u8; 6],
     tx: u64,
@@ -169,10 +170,13 @@ impl NetDev for RndisHandle {
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
-        // Den Controller einmal pumpen, damit fertige Bulk-IN-Übertragungen in die Warteschlange kommen.
+        // Die IN-Türklingel neu läuten (QEMUs xHCI nimmt eine Bulk-IN-Übertragung beim NAK aus der
+        // Bearbeitung; der neue Anstoß lässt sie bei inzwischen angekommenen Daten abschließen),
+        // dann pumpen, damit fertige Übertragungen in die Warteschlange kommen.
         {
             let mut hcs = super::HC.lock();
             if let Some(hc) = hcs.iter_mut().find(|h| h.index == self.hc_index) {
+                w32(hc.db + self.slot as u64 * 4, self.in_dci);
                 hc.pump();
             }
         }
@@ -292,7 +296,7 @@ pub(super) fn attach(
         mac[4],
         mac[5]
     );
-    nl.push(Box::new(RndisHandle { name: name.clone(), hc_index: hc.index, slot, out_dci, mac, tx }));
+    nl.push(Box::new(RndisHandle { name: name.clone(), hc_index: hc.index, slot, in_dci, out_dci, mac, tx }));
     Ok(Some(name))
 }
 
