@@ -9,9 +9,18 @@ Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 | **MSI/MSI-X** (`msi.rs`) | Gemeinsamer Rahmen: Vektoren 0x90–0xEF, je Vektor ein Handler (bekommt seinen Vektor), Einzel-MSI und MSI-X-Tabelle in einem BAR. 96 IDT-Tore aus einer Einsprungtabelle. Fundament für Unterbrechungen je Warteschlange (10G, NVMe) statt reinem Abfragen |
 | **10G-Netz (E610)** | `gen-ixgbe` richtet MSI-X für RxQ0 ein (Auto-Maske + Auto-Quittung + EITR-Drossel → kein Sturm). **Am echten E610-Port des Beelink über VFIO belegt**: Treiber bindet, Firmware 7.8.18, Kabel erkannt, und nach dem Boot zeigt `netz` „10G MSI-X-Unterbrechungen: 1" (die im Treiberstart bei IF=0 angestoßene Schleifentest-Unterbrechung wird nach `sti` zugestellt) → MSI-X-Zustellung auf echter Hardware bewiesen. Datenpfad pollt weiter; der IRQ ist die Grundlage für einen blockierenden Empfang |
 | **IOMMU (VT-d)** (`iommu.rs`) | DMA-Schutz Stufe 1: DMAR gelesen, Einheit(en) an, nutzbarer RAM 1:1 (2-MiB-Seiten), sonst nichts. **In QEMU (`-device intel-iommu`) geprüft**: „VT-d 1.0: 1/1 Einheit(en) an", virtio-blk/-net arbeiten durch die IOMMU, DHCP holt eine Adresse, keine vIOMMU-Fehler. Eigene Domäne je Gerät und Prüfung auf der echten 2-Einheiten-Hardware offen (`docs/integration/iommu.md`) |
+| **USB-Netz (RNDIS)** (`gen_xhci/rndis.rs`) | `NetDev` über USB-Bulk mit bewaffneten Bulk-IN-Puffern, für USB-C-Tethering → SSH. TX ok; RX in QEMU unbestätigt (QEMU-`usb-net` ist Full-Speed, bulk 64 → dci 5 schließt nie ab), am echten Dongle zu prüfen (`docs/integration/usb-net.md`) |
+| **SD-Leser (SDHCI)** (`gen_sdhci.rs`) | Controller-Reset/Takt/Strom, Karten-Init (CMD0/8/ACMD41/2/3/9/7/16), CSD-Kapazität (v1/v2), PIO-Lesen, `BlockDev`. **Bring-up auf echtem O2 Micro (VFIO) belegt**; Lesen mit eingelegter Karte offen |
+| **Bluetooth (Intel Read Version)** (`gen_xhci/bt.rs`) | HCI 0xFC05, TLV-Auswertung (CNVi/CNVr, Image-Typ), Firmware-Dateiname `ibt-<cnvi>-<cnvr>.sfi`. **Auf echtem BE200 belegt** (operational). Firmware-Download am Live-Server vorbereitet (`docs/integration/bt-intel.md`) |
 
 Offen in Welle A: NVMe am echten Gerät (die Crucial-Platten tragen Linux → nur beim Direktstart prüfbar),
-E610-Verbindung mit Gegenstelle und Durchsatz (braucht ein Kabel zur Gegenstelle), VT-d auf echter Hardware.
+E610-Verbindung mit Gegenstelle und Durchsatz (braucht ein Kabel zur Gegenstelle), VT-d auf echter Hardware,
+RNDIS-RX und SD-Lesen am echten Gerät.
+
+**Live-Vollendung vorbereitet** (`docs/LIVE-VOLLENDUNG.md`): Handbuch für die nur am laufenden Ultar-Server
+prüfbaren Teile – BT-Firmware-Download (Secure-Send-Offsets/Opcodes, Intel-Reset, DDC), WLAN W1–W4, Xe X1–X3,
+plus S9-Direktstart, NVMe-Schreibtest, VT-d/SD auf echter HW. `scripts/build-pc-image.sh` legt die Intel-BT-Firmware
+(`ibt-*.sfi/.ddc`) entpackt nach `/lib/firmware/intel` (Kern liest über `fs::read_all`).
 
 
 ## Installation auf dem Ultar-Kern vollständig geprüft (26.11.2026)
