@@ -1,7 +1,7 @@
 //! # ultar-foreign – apps from other systems (`docs/FREMD-APPS.md`)
 //!
 //! **Area:** system services (area 4). Takes a file of the person (`.deb`; `.exe`,
-//! `.msi` and `.apk` follow in later stages) or a package name, asks an administrator
+//! `.msi` follow in a later stage; `.apk` since stage P5) or a package name, asks an administrator
 //! in the system dialog, installs it into the shared **Linux area** in a cell
 //! ([`cellrun`]) and registers each of its visible programs with the launcher as an app
 //! of the profile `app.foreign` ([`jobs`], [`harvest`], [`state`]).
@@ -16,6 +16,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![warn(missing_docs)]
 
+pub mod apk;
+pub mod apkjobs;
 pub mod cellrun;
 pub mod desktop;
 pub mod detect;

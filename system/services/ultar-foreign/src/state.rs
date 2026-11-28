@@ -39,6 +39,13 @@ pub struct AppRecord {
     pub lan: bool,
     /// The person's folders.
     pub folders: Vec<String>,
+    /// Android apps: SHA-256 fingerprints of the signers' certificates (an update must
+    /// share one of them).
+    #[serde(default)]
+    pub signers: Vec<String>,
+    /// Android apps: the version number (an update never goes back).
+    #[serde(default)]
+    pub version_code: u32,
 }
 
 /// Everything remembered.
@@ -159,7 +166,12 @@ impl AppRecord {
             "version".into(),
             text(&crate::desktop::launcher_version(&self.version)),
         );
-        root.insert("kind".into(), text("compat-deb"));
+        let kind = if self.source == "apk" {
+            "compat-apk"
+        } else {
+            "compat-deb"
+        };
+        root.insert("kind".into(), text(kind));
         root.insert("exec".into(), text(&self.exec));
         root.insert(
             "args".into(),
@@ -236,6 +248,8 @@ mod tests {
             network: true,
             lan: false,
             folders: vec!["documents".into()],
+            signers: Vec::new(),
+            version_code: 0,
         }
     }
 

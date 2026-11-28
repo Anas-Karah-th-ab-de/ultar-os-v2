@@ -64,19 +64,23 @@ impl Drop for Copied {
 /// Copies the opened file into a fresh inbox directory readable by the inspection
 /// cell's `nobody` (`0755`/`0644`; only the service writes there). The copy is what is
 /// read and installed afterwards, whatever happens to the original meanwhile.
-fn copy_in(ctx: &Ctx, source: &mut std::fs::File, job: u64) -> std::io::Result<(PathBuf, String)> {
+pub(crate) fn copy_in(
+    ctx: &Ctx,
+    source: &mut std::fs::File,
+    job: u64,
+    file: &str,
+) -> std::io::Result<PathBuf> {
     use std::io::Read;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let dir = ctx.layout.inbox().join(job.to_string());
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
-    let file = "package.deb".to_owned();
     let mut out = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o644)
-        .open(dir.join(&file))?;
+        .open(dir.join(file))?;
     // no more than the limit, even if the original grows while it is copied
     let copied = std::io::copy(&mut source.take(detect::MAX_FILE + 1), &mut out)?;
     if copied > detect::MAX_FILE {
@@ -84,13 +88,14 @@ fn copy_in(ctx: &Ctx, source: &mut std::fs::File, job: u64) -> std::io::Result<(
         return Err(std::io::Error::from(std::io::ErrorKind::FileTooLarge));
     }
     out.sync_all()?;
-    std::fs::set_permissions(dir.join(&file), std::fs::Permissions::from_mode(0o644))?;
-    Ok((dir, file))
+    std::fs::set_permissions(dir.join(file), std::fs::Permissions::from_mode(0o644))?;
+    Ok(dir)
 }
 
 /// Reads the fields of the opened `.deb` in the inspection cell.
 fn read_deb(ctx: &Ctx, mut opened: detect::Opened, job: u64) -> Result<Copied, Failure> {
-    let (dir, file) = copy_in(ctx, &mut opened.file, job).map_err(|_| Failure::Space)?;
+    let file = "package.deb".to_owned();
+    let dir = copy_in(ctx, &mut opened.file, job, &file).map_err(|_| Failure::Space)?;
     let cell = CellJob {
         mode: Mode::Inspect,
         runtime: ctx.layout.runtime(),
@@ -143,6 +148,16 @@ pub fn inspect(ctx: &Ctx, path: &str, job: u64) -> InspectOutcome {
         return InspectOutcome::TooLarge;
     }
     let runtime = ctx.layout.runtime_installed();
+    if source == Source::Apk && runtime {
+        return match crate::apkjobs::read(ctx, opened, job) {
+            Ok(read) => InspectOutcome::Found(crate::apkjobs::inspected(
+                &read,
+                size,
+                ctx.layout.android_installed(),
+            )),
+            Err(_) => InspectOutcome::Unreadable,
+        };
+    }
     let (mut name, mut version, mut publisher) = (detect::stem(file), String::new(), String::new());
     if source == Source::Deb && runtime {
         match read_deb(ctx, opened, job) {
@@ -161,8 +176,11 @@ pub fn inspect(ctx: &Ctx, path: &str, job: u64) -> InspectOutcome {
         publisher,
         size_bytes: size,
         verified: false,
-        installable: source.installable() && runtime,
+        installable: source == Source::Deb && runtime,
         suggested: Choices::default(),
+        signer: String::new(),
+        refusal: None,
+        not_granted: Vec::new(),
     })
 }
 
@@ -177,7 +195,7 @@ pub fn step(client: &Client, job: u64, step: Step, percent: u8, apps: Vec<String
 }
 
 /// The dialog's question for installing `name` of `source` with `choices`.
-fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Text {
+pub(crate) fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Text {
     let net = match (choices.network, choices.lan) {
         (NetworkChoice::None, _) => "foreign.net.none",
         (NetworkChoice::Internet, false) => "foreign.net.internet",
@@ -205,7 +223,7 @@ fn question(name: &str, source: Source, choices: &Choices, archive: bool) -> Tex
 }
 
 /// Asks an administrator; `Ok(true)`: authorised.
-fn confirm(client: &Client, caller: &str, text: Text) -> Result<bool, Failure> {
+pub(crate) fn confirm(client: &Client, caller: &str, text: Text) -> Result<bool, Failure> {
     let ask = Authenticate {
         app_id: caller.to_owned(),
         app_name: caller.to_owned(),
@@ -232,6 +250,16 @@ fn apt(ctx: &Ctx, inbox: Option<PathBuf>, args: &[&str]) -> Result<(), Failure> 
         Ok(r) if r.code == Some(0) => Ok(()),
         Ok(_) => Err(Failure::Refused),
         Err(_) => Err(Failure::Internal),
+    }
+}
+
+/// Takes what `record`'s package put into the Linux area out again (the package
+/// manager for Linux packages, the APK reader's helper for Android apps).
+pub fn take_out(ctx: &Ctx, record: &AppRecord) -> Result<(), Failure> {
+    if record.source == Source::Apk.word() {
+        crate::apkjobs::take_out(ctx, &record.package)
+    } else {
+        purge(ctx, &record.package)
     }
 }
 
@@ -313,6 +341,8 @@ fn register(
             network: false,
             lan: false,
             folders: Vec::new(),
+            signers: Vec::new(),
+            version_code: 0,
         };
         record.set_choices(choices);
         if !register_one(client, &record) {
@@ -363,7 +393,13 @@ pub fn install_file(
     step(client, req.job, Step::Prepare, 5, Vec::new());
     let opened = detect::open_source(&ctx.sources, &req.path).map_err(|_| Failure::Damaged)?;
     let source = opened.source;
-    if source != Source::Deb || opened.size > detect::MAX_FILE {
+    if opened.size > detect::MAX_FILE {
+        return Err(Failure::Damaged);
+    }
+    if source == Source::Apk {
+        return crate::apkjobs::install(ctx, client, state, req, opened);
+    }
+    if source != Source::Deb {
         return Err(Failure::Damaged);
     }
     let copied = read_deb(ctx, opened, req.job)?;

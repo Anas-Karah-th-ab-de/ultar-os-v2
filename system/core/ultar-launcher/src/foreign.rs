@@ -27,8 +27,10 @@ use serde::Deserialize;
 
 /// Prefix of the ids of apps from other systems (no store key may be named so).
 pub const PREFIX: &str = "foreign";
-/// The kinds this version starts (`compat-exe`, `compat-apk` follow in later stages).
-pub const KINDS: [&str; 1] = ["compat-deb"];
+/// The kinds this version starts (`compat-exe` follows in a later stage). Both run in the
+/// same cell: an Android app (`compat-apk`) is started by the Android runtime of the
+/// Linux area, its APK lies read-only in the area.
+pub const KINDS: [&str; 2] = ["compat-deb", "compat-apk"];
 /// What the cell sees of the Linux area: these entries of its root, read-only;
 /// a top-level link (merged `/usr`: `bin -> usr/bin`) is made again as a link.
 pub const RUNTIME_ENTRIES: [&str; 10] = [
@@ -272,6 +274,7 @@ mod tests {
             ("foreign.deb-mousepad", "mousepad"),
             ("compat-deb", "native"),
             ("compat-deb", "compat-exe"),
+            ("compat-deb", "compat-apk-v2"),
             ("/usr/bin/mousepad", "mousepad"),
             ("/usr/bin/mousepad", "/.ultar/ultar-wayland"),
             ("/usr/bin/mousepad", "/usr/../bin/sh"),
@@ -290,6 +293,20 @@ mod tests {
         assert_eq!(parse(lan_alone.as_bytes()), Err(ManifestError::Permission));
         let huge = format!("{GOOD}# {}\n", "x".repeat(20_000));
         assert_eq!(parse(huge.as_bytes()), Err(ManifestError::Size));
+    }
+
+    #[test]
+    fn an_android_app_is_read_like_a_linux_program() {
+        let apk = GOOD
+            .replace("foreign.deb-mousepad", "foreign.apk-calc")
+            .replace("compat-deb", "compat-apk")
+            .replace(
+                "exec = \"/usr/bin/mousepad\"\nargs = [\"--new\"]",
+                "exec = \"/opt/ultar-android/bin/ultar-apk-run\"\nargs = [\"org.example.calc\", \"org/example/calc/Main\"]",
+            );
+        let m = parse(apk.as_bytes()).unwrap();
+        assert_eq!(m.ui.exec, "/opt/ultar-android/bin/ultar-apk-run");
+        assert_eq!(m.ui.args.len(), 2);
     }
 
     #[test]

@@ -82,7 +82,70 @@ impl Source {
     /// follow in later stages; until then they are refused with
     /// [`InstallOutcome::NotAvailable`]).
     pub const fn installable(self) -> bool {
-        matches!(self, Self::Deb)
+        matches!(self, Self::Deb | Self::Apk)
+    }
+}
+
+/// Android permissions that apps from other systems never get here, and the word the
+/// surfaces show for each (`foreign.android.<word>`).
+pub const ANDROID_NOT_GRANTED: [(&str, &str); 12] = [
+    ("android.permission.CAMERA", "camera"),
+    ("android.permission.RECORD_AUDIO", "microphone"),
+    ("android.permission.ACCESS_FINE_LOCATION", "location"),
+    ("android.permission.ACCESS_COARSE_LOCATION", "location"),
+    ("android.permission.ACCESS_BACKGROUND_LOCATION", "location"),
+    ("android.permission.READ_CONTACTS", "contacts"),
+    ("android.permission.WRITE_CONTACTS", "contacts"),
+    ("android.permission.READ_PHONE_STATE", "phone"),
+    ("android.permission.CALL_PHONE", "phone"),
+    ("android.permission.READ_SMS", "sms"),
+    ("android.permission.SEND_SMS", "sms"),
+    ("android.permission.BODY_SENSORS", "sensors"),
+];
+
+/// Why a file that this version could install is refused all the same (an Android app,
+/// stage P5): shown to the person instead of the „Install“ button.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Refusal {
+    /// Its native code is for ARM processors only (needs an ARM device).
+    NeedsArm,
+    /// Its native code is for another processor (32-bit x86 …).
+    NeedsOtherProcessor,
+    /// Not signed: an app whose origin cannot be followed across updates is refused.
+    Unsigned,
+    /// Signed with the old JAR scheme only (v1), which does not protect the whole file.
+    OldSignature,
+    /// The signature does not verify: the file was changed after signing.
+    BadSignature,
+    /// It has no start screen (no launcher activity).
+    NoStartScreen,
+    /// The runtime for this kind (component „Android apps“) is not installed.
+    RuntimeMissing,
+}
+
+impl Refusal {
+    /// Every refusal.
+    pub const ALL: [Refusal; 7] = [
+        Self::NeedsArm,
+        Self::NeedsOtherProcessor,
+        Self::Unsigned,
+        Self::OldSignature,
+        Self::BadSignature,
+        Self::NoStartScreen,
+        Self::RuntimeMissing,
+    ];
+
+    /// Stable word (text keys `foreign.refusal.<word>`).
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::NeedsArm => "needs_arm",
+            Self::NeedsOtherProcessor => "needs_other_processor",
+            Self::Unsigned => "unsigned",
+            Self::OldSignature => "old_signature",
+            Self::BadSignature => "bad_signature",
+            Self::NoStartScreen => "no_start_screen",
+            Self::RuntimeMissing => "runtime_missing",
+        }
     }
 }
 
@@ -155,6 +218,18 @@ pub struct Inspected {
     pub installable: bool,
     /// What the dialog offers first (the file's needs, never more than it asks).
     pub suggested: Choices,
+    /// Android apps: SHA-256 fingerprint(s) of the signing certificate with its common
+    /// name (`<hex> <name>`), unverified as to *who* that is – an update must carry the
+    /// same signer. Empty for other kinds.
+    #[serde(default)]
+    pub signer: String,
+    /// Why it is not installable although its kind is (see [`Refusal`]).
+    #[serde(default)]
+    pub refusal: Option<Refusal>,
+    /// What the app asks for that apps from other systems never get here (Android
+    /// permission words: `camera`, `microphone`, `location`, `contacts`, `phone`, `sms`).
+    #[serde(default)]
+    pub not_granted: Vec<String>,
 }
 
 /// How [`Inspect`] ended.
@@ -256,6 +331,10 @@ pub enum Failure {
     Launcher,
     /// The confirmation could not be asked (no system dialog, no administrator).
     NoConfirmation,
+    /// An update of an Android app signed by someone else than the installed app.
+    SignerChanged,
+    /// An update to an older version than the installed one.
+    Older,
     /// Something else; the log has the details.
     Internal,
 }
@@ -451,6 +530,24 @@ mod tests {
                 verified: false,
                 installable: true,
                 suggested: Choices::default(),
+                signer: String::new(),
+                refusal: None,
+                not_granted: Vec::new(),
+            }),
+        });
+        round_trip(&InspectReply {
+            outcome: InspectOutcome::Found(Inspected {
+                source: Source::Apk,
+                name: "Calculator".into(),
+                version: "1.4.2".into(),
+                publisher: String::new(),
+                size_bytes: 3_000_000,
+                verified: false,
+                installable: false,
+                suggested: Choices::default(),
+                signer: format!("{} Jane Doe", "ab".repeat(32)),
+                refusal: Some(Refusal::NeedsArm),
+                not_granted: vec!["camera".into()],
             }),
         });
         round_trip(&Progress {
@@ -492,6 +589,18 @@ mod tests {
         for s in Source::ALL {
             assert!(ar.contains(&format!("foreign.source.{}", s.word())));
         }
+        for r in Refusal::ALL {
+            assert!(
+                ar.contains(&format!("foreign.refusal.{}", r.word())),
+                "{r:?}"
+            );
+        }
+        for p in ANDROID_NOT_GRANTED {
+            assert!(ar.contains(&format!("foreign.android.{}", p.1)), "{p:?}");
+        }
+        for k in ["foreign.fail.signer_changed", "foreign.fail.older"] {
+            assert!(ar.contains(&k.to_owned()));
+        }
         for (_, src) in &LOCALES[1..] {
             assert_eq!(keys(src), ar);
         }
@@ -502,8 +611,8 @@ mod tests {
         for s in Source::ALL {
             assert_eq!(Source::from_word(s.word()), Some(s));
         }
-        assert!(Source::Deb.installable());
-        for later in [Source::Exe, Source::Msi, Source::Apk, Source::Unknown] {
+        assert!(Source::Deb.installable() && Source::Apk.installable());
+        for later in [Source::Exe, Source::Msi, Source::Unknown] {
             assert!(!later.installable());
         }
         assert!(Choices::default().is_valid());
