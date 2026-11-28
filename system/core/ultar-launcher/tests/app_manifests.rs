@@ -11,6 +11,7 @@ fn base_app_manifests_parse() {
         "ultar-settings",
         "ultar-store",
         "ultar-editor",
+        "ultar-sheet",
         "ultar-terminal",
         "ultar-web",
     ] {

@@ -1,0 +1,114 @@
+# ultar-sheet - نصوص جدول البيانات (العربية هي المرجع)
+app.sheet.name = جداول البيانات
+app.sheet.desc = احسب بالجداول والمعادلات والأرقام بالعربية والإنجليزية.
+
+sheet.untitled = مصنف جديد
+sheet.loading = جارٍ فتح المصنف…
+sheet.too_big.title = هذا المصنف كبير جدًا
+sheet.too_big = الملف أكبر من أن يُفتح هنا (الحد {mb} ميغابايت).
+sheet.damaged.title = تعذّر فتح هذا الملف
+sheet.damaged = الملف ليس مصنفًا يستطيع التطبيق قراءته: {reason}.
+
+sheet.reason.denied = الكتابة هنا غير مسموحة
+sheet.reason.missing = الملف أو المجلد غير موجود
+sheet.reason.exists = يوجد ملف بهذا الاسم
+sheet.reason.name = لا يمكن استخدام هذا الاسم
+sheet.reason.too_big = الملف كبير جدًا
+sheet.reason.damaged = الملف تالف
+sheet.reason.io = لم يستجب القرص
+
+sheet.new = جديد
+sheet.open = فتح…
+sheet.save = حفظ
+sheet.save_as = حفظ باسم…
+sheet.undo = تراجع
+sheet.redo = إعادة
+sheet.tools = أدوات
+sheet.bold = ع
+sheet.italic = م
+sheet.wrap = التفاف
+sheet.align_start = البداية
+sheet.align_center = وسط
+sheet.align_end = النهاية
+sheet.color = لون النص
+sheet.fill = تعبئة
+sheet.fmt_general = عام
+sheet.fmt_number = 1,234.00
+sheet.fmt_percent = %
+sheet.fmt_currency = $
+sheet.fmt_date = تاريخ
+sheet.freeze_row = تثبيت الصف
+sheet.freeze_col = تثبيت العمود
+sheet.rtl = من اليمين إلى اليسار
+sheet.sort_asc = ترتيب تصاعدي
+sheet.sort_desc = ترتيب تنازلي
+sheet.fill_down = تعبئة لأسفل
+sheet.fill_right = تعبئة لليمين
+sheet.row_add = + صف
+sheet.row_del = − صف
+sheet.col_add = + عمود
+sheet.col_del = − عمود
+sheet.find = بحث
+sheet.extend = توسيع التحديد
+
+sheet.formula = شريط الصيغة
+sheet.formula.hint = اكتب قيمة أو صيغة مثل =SUM(A1:A9)
+sheet.grid = الورقة
+sheet.empty = هذه الورقة فارغة. حدّد خلية وابدأ بالكتابة.
+sheet.stats = المجموع {sum}  ·  المتوسط {avg}  ·  العدد {n}
+
+sheet.find.field = بحث عن
+sheet.replace.field = استبدال بـ
+sheet.find_prev = السابق
+sheet.find_next = التالي
+sheet.match_case = مطابقة حالة الأحرف
+sheet.replace_one = استبدال
+sheet.replace_all = استبدال الكل
+sheet.close = إغلاق
+
+sheet.sheet_add = +
+sheet.sheet_rename = إعادة تسمية الورقة
+sheet.sheet_delete = حذف الورقة
+sheet.sheet_deleted = حُذفت الورقة. التراجع يعيدها.
+sheet.sheet_last = لا يمكن حذف الورقة الأخيرة.
+
+sheet.copied = تم النسخ
+sheet.cut = تم القص
+sheet.pasted = تم اللصق
+sheet.paste_cut = تم اللصق؛ وما لم يتسع له الجدول تُرك.
+sheet.no_room = لا مكان لمزيد من الصفوف أو الأعمدة.
+sheet.sort_failed = تعذّر ترتيب التحديد.
+sheet.not_found = لم يُعثر على شيء.
+sheet.replaced = تم الاستبدال في {n} خلية.
+sheet.bad_formula = تعذّرت قراءة هذه الصيغة: {why}
+sheet.saved = تم حفظ «{name}»
+sheet.saved_values = تم حفظ «{name}» – ملف CSV يحفظ قيم هذه الورقة فقط.
+sheet.saved_utf8 = تم حفظ «{name}» بترميز UTF-8 – الترميز القديم لا يتسع لكل الحروف.
+sheet.save_failed = تعذّر حفظ «{name}»: {reason}
+sheet.recovered = استُعيدت التغييرات غير المحفوظة. احفظ المصنف لتبقى.
+
+sheet.ask.title = هل تحفظ التغييرات في «{name}»؟
+sheet.ask.message = إن لم تحفظ فستضيع التغييرات.
+sheet.ask.save = حفظ
+sheet.ask.discard = عدم الحفظ
+sheet.ask.cancel = إلغاء
+sheet.name.title = حفظ باسم
+sheet.name.field = اسم الملف (في المستندات)
+sheet.name.ok = حفظ
+sheet.open.title = فتح مصنف
+sheet.open.ok = فتح
+sheet.rename.title = إعادة تسمية الورقة
+sheet.rename.field = اسم الورقة
+sheet.rename.ok = إعادة التسمية
+sheet.rename.taken = توجد ورقة بهذا الاسم.
+sheet.rename.bad = لا يمكن استخدام اسم الورقة هذا.
+sheet.recover.title = استعادة التغييرات غير المحفوظة؟
+sheet.recover.message = أُغلق التطبيق بشكل غير متوقع. عُثر على نسخة من تغييراتك غير المحفوظة.
+sheet.recover.ok = استعادة
+sheet.recover.discard = تجاهل النسخة
+sheet.agent.title = المساعد يطلب تعديل هذا المصنف
+sheet.agent.message = يريد المساعد أن: {what}
+sheet.agent.allow = السماح
+sheet.agent.deny = عدم السماح
+sheet.agent.write = يكتب {n} خلية ابتداءً من {range}
+sheet.agent.add = يضيف الورقة «{name}»
