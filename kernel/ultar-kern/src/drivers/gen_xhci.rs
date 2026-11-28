@@ -635,7 +635,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
         } else if bt::is_bt(d) && !bt_bound {
             // Bluetooth primary controller: interface 0 (events, ACL); the SCO interface has no
             // interrupt/bulk endpoints and is left alone
-            match bt::attach(hc, slot, (inp, out, speed), d) {
+            match bt::attach(hc, slot, (inp, out, speed), d, vid) {
                 Ok(n) => {
                     bt_bound = true;
                     what = format!("Bluetooth hci{n} {what}");

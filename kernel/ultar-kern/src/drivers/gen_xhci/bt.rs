@@ -129,9 +129,87 @@ pub(super) fn any(hc: usize) -> bool {
     BTS.lock().iter().any(|b| b.hc == hc)
 }
 
+/// Intel-Controller erkennen: HCI „Intel Read Version" (TLV, Opcode 0xFC05, Parameter 0xFF) über
+/// Endpunkt 0 senden und das Command-Complete-Ereignis vom Ereignis-Endpunkt lesen. Gibt
+/// (Hardware-Variante, Image-Typ 1=Bootloader/2=IML/3=operativ, nötiger Firmware-Dateiname) zurück.
+/// Nach der Norm btintel (Linux) als Beschreibung; eigener Code. Grundlage für die Firmware-Ladung.
+fn intel_version(hc: &mut Hc, slot: u32, ev_dci: u32, ev_mps: usize) -> Option<(u8, u8, alloc::string::String)> {
+    let buf = alloc_pages(1)?;
+    // SICHERHEIT: `buf` ist eine zugeteilte, identisch abgebildete Seite; 4 Byte beschrieben.
+    unsafe {
+        let p = buf as *mut u8;
+        core::ptr::write(p, 0x05);
+        core::ptr::write(p.add(1), 0xfc);
+        core::ptr::write(p.add(2), 0x01);
+        core::ptr::write(p.add(3), 0xff);
+    }
+    let ev = alloc_pages(1);
+    let out = (|| {
+        let ev = ev?;
+        hc.control(slot, 0x20, 0, 0, 0, 4, buf)?; // HCI-Befehl als Klassen-Anfrage auf EP0
+        let mut got = 0usize;
+        let mut plen = 0usize;
+        for _ in 0..40 {
+            let n = hc.transfer(slot, ev_dci, ev + got as u64, ev_mps, 500)?;
+            got += n;
+            if got >= 2 {
+                plen = unsafe { *((ev + 1) as *const u8) } as usize;
+                if got >= plen + 2 {
+                    break;
+                }
+            }
+            if n == 0 {
+                break;
+            }
+        }
+        // Command Complete: [0]=0x0E [1]=plen [2]=num [3..5]=Opcode [5]=Status [6..]=TLVs
+        let rd = |o: u64| unsafe { *((ev + o) as *const u8) };
+        if got < 7 || rd(0) != 0x0e {
+            return None;
+        }
+        if u16::from_le_bytes([rd(3), rd(4)]) != 0xfc05 || rd(5) != 0 {
+            return None;
+        }
+        let end = (plen + 2).min(4096);
+        let (mut cnvi_top, mut cnvr_top, mut cnvi_bt, mut img) = (0u32, 0u32, 0u32, 0u8);
+        let mut o = 6usize;
+        while o + 2 <= end {
+            let t = rd(o as u64);
+            let l = rd(o as u64 + 1) as usize;
+            if o + 2 + l > end {
+                break;
+            }
+            let val = |n: usize| {
+                let mut v = 0u32;
+                for i in 0..n.min(4) {
+                    v |= (rd(o as u64 + 2 + i as u64) as u32) << (8 * i);
+                }
+                v
+            };
+            match t {
+                0x10 => cnvi_top = val(4),
+                0x11 => cnvr_top = val(4),
+                0x12 => cnvi_bt = val(4),
+                0x1c => img = val(1) as u8,
+                _ => {}
+            }
+            o += 2 + l;
+        }
+        let variant = ((cnvi_bt >> 16) & 0x3f) as u8;
+        // CNVi/CNVr: swab16((TYPE<<4)|STEP), TYPE=Bit 0..11, STEP=Bit 24..27 (btintel)
+        let pack = |top: u32| -> u16 { (((top & 0xfff) as u16) << 4 | ((top >> 24) & 0xf) as u16).swap_bytes() };
+        Some((variant, img, alloc::format!("intel/ibt-{:04x}-{:04x}.sfi", pack(cnvi_top), pack(cnvr_top))))
+    })();
+    crate::mem::free_page(buf);
+    if let Some(e) = ev {
+        crate::mem::free_page(e);
+    }
+    out
+}
+
 /// Bind interface `d` of the device in `slot`: endpoints, buffers, first IN transfers. Returns the
 /// node number.
-pub(super) fn attach(hc: &mut Hc, slot: u32, ctx: (u64, u64, u32), d: &Desc) -> Result<u8, &'static str> {
+pub(super) fn attach(hc: &mut Hc, slot: u32, ctx: (u64, u64, u32), d: &Desc, vid: u16) -> Result<u8, &'static str> {
     let find = |dir_in: bool, typ: u8| d.eps.iter().find(|e| (e.0 & 0x80 != 0) == dir_in && e.1 & 3 == typ).copied();
     let (Some(ev), Some(bin), Some(bout)) = (find(true, 3), find(true, 2), find(false, 2)) else { return Err("Bluetooth: endpoints missing") };
     let index = {
@@ -143,6 +221,19 @@ pub(super) fn attach(hc: &mut Hc, slot: u32, ctx: (u64, u64, u32), d: &Desc) -> 
     };
     let (ev_dci, in_dci, out_dci) = ((ev.0 as u32 & 0xf) * 2 + 1, (bin.0 as u32 & 0xf) * 2 + 1, (bout.0 as u32 & 0xf) * 2);
     config_ep(hc, slot, ctx.0, ctx.1, ctx.2, &[(ev_dci, 7, ev.2 as u32, ev.3), (in_dci, 6, bin.2 as u32, 0), (out_dci, 2, bout.2 as u32, 0)]).map_err(|_| "Bluetooth: endpoints not configured")?;
+    // Intel-Controller: Version lesen (Betriebsmodus + nötige Firmware). Grundlage der Firmware-Ladung.
+    if vid == 0x8087 {
+        let mps = (ev.2 & 0x7ff).clamp(8, 1024) as usize;
+        if let Some((variant, img, fw)) = intel_version(hc, slot, ev_dci, mps) {
+            let mode = match img {
+                1 => "Bootloader",
+                2 => "IML",
+                3 => "operativ",
+                _ => "unbekannt",
+            };
+            crate::kprintln!("[bt] Intel-Controller Variante {variant:#x}, Modus {mode}, braucht {fw}");
+        }
+    }
     let pages = [alloc_pages(1), alloc_pages(1), alloc_pages(1)];
     let [Some(ev_buf), Some(in_buf), Some(out_buf)] = pages else {
         pages.into_iter().flatten().for_each(crate::mem::free_page);
