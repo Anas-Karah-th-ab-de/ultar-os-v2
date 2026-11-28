@@ -129,8 +129,15 @@ impl From<SignatureError> for IndexError {
 #[serde(deny_unknown_fields)]
 struct RawIndex {
     format: u32,
+    /// Grows with every built index; a device never goes back to a lower one (0: not given).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    serial: u64,
     #[serde(default)]
     driver: Vec<RawEntry>,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 #[derive(Serialize, Deserialize)]
@@ -302,6 +309,7 @@ impl Lookup {
 pub struct DriverIndex {
     entries: Vec<IndexEntry>,
     lookup: Lookup,
+    serial: u64,
 }
 
 impl DriverIndex {
@@ -330,7 +338,23 @@ impl DriverIndex {
             }
         }
         let lookup = Lookup::build(&entries);
-        Ok(Self { entries, lookup })
+        Ok(Self {
+            entries,
+            lookup,
+            serial: 0,
+        })
+    }
+
+    /// The index's serial number: a newer build has a higher one; a device refuses an index
+    /// with a lower serial than it has seen (an old, validly signed index replayed).
+    pub fn serial(&self) -> u64 {
+        self.serial
+    }
+
+    /// The same index with serial number `serial`.
+    pub fn with_serial(mut self, serial: u64) -> Self {
+        self.serial = serial;
+        self
     }
 
     /// An index without entries (a system whose depot is missing or unreadable).
@@ -338,6 +362,7 @@ impl DriverIndex {
         Self {
             entries: Vec::new(),
             lookup: Lookup::build(&[]),
+            serial: 0,
         }
     }
 
@@ -377,7 +402,11 @@ impl DriverIndex {
             .cloned()
             .collect();
         let lookup = Lookup::build(&entries);
-        Self { entries, lookup }
+        Self {
+            entries,
+            lookup,
+            serial: self.serial,
+        }
     }
 
     /// Entry positions whose rules match the identifier, with the specificity of each hit.
@@ -421,6 +450,7 @@ impl DriverIndex {
     pub fn to_toml(&self) -> Result<String, IndexError> {
         let raw = RawIndex {
             format: INDEX_FORMAT,
+            serial: self.serial,
             driver: self
                 .entries
                 .iter()
@@ -442,12 +472,13 @@ impl DriverIndex {
         if raw.format != INDEX_FORMAT {
             return Err(IndexError::UnsupportedFormat(raw.format));
         }
-        Self::new(
+        Ok(Self::new(
             raw.driver
                 .iter()
                 .map(IndexEntry::from_raw)
                 .collect::<Result<_, _>>()?,
-        )
+        )?
+        .with_serial(raw.serial))
     }
 
     /// Signs index text and returns the content of `index.toml.sig`.

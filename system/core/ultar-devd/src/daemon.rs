@@ -132,7 +132,7 @@ impl Daemon {
             Some(abi) => abi.clone(),
             None => kernel_abi(&config.root)?.ok_or(StartError::UnknownKernel)?,
         };
-        let depot = depot::load(&config.depot, &config.keys);
+        let depot = depot::load(&config.depot, &config.keys, &config.state);
         let builtin = Builtin::new(reader.clone(), &config.depot, depot.trusted)?;
         let sink = BusSink::new(publisher);
         let manager = DeviceManager::new(
@@ -424,7 +424,7 @@ impl Daemon {
     }
 
     fn reload(&mut self) -> Result<ScanResult, Refusal> {
-        let depot = depot::load(&self.config.depot, &self.config.keys);
+        let depot = depot::load(&self.config.depot, &self.config.keys, &self.config.state);
         self.depot_notices = depot.notices;
         self.builtin.set_trusted(depot.trusted);
         self.manager.replace_index(depot.index);
