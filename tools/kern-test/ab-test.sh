@@ -37,7 +37,7 @@ cp "$KERN" "$W/kernel.efi"
 KP=$W/kpanic
 mkdir -p "$KP/kernel" "$KP/assets"
 cp -r kernel/ultar-kern "$KP/kernel/"; rm -rf "$KP/kernel/ultar-kern/target"
-cp -r assets/fonts "$KP/assets/"
+cp -r assets/fonts assets/brand "$KP/assets/"   # the kernel draws the brand mark (ultar-brand, feature bitmaps)
 # every path dependency of the kernel, read from its manifest (a new one - the Intel GT and NPU
 # drivers - was missing from a fixed list: the copy did not build and the gate ended without a word)
 for dep in $(sed -n 's/.*path = "\.\.\/\.\.\/\([^"]*\)".*/\1/p' kernel/ultar-kern/Cargo.toml); do
