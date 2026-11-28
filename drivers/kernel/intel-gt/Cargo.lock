@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ultar-intel-display"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-intel-gt"
