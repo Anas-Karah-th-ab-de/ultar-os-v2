@@ -22,15 +22,22 @@ fn main() -> ExitCode {
     // The sound right is kept only by a device that plays for others.
     let plays = std::env::args().any(|a| a == "--there-sink");
     let rights = plays.then(|| RightSet::of(&[Right::Sound]));
-    ultar_svckit::main("ultar-mediad", &["policy", "there-sink"], rights, |args, _| {
-        let policy = args
-            .required_path("policy")
-            .map_err(|_| Msg::BadArguments)?;
-        let policy = Policy::load(&policy).map_err(|_| Msg::State)?;
-        let service = MediaService::new(Access::new(SERVICE, Some(policy)));
-        Ok(match args.path("there-sink").map_err(|_| Msg::BadArguments)? {
-            Some(node) => service.with_sink(Box::new(CardSink::new(node))),
-            None => service,
-        })
-    })
+    ultar_svckit::main(
+        "ultar-mediad",
+        &["policy", "there-sink"],
+        rights,
+        |args, _| {
+            let policy = args
+                .required_path("policy")
+                .map_err(|_| Msg::BadArguments)?;
+            let policy = Policy::load(&policy).map_err(|_| Msg::State)?;
+            let service = MediaService::new(Access::new(SERVICE, Some(policy)));
+            Ok(
+                match args.path("there-sink").map_err(|_| Msg::BadArguments)? {
+                    Some(node) => service.with_sink(Box::new(CardSink::new(node))),
+                    None => service,
+                },
+            )
+        },
+    )
 }

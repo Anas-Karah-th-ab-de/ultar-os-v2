@@ -3,7 +3,7 @@
 //! bus (the real mesh transport is tested in `ultar-mesh`). The speaker of the playing
 //! device is a file.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use ultar_bus::messages::media::{Button, Command, Update};
 use ultar_bus::messages::mesh::{Capability, DeviceKind, Done, MeshState, Peer, Right};
@@ -58,7 +58,10 @@ fn start(world: &World, sink: Option<&Path>) -> Daemon {
 }
 
 /// Waits for a published state that satisfies `ok`.
-fn state_where(sub: &TypedSubscription<ThereState>, ok: impl Fn(&ThereState) -> bool) -> ThereState {
+fn state_where(
+    sub: &TypedSubscription<ThereState>,
+    ok: impl Fn(&ThereState) -> bool,
+) -> ThereState {
     let start = Instant::now();
     loop {
         let left = WAIT.saturating_sub(start.elapsed());
@@ -104,23 +107,45 @@ fn desk() -> MeshState {
     }
 }
 
-#[test]
-fn the_sound_goes_to_the_desk_and_both_sides_steer_it() {
-    let src = World::new(
-        "there-src",
-        POLICY,
-        &["system.mediad", "system.mesh", "system.shell", "app.music"],
-    );
-    let snk = World::new("there-snk", POLICY, &["system.mediad", "system.mesh", "system.shell"]);
-    let speaker = snk.subdir("card").join("pcm");
-    std::fs::write(&speaker, []).unwrap();
-    let mut desk_daemon = start(&snk, Some(&speaker));
-    let mut phone_daemon = start(&src, None);
+/// The two devices: a phone that plays and a desk with a (file) speaker.
+struct Rig {
+    _src: World,
+    _snk: World,
+    shell: Client,
+    music: Client,
+    desk_shell: Client,
+    into_phone: Client,
+    phone_state: TypedSubscription<ThereState>,
+    desk_state: TypedSubscription<ThereState>,
+    commands: TypedSubscription<Command>,
+    speaker: PathBuf,
+    phone_daemon: Daemon,
+    desk_daemon: Daemon,
+}
 
-    // The stand-in meshes: each hands what its mediad sends to the other bus.
+impl Rig {
+    /// The music app hands over one 20 ms frame.
+    fn push(&self, seq: u64, pcm: String) -> bool {
+        call(&self.music, &TherePush { seq, pcm }).unwrap().ok
+    }
+}
+
+fn up(playing: bool) -> Update {
+    Update {
+        title: "Song".into(),
+        artist: "Artist".into(),
+        playing,
+        can_next: false,
+        can_previous: false,
+    }
+}
+
+/// The stand-in meshes: each hands what its mediad sends to the other bus. Returns the
+/// phone's mesh connection (the mesh's reports).
+fn stand_in_meshes(src: &World, snk: &World) -> Client {
     let into_desk = snk.client("system.mesh");
     let into_phone = src.client("system.mesh");
-    let (to_desk, to_phone) = (into_desk.clone(), into_phone.clone());
+    let (to_desk, to_phone) = (into_desk, into_phone.clone());
     src.serve("system.mesh", "mesh", move |r| match r.method() {
         "media_open" => {
             let _ = r.respond::<MediaOpen>(|c| {
@@ -167,30 +192,55 @@ fn the_sound_goes_to_the_desk_and_both_sides_steer_it() {
             Ok(Done { ok: true })
         });
     });
+    into_phone
+}
 
+fn rig() -> Rig {
+    let src = World::new(
+        "there-src",
+        POLICY,
+        &["system.mediad", "system.mesh", "system.shell", "app.music"],
+    );
+    let snk = World::new(
+        "there-snk",
+        POLICY,
+        &["system.mediad", "system.mesh", "system.shell"],
+    );
+    let speaker = snk.subdir("card").join("pcm");
+    std::fs::write(&speaker, []).unwrap();
+    let desk_daemon = start(&snk, Some(&speaker));
+    let phone_daemon = start(&src, None);
+    let into_phone = stand_in_meshes(&src, &snk);
     let shell = src.client("system.shell");
     let music = src.client("app.music");
     let desk_shell = snk.client("system.shell");
     let phone_state = shell.subscribe::<ThereState>().unwrap();
     let desk_state = desk_shell.subscribe::<ThereState>().unwrap();
     let commands = music.subscribe::<Command>().unwrap();
-    let up = |playing| Update {
-        title: "Song".into(),
-        artist: "Artist".into(),
-        playing,
-        can_next: false,
-        can_previous: false,
-    };
     call(&music, &up(true)).unwrap();
+    Rig {
+        _src: src,
+        _snk: snk,
+        shell,
+        music,
+        desk_shell,
+        into_phone,
+        phone_state,
+        desk_state,
+        commands,
+        speaker,
+        phone_daemon,
+        desk_daemon,
+    }
+}
 
-    // The desk is offered once the mesh shows it paired, reachable and with a speaker.
-    wait_until(WAIT, || {
-        into_phone.publish(&desk()).is_ok()
-    });
-    let offered = state_where(&phone_state, |s| s.outputs.len() == 1);
+/// The desk is offered once the mesh shows it paired, reachable and with a speaker; an app
+/// cannot send the sound there, an unknown device is refused; then the sound goes there.
+fn the_desk_is_offered_and_chosen(r: &Rig) {
+    wait_until(WAIT, || r.into_phone.publish(&desk()).is_ok());
+    let offered = state_where(&r.phone_state, |s| s.outputs.len() == 1);
     assert_eq!(offered.outputs[0].device, "desk");
-    // An app cannot send the sound anywhere; an unknown device is refused.
-    let denied = music.call(
+    let denied = r.music.call(
         &SetThere {
             device: Some("desk".into()),
         },
@@ -203,63 +253,86 @@ fn the_sound_goes_to_the_desk_and_both_sides_steer_it() {
     let none = SetThere {
         device: Some("nobody".into()),
     };
-    assert_eq!(call(&shell, &none).unwrap(), ThereReply { ok: false });
-
+    assert_eq!(call(&r.shell, &none).unwrap(), ThereReply { ok: false });
     let there = SetThere {
         device: Some("desk".into()),
     };
-    assert_eq!(call(&shell, &there).unwrap(), ThereReply { ok: true });
-    state_where(&phone_state, |s| s.active.as_deref() == Some("desk"));
-    let on_desk = state_where(&desk_state, |s| s.playing_for.is_some());
+    assert_eq!(call(&r.shell, &there).unwrap(), ThereReply { ok: true });
+    state_where(&r.phone_state, |s| s.active.as_deref() == Some("desk"));
+    let on_desk = state_where(&r.desk_state, |s| s.playing_for.is_some());
     assert_eq!(on_desk.playing_for.as_deref(), Some("Phone"));
+}
 
-    // Sound in order; a wrong size and a repeated counter are refused.
-    let push = |seq, pcm: String| call(&music, &TherePush { seq, pcm }).unwrap().ok;
+/// Sound in order; a wrong size and a repeated counter are refused. Volume from the phone
+/// reaches the desk's speaker; from the desk, the phone's state.
+fn sound_and_volume(r: &Rig) {
     for (seq, m) in [(0, 1), (1, 2), (2, 3), (3, 4)] {
-        assert!(push(seq, mark(m)));
+        assert!(r.push(seq, mark(m)));
     }
-    assert!(!push(4, encode(&[1, 2, 3])), "a frame has exactly 20 ms");
-    assert!(!push(3, mark(9)), "a counter only goes up");
-    assert!(wait_until(WAIT, || played(&speaker) == [1, 2, 3, 4]));
+    assert!(!r.push(4, encode(&[1, 2, 3])), "a frame has exactly 20 ms");
+    assert!(!r.push(3, mark(9)), "a counter only goes up");
+    assert!(wait_until(WAIT, || played(&r.speaker) == [1, 2, 3, 4]));
+    assert!(call(&r.shell, &ThereVolume { percent: 25 }).unwrap().ok);
+    state_where(&r.phone_state, |s| s.volume == 25);
+    for seq in 4..7 {
+        assert!(r.push(seq, mark(100)));
+    }
+    assert!(wait_until(WAIT, || played(&r.speaker).ends_with(&[25, 25, 25])));
+    assert!(
+        call(&r.desk_shell, &ThereVolume { percent: 60 })
+            .unwrap()
+            .ok
+    );
+    state_where(&r.phone_state, |s| s.volume == 60);
+}
 
-    // Volume from the phone reaches the desk's speaker; from the desk, the phone's state.
-    assert!(call(&shell, &ThereVolume { percent: 25 }).unwrap().ok);
-    state_where(&phone_state, |s| s.volume == 25);
-    assert!(push(4, mark(100)));
-    assert!(push(5, mark(100)));
-    assert!(push(6, mark(100)));
-    assert!(wait_until(WAIT, || played(&speaker).ends_with(&[25, 25, 25])));
-    assert!(call(&desk_shell, &ThereVolume { percent: 60 }).unwrap().ok);
-    state_where(&phone_state, |s| s.volume == 60);
-
-    // Pause from the phone: its player is told, nothing is accepted, the desk is silent.
-    assert!(call(&shell, &TherePause { on: true }).unwrap().ok);
-    let told = commands.recv_timeout(WAIT).unwrap();
-    assert_eq!((told.player.as_str(), told.button), ("app.music", Button::PlayPause));
-    state_where(&phone_state, |s| s.paused);
-    assert!(!push(7, mark(50)), "paused: no sound is sent");
-    call(&music, &up(false)).unwrap();
-    // Resume from the desk: the phone follows and its player is told again.
-    assert!(call(&desk_shell, &TherePause { on: false }).unwrap().ok);
-    state_where(&phone_state, |s| !s.paused);
-    let told = commands.recv_timeout(WAIT).unwrap();
+/// Pause from the phone: its player is told, nothing is accepted, the desk is silent.
+/// Resume from the desk: the phone follows and its player is told again.
+fn pause_and_resume(r: &Rig) {
+    assert!(call(&r.shell, &TherePause { on: true }).unwrap().ok);
+    let told = r.commands.recv_timeout(WAIT).unwrap();
+    assert_eq!(
+        (told.player.as_str(), told.button),
+        ("app.music", Button::PlayPause)
+    );
+    state_where(&r.phone_state, |s| s.paused);
+    assert!(!r.push(7, mark(50)), "paused: no sound is sent");
+    call(&r.music, &up(false)).unwrap();
+    assert!(call(&r.desk_shell, &TherePause { on: false }).unwrap().ok);
+    state_where(&r.phone_state, |s| !s.paused);
+    let told = r.commands.recv_timeout(WAIT).unwrap();
     assert_eq!(told.button, Button::PlayPause);
-    call(&music, &up(true)).unwrap();
-    assert!(push(8, mark(100)));
-    assert!(wait_until(WAIT, || played(&speaker).ends_with(&[60])));
+    call(&r.music, &up(true)).unwrap();
+    // A session starts playing once 60 ms are buffered.
+    for seq in 8..11 {
+        assert!(r.push(seq, mark(100)));
+    }
+    assert!(wait_until(WAIT, || played(&r.speaker).ends_with(&[60])));
+}
+
+#[test]
+fn the_sound_goes_to_the_desk_and_both_sides_steer_it() {
+    let mut r = rig();
+    the_desk_is_offered_and_chosen(&r);
+    sound_and_volume(&r);
+    pause_and_resume(&r);
 
     // Back to this device: the desk stops playing.
-    assert!(call(&shell, &SetThere { device: None }).unwrap().ok);
-    state_where(&phone_state, |s| s.active.is_none());
-    state_where(&desk_state, |s| s.playing_for.is_none());
-    assert!(!push(9, mark(1)), "no session: nothing is sent");
-    assert_eq!(phone_daemon.terminate(), Some(0));
-    assert_eq!(desk_daemon.terminate(), Some(0));
+    assert!(call(&r.shell, &SetThere { device: None }).unwrap().ok);
+    state_where(&r.phone_state, |s| s.active.is_none());
+    state_where(&r.desk_state, |s| s.playing_for.is_none());
+    assert!(!r.push(9, mark(1)), "no session: nothing is sent");
+    assert_eq!(r.phone_daemon.terminate(), Some(0));
+    assert_eq!(r.desk_daemon.terminate(), Some(0));
 }
 
 #[test]
 fn a_device_without_a_speaker_turns_a_session_away() {
-    let src = World::new("there-nospk", POLICY, &["system.mediad", "system.mesh", "system.shell"]);
+    let src = World::new(
+        "there-nospk",
+        POLICY,
+        &["system.mediad", "system.mesh", "system.shell"],
+    );
     let mut daemon = start(&src, None);
     let stops = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let record = stops.clone();
@@ -288,7 +361,11 @@ fn a_device_without_a_speaker_turns_a_session_away() {
     let got = stops.lock().unwrap()[0].clone();
     assert_eq!(
         got,
-        ("phone".to_owned(), 3, ultar_bus::messages::mesh_media::MediaCtl::Stop)
+        (
+            "phone".to_owned(),
+            3,
+            ultar_bus::messages::mesh_media::MediaCtl::Stop
+        )
     );
     assert_eq!(daemon.terminate(), Some(0));
 }

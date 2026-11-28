@@ -26,6 +26,10 @@ pub(crate) struct ClipState {
     pub(crate) arrived: Option<Instant>,
     /// When the last notice was given.
     pub(crate) noticed: Option<Instant>,
+    /// Counter of the entries sent from here.
+    pub(crate) seq: u64,
+    /// The text that came from another device last (no echo).
+    pub(crate) remote: Option<String>,
     /// The picture that is arriving.
     pub(crate) assembly: Option<Assembly>,
 }
@@ -60,12 +64,12 @@ impl Node {
         if targets.is_empty() {
             return Vec::new();
         }
-        self.clip_seq += 1;
-        let pieces = clip_image::pieces(self.clip_seq, png);
+        self.clip.seq += 1;
+        let pieces = clip_image::pieces(self.clip.seq, png);
         if pieces.is_empty() {
             return Vec::new();
         }
-        self.clip_remote = None;
+        self.clip.remote = None;
         self.clip.image = None;
         let mut effects = Vec::new();
         for id in targets {
@@ -84,7 +88,7 @@ impl Node {
         match clip_image::take(&mut self.clip.assembly, peer, piece, now) {
             Taken::Done(png) => {
                 self.clip.image = Some(clip_image::digest(&png));
-                self.clip_remote = None;
+                self.clip.remote = None;
                 let mut effects = vec![Effect::ClipboardImage {
                     from: peer.to_owned(),
                     png,
@@ -133,7 +137,7 @@ impl Node {
         }
         self.clip.arrived = None;
         self.clip.image = None;
-        self.clip_remote = None;
+        self.clip.remote = None;
         vec![Effect::ClipboardClear]
     }
 }

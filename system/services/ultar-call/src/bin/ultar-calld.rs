@@ -98,6 +98,46 @@ fn start_fake_modem(path: &std::path::Path) -> Option<()> {
     Some(())
 }
 
+/// What the calls of this device do over the mesh (`--mesh-calls`: it keeps the line and
+/// offers calls; `--mesh-guest`: it answers calls of another device on its sound card).
+fn mesh_relay(a: &Args, path: &Path, bridge: &Bridge) -> Result<MeshRelay, Msg> {
+    let mut taps = Taps::default();
+    if a.mesh_calls {
+        if a.account {
+            taps.ultar = Some(Box::new(bridge.tap()));
+        }
+        taps.cellular = a
+            .mesh_modem_pcm
+            .clone()
+            .map(|node| Box::new(CardTap::lazy(node)) as Box<dyn MeshTap>);
+    }
+    if a.mesh_guest {
+        let node = a
+            .pcm
+            .clone()
+            .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
+        taps.guest = Some(Box::new(CardTap::lazy(node)));
+    }
+    let mesh = connect(path, "calld").ok_or(Msg::NoBus)?;
+    Ok(MeshRelay::new(mesh, taps))
+}
+/// The microphone switch and the outputs of the lines this device has.
+fn audio_route(
+    bus: &Client,
+    modem: bool,
+    muted: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Box<dyn ultar_call::line::AudioRoute> {
+    match (modem, muted) {
+        (true, Some(flag)) => Box::new(BothRoute {
+            modem: ModemAudio::new(bus.clone(), MODEM_WAIT),
+            ultar: MuteRoute::new(flag),
+        }),
+        (true, None) => Box::new(ModemAudio::new(bus.clone(), MODEM_WAIT)),
+        (false, Some(flag)) => Box::new(MuteRoute::new(flag)),
+        (false, None) => Box::new(FakeAudio::new(&[Output::Earpiece])),
+    }
+}
+
 fn run(a: &Args) -> Result<(), Msg> {
     let path = a.bus.clone().ok_or(Msg::Usage)?;
     let bus = connect(&path, "calld").ok_or(Msg::NoBus)?;
@@ -139,15 +179,7 @@ fn run(a: &Args) -> Result<(), Msg> {
         muted = Some(backend.muted.clone());
         lines.push(Box::new(UltarLine::new(Box::new(backend), None)));
     }
-    let audio: Box<dyn ultar_call::line::AudioRoute> = match (modem, muted) {
-        (true, Some(flag)) => Box::new(BothRoute {
-            modem: ModemAudio::new(bus.clone(), MODEM_WAIT),
-            ultar: MuteRoute::new(flag),
-        }),
-        (true, None) => Box::new(ModemAudio::new(bus.clone(), MODEM_WAIT)),
-        (false, Some(flag)) => Box::new(MuteRoute::new(flag)),
-        (false, None) => Box::new(FakeAudio::new(&[Output::Earpiece])),
-    };
+    let audio = audio_route(&bus, modem, muted);
     let mut session = Session::new(lines, audio, Box::new(SystemClock::default()));
     if let Some(log) = &a.log {
         if session.with_log_file(log) > 0 {
@@ -156,25 +188,7 @@ fn run(a: &Args) -> Result<(), Msg> {
     }
     let mut service = Service::new(bus, session, DEFAULT_TICK).map_err(|_| Msg::NoBus)?;
     if a.mesh_calls || a.mesh_guest {
-        let mut taps = Taps::default();
-        if a.mesh_calls {
-            if a.account {
-                taps.ultar = Some(Box::new(bridge.tap()));
-            }
-            taps.cellular = a
-                .mesh_modem_pcm
-                .clone()
-                .map(|node| Box::new(CardTap::lazy(node)) as Box<dyn MeshTap>);
-        }
-        if a.mesh_guest {
-            let node = a
-                .pcm
-                .clone()
-                .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
-            taps.guest = Some(Box::new(CardTap::lazy(node)));
-        }
-        let mesh = connect(&path, "calld").ok_or(Msg::NoBus)?;
-        service = service.with_mesh_relay(MeshRelay::new(mesh, taps));
+        service = service.with_mesh_relay(mesh_relay(a, &path, &bridge)?);
     }
     service.run().map_err(|_| Msg::Stopped)
 }

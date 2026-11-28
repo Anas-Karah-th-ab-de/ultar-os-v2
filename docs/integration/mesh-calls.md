@@ -1,119 +1,125 @@
 # Mesh: Anrufe, Ton und Hinweise zwischen Geräten (C2/C3)
 
-Stand 28.11.2026 · Paket `calls` · Stufe: Mesh-Schicht fertig, Dienstanbindung offen.
+Stand 28.11.2026 · Paket `calls` · Branch `q/calls`.
 
-Dieser Text beschreibt die neue Mesh-Schicht für „die Geräte der Person arbeiten als
-eins“: ein Anruf, der auf dem Handy klingelt, klingelt auf dem Schreibtisch mit und kann
-dort geführt werden (Ton durch Mikrofon und Lautsprecher des Schreibtischs); Hinweise des
-Handys erscheinen auf dem Schreibtisch; Ton kann zu einem anderen Gerät geschickt werden.
-Alles läuft Ende-zu-Ende-verschlüsselt über den bestehenden Mesh-Kanal (`secure.rs`,
-Noise XX) – auf keinem Server liegt oder entsteht etwas.
+Die Geräte der Person arbeiten als eins: Ein Anruf, der auf dem Handy klingelt, klingelt
+auf dem Schreibtisch mit und kann dort geführt werden (Mikrofon und Lautsprecher des
+Schreibtischs). Hinweise des Handys erscheinen auf dem Schreibtisch. Ton lässt sich zu einem
+anderen Gerät schicken („dort abspielen“). Alles läuft Ende-zu-Ende-verschlüsselt über den
+bestehenden Mesh-Kanal (Noise); auf keinem Server liegt oder entsteht etwas.
 
-## Was gebaut ist (und was beweist es)
+## Aufbau
 
-### Neues Recht „Anrufe und Ton“ (`Right::Call`)
+```
+Handy (Gastgeber)                                  Schreibtisch (Gast)
+ Modem/ID-Leitung <-> calld (MeshRelay) <== mesh ==> calld (MeshRelay) <-> Klang (Tap)
+                        mesh.call_*                    mesh.call_*       Banner (desktop)
+```
 
-In `ultar_bus::messages::mesh` gibt es das neue Recht `Right::Call`. Es ist **nach dem
-Koppeln aus** (`DEFAULT_RIGHTS` bleibt `Handoff, Files, Clipboard`). Es deckt drei Dinge
-ab, die dasselbe Vertrauen brauchen:
+* **Recht `Right::Call` („Anrufe und Ton“)**: nach dem Koppeln **aus**. Es wird
+  empfängerseitig geprüft (ohne Recht klingelt nichts und fließt kein Ton). Für ein
+  Gespräch muss es beidseitig gesetzt sein. In den Einstellungen als Schalter (Mesh-Seite,
+  `apps/ultar-settings`).
+* **Frames** (`ultar-mesh/src/wire.rs`): `Call`, `CallAnswer`, `CallEnd`, `CallAudio`
+  (`id`, `seq`, `pcm`), `Note`, dazu die Medien-Frames für „dort abspielen“ (`media_link.rs`).
+* **Bus-Vertrag** (`ultar-bus/src/messages/`): `mesh_calls.rs` (`mesh.call_offer`,
+  `call_answer`, `call_end`, `call_audio`; Topics `call_incoming`, `call_progress`,
+  `call_audio`; `CallMeshMute`, `MeshCallState`), `mesh_media.rs`, `notify_mirror.rs`.
 
-* einen Anruf anbieten, annehmen, ablehnen und auflegen,
-* die Sprache des Anrufs übertragen,
-* Hinweise spiegeln.
+## Anruf (calld)
 
-Für ein Gespräch in beide Richtungen muss das Recht **beidseitig** gesetzt sein: das
-Handy braucht es auf dem Schreibtisch (damit der Schreibtisch klingelt und die Stimme des
-Handys nimmt), der Schreibtisch braucht es auf dem Handy (damit das Handy das Mikrofon
-des Schreibtischs nimmt). Das ist symmetrisch und einfach: beide Geräte vertrauen sich
-gegenseitig „Anrufe und Ton“.
+`ultar-call` bekommt `MeshRelay` (`mesh_relay.rs`) mit zwei Rollen:
 
-### Rahmen (Frames) in `wire.rs`
+* **Gastgeber** (Handy, `--mesh-calls`): bietet jeden eingehenden Anruf allen gekoppelten
+  Geräten mit Recht an. **Wer zuerst annimmt, bekommt das Gespräch**; die übrigen Angebote
+  werden beendet, späte Annahmen werden abgewiesen (`turned_away`). Beim Annehmen
+  antwortet die Leitung des Handys; die Sprache läuft Handy-Leitung <-> Mesh.
+* **Gast** (Schreibtisch, `--mesh-guest`): zeigt das Angebot, nimmt Mikrofon und
+  Lautsprecher, schickt und spielt Sprachrahmen.
+* **Auflegen** von jeder Seite beendet beide Seiten. Geht die Mesh-Verbindung mitten im
+  Gespräch verloren, bleibt der Anruf auf dem Handy (kein Abbruch).
+* SIM-Anrufe werden nur angeboten, wenn ein Modem-Sprachpfad gesetzt ist
+  (`--mesh-modem-pcm`). ID-Anrufe (Ultar-Nummer) immer.
+* Was das Angebot zeigt, ist nur, was das Handy schon anzeigt (Anrufername/-nummer).
 
-Neue Frames im verschlüsselten Kanal, alle `serde_json` mit `t`-Tag wie bisher:
+### Sprache und Qualität
 
-| Frame | Felder | Bedeutung |
-|---|---|---|
-| `Call` | `id`, `caller`, `video` | Anruf anbieten; `caller` ist nur, was das Handy schon zeigt |
-| `CallAnswer` | `id`, `accept` | annehmen / ablehnen |
-| `CallEnd` | `id` | auflegen (von beiden Seiten) |
-| `CallAudio` | `id`, `seq`, `pcm` | eine 20-ms-Rahmen Sprache (PCM, base64) |
-| `Note` | `seq`, `title`, `text`, `app`, `urgency`, `hide_on_locked` | gespiegelter Hinweis |
+* **PCM 16 bit, 48 kHz mono, 20 ms** = 960 Samples = 1920 Byte je Rahmen, base64
+  (ohne Padding). Kein Opus: Es liegt kein reines Rust-Opus im Workspace. Auf dem LAN ist
+  PCM billig; falsche Größen werden verworfen.
+* **Jitter** (`mesh_jitter.rs`): Tiefe 3 Rahmen (60 ms), ordnet um, verwirft Verspätete.
+* **Verlust**: „wiederholen und halbieren“ (jeder weitere fehlende Rahmen halbiert noch
+  einmal), danach Stille.
+* Die **ID-Anruf-Stimme** ist intern 16 kHz und wird für das Mesh auf 48 kHz verdreifacht
+  (`mesh_voice.rs`): Die Qualität bleibt die der 16-kHz-Strecke.
+* Die Rahmen werden in einem eigenen Pacer-Thread im 20-ms-Takt abgespielt, damit der
+  Dienstzyklus den Takt nicht stört.
 
-### Zustandsmaschine (`ultar-mesh/src/calls.rs`)
+## Hinweise (notifyd)
 
-`Node` bekommt den Zustand `Calls` (Angebote raus/rein, Zähler der Hinweise) und Methoden:
+`ultar-notifyd/src/mirror.rs`:
 
-* `call_offer(device, caller, video)` – bietet den Anruf einem erreichbaren, gekoppelten
-  Gerät mit `AudioIn` **und** `AudioOut` an (Rückgabe: Angebots-`id`).
-* `call_answer(id, accept)` – dieses Gerät nimmt an / lehnt ab.
-* `call_end(id)` – dieses Gerät legt auf.
-* `call_audio(device, id, seq, pcm)` – schickt einen Sprachrahmen.
-* `note_mirror(…)` – spiegelt einen Hinweis.
+* **Hinausspiegeln** nur von **Klartext**: genau der Titel und der Text, wie gepostet
+  (Titel auf 128, Text auf 1024 Zeichen gekürzt). Hinweise von System und alles
+  Vertrauliche (`Private`) verlassen das Gerät **nie**. Positionsargumente mit Übersetzung
+  werden nicht gespiegelt.
+* **Datenschutz** (`notify_mirror.rs`): `Normal` zeigt auf gesperrtem Ziel nur, *dass*
+  etwas ankam; `HideOnLocked` zeigt dort gar nichts.
+* **Herein**: Dringlichkeit wird auf `Normal` begrenzt, Absender `mesh`, der Hinweis nennt
+  das Quellgerät (`desk.note.mirror.title`, `.locked`).
+* **Gesperrt** heißt hier: kein angemeldeter Benutzer (`session.state.user == None`) oder
+  unbekannt. Es gibt keinen Bus-Zustand für „Bildschirm gesperrt, Benutzer angemeldet“;
+  dieser Fall wird deshalb **nicht** erkannt (offen).
 
-Wie beim Klemmbrett gilt das Recht auf der **Empfängerseite**: ohne `Right::Call`
-klingelt nichts und fließt kein Ton (`no right → nothing`, getestet). Ein Hinweis, der
-als vertraulich markiert ist (Passwort, Einmalcode), verlässt das Gerät **nie**; der
-Absender prüft `hide_on_locked` und der Ziel-Gerät bekommt das Flag mit (zeigt den
-Hinweis nur auf entsperrtem Ziel).
+## Schreibtisch-Oberfläche
 
-### Sprache (Audio) über das Mesh (`ultar-mesh/src/audio_link.rs`)
+`platform/ultar-desktop` (`model/calls.rs`, `ports/bus_calls.rs`): Banner für eingehenden
+Anruf (annehmen/ablehnen), laufender Anruf mit **Stumm** und **Auflegen**, gespiegelte
+Hinweise mit Quellgerät. Rechts-nach-links zuerst; Schlüssel `desk.*` in ar/en/de.
+Bildschirmfotos: `call-incoming`, `call-active`, `note-mirrored` (ar/en, dunkel/hell),
+im Test `tests/calls.rs`. Nicht gebaut: Lautsprecher-Umschalter (nur Stumm und Auflegen);
+Videoangebote klingeln als Sprachanruf.
 
-Kein reines-Rust-Opus ist in `Cargo.lock` (geprüft, `grep -i opus` leer) – also fahren
-wir **PCM 16-bit, 48 kHz mono, 20 ms**: 960 Samples = **1920 Byte** je Rahmen, base64 im
-Frame. Das ist auf dem LAN ehrlich und billig; beide Seiten prüfen die Größe (1920 Byte,
-sonst wird der Rahmen verworfen, getestet). Ein `Jitter` puffert 3 Rahmen (60 ms),
-ordnet um und füllt einen verlorenen Rahmen mit einer leisen Kopie des letzten
-(„repeat and fade“: jeder weitere fehlende halbiert nochmal). Echo: **offen** – dazu
-siehe unten; die bestehende Jitter-/PLC-Logik von `ultar-call/src/e2e/audio.rs` (dort
-IMA-ADPCM, 16 kHz) bleibt für die SIM-/Id-Strecke, die Mesh-Strecke nutzt den neuen
-48-kHz-Puffer.
+## Dort abspielen (mediad)
 
-### Bus-Vertrag (`ultar-bus/src/messages/mesh_calls.rs`)
+`ultar-mediad` (`there.rs`, `there_service.rs`): gekoppelte Geräte mit Recht erscheinen als
+Ausgang; der Ton geht über das Mesh, Pause/Fortsetzen/Lautstärke wirken auf beiden Seiten.
+Die Senke öffnet `/dev/ultar/pcm` je Sitzung, daher kann sie mit einem laufenden Anruf
+kollidieren; **es gibt kein Mischen**. Start mit `--there-sink`.
 
-Damit `calld`, die Oberfläche und `notifyd` mit dem Mesh reden, ohne das Mesh zu kennen:
+## Richtlinie und Dienste (SCOPE-EXTRA)
 
-* Methoden: `mesh.call_offer`, `mesh.call_answer`, `mesh.call_end`, `mesh.call_audio`
-  (Sprachrahmen **hin**, base64), `mesh.note_mirror`.
-* Topics: `mesh.call_incoming`, `mesh.call_progress` (Phasen `offered/accepted/
-  declined/ended/failed`), `mesh.call_audio` (Sprachrahmen **her**), `mesh.note`.
+* `rootfs/etc/bus-policy.toml`: Einträge für `system.mesh`, `system.calld`,
+  `system.notifyd`, `system.mediad`, `system.shell` (publish/subscribe/call für die neuen
+  Themen). `media.system`/`notify.system` bleiben für Systemzugriffe maßgeblich.
+* `rootfs/.../services/call.toml`, `mediad.toml`: neue Argumente. `--mesh-modem-pcm` ist
+  **nicht** gesetzt.
+* Bestehende Tests von `notifyd` und `mediad` haben neue Richtlinien-Fixtures.
 
-`ultar-mesh/src/service.rs` bedient die Methoden und veröffentlicht die Topics (zwei
-kleine Haken im `request`/`host`). Die Namesprüfung ist im `mod.rs`-Test ergänzt.
+## Tests (Beweise)
 
-## Tests
+* `ultar-bus`: Namen/Rundlauf der neuen Nachrichten.
+* `ultar-mesh`: `wire`, `audio_link`, `tests/media.rs`, `tests/calls.rs` (zwei Knoten:
+  ohne Recht nichts; klingeln -> annehmen -> Ton beidseitig in Reihenfolge -> auflegen von
+  jeder Seite; vertraulicher Hinweis geht nie raus).
+* `ultar-mesh/tests/calls_process.rs`: zwei **echte** Mesh-Dienste mit Bus.
+* **`tools/calls-e2e/tests/calls_e2e.rs`** (Tools-Bereich, weil Dienste einander nicht abhängen dürfen): zwei echte Mesh-Dienste (echte Sockets, Noise) und
+  auf jedem Gerät der echte calld-`Service` mit Fake-Leitung und Fake-Klang. Klingeln,
+  Annehmen auf dem Schreibtisch, sechs Markierungs-Samples in **beide** Richtungen in
+  Reihenfolge, Auflegen vom Schreibtisch, zweiter Anruf, Auflegen vom Handy.
+* `ultar-call/tests/mesh_relay.rs` (7), `ultar-notifyd/tests/mirror.rs`,
+  `ultar-mediad/tests/there.rs` (zwei echte mediad-Prozesse), `ultar-desktop/tests/calls.rs`,
+  `ultar-settings/tests/mesh.rs`.
 
-* `wire.rs`: `Call`/`CallAnswer`/`CallEnd`/`CallAudio`/`Note` überleben den Draht.
-* `audio_link.rs`: feste Größe + Round-Trip, Reihenfolge + Fade bei Lücken, verspäteter
-  Rahmen wird verworfen.
-* `tests/calls.rs` (zwei Knoten, echt verdrahtet wie zwei Geräte):
-  * ohne Recht klingelt nichts,
-  * klingeln → annehmen auf dem Schreibtisch → Ton in **beiden** Richtungen in
-    Reihenfolge (mit Markierungs-Samples) → auflegen von **jeder** Seite,
-  * vertraulicher Hinweis geht nie raus; normaler kommt mit Feldern und Flag an,
-  * Rahmen falscher Größe wird verworfen.
-* `cargo test -p ultar-bus -p ultar-mesh` grün; `cargo fmt` und `clippy -D warnings`
-  sauber.
+## Offen und ehrlich
 
-## Offen (nächste Schritte)
-
-1. **`calld` anbinden** (`system/services/ultar-call`): bei eingehendem Anruf
-   `mesh.call_offer` an erreichbare Geräte; „das erste Gerät, das annimmt, bekommt das
-   Gespräch“ liegt in `calld` (es beendet die übrigen Angebote). Sprachrahmen
-   Handy ↔ Schreibtisch über `mesh.call_audio`/`mesh.call_audio`; das Handy behält die
-   SIM-/Id-Strecke. Jitter/PLC liefert `audio_link::Jitter`.
-2. **Schreibtisch-Oberfläche** (`platform/ultar-desktop`): Banner für eingehenden Anruf
-   + Bedienelemente (stumm, laut, auflegen) nach `design/boards/project/PhoneInCall`,
-   an den Schreibtisch angepasst; gespiegelte Hinweise in das lokale `notifyd` mit
-   Quell-Gerät.
-3. **„Dort weiterspielen“** (`ultar-mediad`): gekoppelte Geräte mit `AudioOut` als
-   Ausgang anbieten; Media-Audio über das Mesh (`Right::Audio` für reines Abspielen).
-4. **`bus-policy.toml`**: die neuen `publish`- und `call`-Einträge für `system.mesh`,
-   `system.calld`, `system.notifyd` und `system.shell` eintragen (Datei liegt außerhalb
-   der erlaubten Dateien dieses Pakets).
-5. **Einstellungen** (`apps/ultar-settings`): das neue Recht auf der Mesh-Seite als
-   Schalter (arabisch zuerst).
-6. **Echo** gegen einen echten Raum testen; audiod bietet keinen Echo-Canceller – für
-   den Schreibtisch-Freisprech-Fall dokumentieren/ergänzen.
-
-Die Meshs-Schicht ist der gesicherte Unterbau dafür; die Dienste binden sich über den
-Bus-Vertrag an, ohne das Protokoll zu sehen.
+1. **Echo**: audiod ist nur Steuerung, es gibt keinen Echo-Canceller. Freisprechen am
+   Schreibtisch kann Echo erzeugen; mit Kopfhörer kein Problem. Nicht gelöst.
+2. **SIM-Sprachpfad**: kein Modem-PCM-Pfad im System; der SIM-Tap ist nur mit Fakes
+   getestet, nicht auf echter Hardware.
+3. **Kein Opus**: PCM kostet etwa 768 kbit/s je Richtung; für WLAN/LAN ok, für schwache
+   Funkstrecken nicht.
+4. **Hardware**: nichts davon lief auf echten Geräten/Mikrofonen; alles mit Fakes und
+   echten lokalen Sockets.
+5. **Sperrzustand** siehe oben; **Lautsprecher-Taste** und **Video** fehlen.
+6. **Kollision** „dort abspielen“ gegen laufenden Anruf auf demselben Klanggerät.

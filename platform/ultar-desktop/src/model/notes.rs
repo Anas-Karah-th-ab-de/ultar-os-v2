@@ -50,6 +50,8 @@ pub struct Notes {
     pub visual_alert: bool,
     /// A flash is owed (a banner appeared while `visual_alert` is on).
     flash: bool,
+    /// Month shown by the calendar and the selected day index.
+    pub calendar: Option<(super::calendar::Month, usize)>,
 }
 
 impl Notes {

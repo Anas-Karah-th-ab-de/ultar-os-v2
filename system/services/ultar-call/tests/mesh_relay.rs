@@ -87,23 +87,15 @@ fn state(peers: Vec<Peer>) -> MeshState {
     }
 }
 
-fn rig(tag: &str, with_cellular_tap: bool) -> Rig {
-    let path = std::env::temp_dir().join(format!("umesh-relay-{}-{tag}.sock", std::process::id()));
-    let auth = Arc::new(FixedIdentity::new(Identity::new("test.peer").unwrap()));
-    let broker = Broker::builder(Policy::allow_all())
-        .listen(&path, auth)
-        .start()
-        .unwrap();
-    let connect = |name: &str| Client::connect(&path, ClientOptions::named(name)).unwrap();
-    let stop = Arc::new(AtomicBool::new(false));
-    let mut workers = Vec::new();
-
-    // The stand-in mesh service.
-    let log = Arc::new(Mutex::new(Log::default()));
-    let mesh = connect("mesh");
+/// The stand-in mesh service: records what is asked of it and takes the devices of log.takes.
+fn stand_in_mesh(
+    mesh: Client,
+    stop: Arc<AtomicBool>,
+    log: Arc<Mutex<Log>>,
+) -> thread::JoinHandle<()> {
     let endpoint = mesh.register("mesh").unwrap();
-    let (flag, record) = (stop.clone(), log.clone());
-    workers.push(thread::spawn(move || {
+    let (flag, record) = (stop, log);
+    thread::spawn(move || {
         // The connection lives as long as the stand-in does (the service ends with it).
         let _mesh = mesh;
         while !flag.load(Ordering::SeqCst) {
@@ -153,7 +145,23 @@ fn rig(tag: &str, with_cellular_tap: bool) -> Rig {
                 _ => {}
             }
         }
-    }));
+    })
+}
+
+fn rig(tag: &str, with_cellular_tap: bool) -> Rig {
+    let path = std::env::temp_dir().join(format!("umesh-relay-{}-{tag}.sock", std::process::id()));
+    let auth = Arc::new(FixedIdentity::new(Identity::new("test.peer").unwrap()));
+    let broker = Broker::builder(Policy::allow_all())
+        .listen(&path, auth)
+        .start()
+        .unwrap();
+    let connect = |name: &str| Client::connect(&path, ClientOptions::named(name)).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut workers = Vec::new();
+
+    // The stand-in mesh service.
+    let log = Arc::new(Mutex::new(Log::default()));
+    workers.push(stand_in_mesh(connect("mesh"), stop.clone(), log.clone()));
 
     // The call service with a fake line and fake sound devices.
     let (fake, line) = FakeLine::new(&[Way::Ultar, Way::Cellular(1)]);
@@ -335,6 +343,53 @@ fn nothing_is_offered_when_the_mesh_is_off_or_a_mobile_call_cannot_be_carried() 
     );
 }
 
+/// The microphone of the call goes to the tablet in order.
+fn the_microphone_goes_to_the_tablet(r: &Rig, tablet_offer: u64) {
+    for mark in 1..=4i16 {
+        r.ultar.speak(vec![mark; FRAME]);
+    }
+    until("four frames sent", || r.sent().len() == 4);
+    let sent = r.sent();
+    assert!(sent
+        .iter()
+        .all(|(d, id, ..)| d == "tablet" && *id == tablet_offer));
+    assert_eq!(
+        sent.iter()
+            .map(|(_, _, seq, v)| (*seq, *v))
+            .collect::<Vec<_>>(),
+        [(0, 1), (1, 2), (2, 3), (3, 4)]
+    );
+}
+
+/// The tablet's voice (one frame lost, one late) plays in order into the call.
+fn the_tablets_voice_plays_in_order(r: &Rig, tablet_offer: u64) {
+    for (seq, mark) in [(0u64, 11i16), (1, 12), (3, 14), (4, 15), (5, 16), (6, 17)] {
+        r.pcm(tablet_offer, seq, mark);
+    }
+    r.pcm(999, 0, 99); // another call's voice is not played
+    until("the voice was heard", || {
+        r.ultar
+            .heard()
+            .iter()
+            .filter(|f| f.iter().any(|s| *s != 0))
+            .count()
+            >= 6
+    });
+    let heard: Vec<i16> = r
+        .ultar
+        .heard()
+        .iter()
+        .filter(|f| f[0] != 0)
+        .map(|f| f[0])
+        .collect();
+    assert_eq!(heard[..2], [11, 12]);
+    assert_eq!(
+        heard[2], 6,
+        "the lost frame repeats the last one at half volume"
+    );
+    assert!(!heard.contains(&99));
+}
+
 #[test]
 fn the_first_device_that_answers_takes_the_call_and_the_voice_flows_in_order() {
     let r = rig("first", true);
@@ -374,48 +429,8 @@ fn the_first_device_that_answers_takes_the_call_and_the_voice_flows_in_order() {
     assert_eq!(r.calls().calls[0].id, call);
     assert_eq!(r.ultar.calls().0, 1, "the voice is bridged");
 
-    // The microphone of the call goes to the tablet in order.
-    for mark in 1..=4i16 {
-        r.ultar.speak(vec![mark; FRAME]);
-    }
-    until("four frames sent", || r.sent().len() == 4);
-    let sent = r.sent();
-    assert!(sent
-        .iter()
-        .all(|(d, id, ..)| d == "tablet" && *id == tablet_offer));
-    assert_eq!(
-        sent.iter()
-            .map(|(_, _, seq, v)| (*seq, *v))
-            .collect::<Vec<_>>(),
-        [(0, 1), (1, 2), (2, 3), (3, 4)]
-    );
-
-    // The tablet's voice (one frame lost, one late) plays in order into the call.
-    for (seq, mark) in [(0u64, 11i16), (1, 12), (3, 14), (4, 15), (5, 16), (6, 17)] {
-        r.pcm(tablet_offer, seq, mark);
-    }
-    r.pcm(999, 0, 99); // another call's voice is not played
-    until("the voice was heard", || {
-        r.ultar
-            .heard()
-            .iter()
-            .filter(|f| f.iter().any(|s| *s != 0))
-            .count()
-            >= 6
-    });
-    let heard: Vec<i16> = r
-        .ultar
-        .heard()
-        .iter()
-        .filter(|f| f[0] != 0)
-        .map(|f| f[0])
-        .collect();
-    assert_eq!(heard[..2], [11, 12]);
-    assert_eq!(
-        heard[2], 6,
-        "the lost frame repeats the last one at half volume"
-    );
-    assert!(!heard.contains(&99));
+    the_microphone_goes_to_the_tablet(&r, tablet_offer);
+    the_tablets_voice_plays_in_order(&r, tablet_offer);
 }
 
 #[test]
@@ -505,6 +520,33 @@ fn a_lost_link_leaves_the_call_on_the_phone() {
     );
 }
 
+/// The desk's microphone goes to the phone; muted, nothing leaves.
+fn the_desks_microphone_can_be_muted(
+    r: &Rig,
+    state_sub: &ultar_bus::TypedSubscription<MeshCallState>,
+    led: &mut Option<MeshCallState>,
+) {
+    // The desk's microphone goes to the phone.
+    r.guest.speak(vec![5; FRAME]);
+    until("a frame sent", || r.sent().len() == 1);
+    assert_eq!(r.sent()[0], ("phone".to_owned(), 7, 0, 5));
+    // Mute: the microphone is read but nothing goes out.
+    let ok = r.app.call(&CallMeshMute { on: true }, WAIT).unwrap();
+    assert!(ok.ok);
+    until("muted is announced", || {
+        while let Ok(Some(s)) = state_sub.try_recv() {
+            *led = Some(s);
+        }
+        led.as_ref().is_some_and(|s| s.muted)
+    });
+    r.guest.speak(vec![6; FRAME]);
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(r.sent().len(), 1, "muted: nothing leaves the desk");
+    r.app.call(&CallMeshMute { on: false }, WAIT).unwrap();
+    r.guest.speak(vec![7; FRAME]);
+    until("unmuted", || r.sent().len() == 2);
+}
+
 #[test]
 fn a_guest_carries_the_voice_mutes_and_lets_go() {
     let r = rig("guest", true);
@@ -534,25 +576,7 @@ fn a_guest_carries_the_voice_mutes_and_lets_go() {
         Some(("phone", false))
     );
 
-    // The desk's microphone goes to the phone.
-    r.guest.speak(vec![5; FRAME]);
-    until("a frame sent", || r.sent().len() == 1);
-    assert_eq!(r.sent()[0], ("phone".to_owned(), 7, 0, 5));
-    // Mute: the microphone is read but nothing goes out.
-    let ok = r.app.call(&CallMeshMute { on: true }, WAIT).unwrap();
-    assert!(ok.ok);
-    until("muted is announced", || {
-        while let Ok(Some(s)) = state_sub.try_recv() {
-            led = Some(s);
-        }
-        led.as_ref().is_some_and(|s| s.muted)
-    });
-    r.guest.speak(vec![6; FRAME]);
-    thread::sleep(Duration::from_millis(150));
-    assert_eq!(r.sent().len(), 1, "muted: nothing leaves the desk");
-    r.app.call(&CallMeshMute { on: false }, WAIT).unwrap();
-    r.guest.speak(vec![7; FRAME]);
-    until("unmuted", || r.sent().len() == 2);
+    the_desks_microphone_can_be_muted(&r, &state_sub, &mut led);
     // The phone's voice plays on the desk's speaker.
     for seq in 0..5u64 {
         r.pcm(7, seq, 20 + seq as i16);

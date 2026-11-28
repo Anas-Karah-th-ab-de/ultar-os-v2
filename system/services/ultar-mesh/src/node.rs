@@ -166,13 +166,10 @@ pub struct Node {
     pub(crate) activity: Option<Activity>,
     pub(crate) reported: BTreeMap<String, Activity>,
     pub(crate) offers: Offers,
-    pub(crate) clip_seq: u64,
-    pub(crate) clip_remote: Option<String>,
     pub(crate) clip: crate::clip_share::ClipState,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
     pub(crate) calls: crate::calls::Calls,
-    pub(crate) media: crate::media_link::Media,
 }
 
 impl Node {
@@ -181,7 +178,6 @@ impl Node {
         let id = device::id_of(key);
         Self {
             calls: crate::calls::Calls::salted(&id),
-            media: crate::media_link::Media::salted(&id),
             id,
             key: key.to_owned(),
             config,
@@ -192,8 +188,6 @@ impl Node {
             activity: None,
             reported: BTreeMap::new(),
             offers: Offers::default(),
-            clip_seq: 0,
-            clip_remote: None,
             clip: crate::clip_share::ClipState::default(),
             thinking: 0,
             serving: 0,
@@ -282,7 +276,7 @@ impl Node {
         }
         let mut effects = self.drop_offers(peer);
         effects.extend(self.calls.peer_down(peer));
-        effects.extend(self.media.peer_down(peer));
+        effects.extend(self.calls.media.peer_down(peer));
         effects.push(Effect::Changed);
         effects
     }

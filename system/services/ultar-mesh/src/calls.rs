@@ -57,6 +57,7 @@ pub(crate) struct Calls {
     out: BTreeMap<u64, String>,
     incoming: BTreeMap<u64, Incoming>,
     note_seq: u64,
+    pub(crate) media: crate::media_link::Media,
 }
 
 impl Calls {
@@ -68,6 +69,7 @@ impl Calls {
         });
         Calls {
             next: u64::from(salt) << 32,
+            media: crate::media_link::Media::salted(device_id),
             ..Calls::default()
         }
     }

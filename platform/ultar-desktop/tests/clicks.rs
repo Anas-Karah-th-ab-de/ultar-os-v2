@@ -437,14 +437,14 @@ fn calendar_grid(a: &str, h: &mut Harness) -> bool {
                 })
                 .actions;
             h.dispatch_popup(actions);
-            matches!(h.shell.d.calendar, Some((_, 29)))
+            matches!(h.shell.d.notes.calendar, Some((_, 29)))
         }
         "cal.month" => {
             h.click_popup(Target::NextMonth);
-            let next = h.shell.d.calendar.map(|c| c.0.month) == Some(12);
+            let next = h.shell.d.notes.calendar.map(|c| c.0.month) == Some(12);
             h.click_popup(Target::PrevMonth);
             h.click_popup(Target::PrevMonth);
-            next && h.shell.d.calendar.map(|c| c.0.month) == Some(10)
+            next && h.shell.d.notes.calendar.map(|c| c.0.month) == Some(10)
         }
         // The day's appointments (calendar.day); a click opens one in the Calendar app.
         "cal.event" => {

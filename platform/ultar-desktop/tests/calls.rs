@@ -9,12 +9,12 @@ use common::shots::*;
 use common::*;
 use ultar_bus::messages::mesh_calls::{CallIncoming, CallPhase, CallProgress, MeshCallState};
 use ultar_bus::messages::notify::{Body, Category, Post, Posted, Urgency};
+use ultar_bus::{Text, TextArg};
 use ultar_desktop::model::calls;
 use ultar_desktop::model::services::Call;
 use ultar_desktop::shell::Effect;
 use ultar_i18n::Lang;
 use ultar_ui::tokens::ThemeKind;
-use ultar_bus::{Text, TextArg};
 
 fn offer(id: u64) -> CallIncoming {
     CallIncoming {
@@ -69,14 +69,19 @@ fn a_call_rings_is_answered_led_muted_and_hung_up_from_the_desktop() {
     let id = ring_id(&h);
     let answer = h.shell.note_action(id, index(&h, id, "answer"));
     assert_eq!(services(&answer.effects), [Call::CallAnswer(5, true)]);
-    assert!(h.shell.d.notes.banners(BOARD_MS).is_empty(), "answered: no ring");
+    assert!(
+        h.shell.d.notes.banners(BOARD_MS).is_empty(),
+        "answered: no ring"
+    );
 
     // The call service says it leads the call: the controls appear.
     calls::led(&mut h.shell.d, &led(5, false), BOARD_MS);
     let controls = h.shell.d.notes.banners(BOARD_MS);
     assert_eq!(controls.len(), 1);
     assert_eq!(controls[0].urgency, Urgency::High, "it stays");
-    let mute = h.shell.note_action(calls::ACTIVE, index(&h, calls::ACTIVE, "mute"));
+    let mute = h
+        .shell
+        .note_action(calls::ACTIVE, index(&h, calls::ACTIVE, "mute"));
     assert_eq!(services(&mute.effects), [Call::CallMute(true)]);
     calls::led(&mut h.shell.d, &led(5, true), BOARD_MS);
     let unmute = h
@@ -140,7 +145,13 @@ fn every_text_of_the_call_banners_exists_in_every_language() {
 }
 
 /// The banners over the desktop's ground, as the compositor would draw them.
-fn shot(name: &str, lang: Lang, theme: ThemeKind, fill: impl Fn(&mut Harness), p: &mut Vec<String>) {
+fn shot(
+    name: &str,
+    lang: Lang,
+    theme: ThemeKind,
+    fill: impl Fn(&mut Harness),
+    p: &mut Vec<String>,
+) {
     let mut h = Harness::new(lang, theme);
     fill(&mut h);
     let mut img = blank_of(theme, SCREEN);

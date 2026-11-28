@@ -19,7 +19,7 @@ use ultar_bus::messages::media::{Button, Command};
 use ultar_bus::messages::mesh::{Done, MeshState};
 use ultar_bus::messages::mesh_media::{
     MediaControl, MediaCtl, MediaCtlOut, MediaIncoming, MediaOpen, MediaPcmIn, MediaPcmOut,
-    MediaProgress, SetThere, ThereOutput, ThereReply, TherePause, TherePush, ThereState,
+    MediaProgress, SetThere, ThereOutput, TherePause, TherePush, ThereReply, ThereState,
     ThereVolume,
 };
 use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
@@ -177,7 +177,9 @@ impl MediaService {
                 .decode::<ThereVolume>()
                 .map(|c| self.volume(c.percent.min(100), bus))
         } else {
-            request.decode::<TherePause>().map(|c| self.pause(c.on, bus))
+            request
+                .decode::<TherePause>()
+                .map(|c| self.pause(c.on, bus))
         };
         match ok {
             Ok(ok) => {
@@ -216,7 +218,12 @@ impl MediaService {
         if !self.there.outputs.iter().any(|o| o.device == device) {
             return false;
         }
-        if self.there.active.as_ref().is_some_and(|a| a.device == device) {
+        if self
+            .there
+            .active
+            .as_ref()
+            .is_some_and(|a| a.device == device)
+        {
             return true;
         }
         self.stop_active(bus);
@@ -268,7 +275,11 @@ impl MediaService {
     }
 
     fn pause(&mut self, on: bool, bus: &Bus<'_, Self>) -> bool {
-        let ctl = if on { MediaCtl::Pause } else { MediaCtl::Resume };
+        let ctl = if on {
+            MediaCtl::Pause
+        } else {
+            MediaCtl::Resume
+        };
         if let Some(a) = &self.there.active {
             self.there.paused = on;
             let out = MediaCtlOut {
@@ -296,9 +307,11 @@ impl MediaService {
         if event.topic == MeshState::TOPIC {
             if let Ok(state) = event.decode::<MeshState>() {
                 self.there.outputs = there::outputs(&state);
-                let gone = self.there.active.as_ref().is_some_and(|a| {
-                    !self.there.outputs.iter().any(|o| o.device == a.device)
-                });
+                let gone = self
+                    .there
+                    .active
+                    .as_ref()
+                    .is_some_and(|a| !self.there.outputs.iter().any(|o| o.device == a.device));
                 if gone {
                     self.there.active = None;
                     self.there.paused = false;

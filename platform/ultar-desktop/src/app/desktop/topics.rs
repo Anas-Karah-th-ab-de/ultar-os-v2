@@ -32,8 +32,18 @@ pub struct ServiceTopics {
     vpn: Option<TypedSubscription<VpnState>>,
     mesh: Option<TypedSubscription<MeshState>>,
     handoff: Option<TypedSubscription<HandoffProgress>>,
+    agent: AgentTopics,
+    phone: CallTopics,
+}
+
+/// The helper's reports.
+struct AgentTopics {
     helper: Option<TypedSubscription<ultar_bus::messages::agent::AgentState>>,
     progress: Option<TypedSubscription<ultar_bus::messages::agent::Progress>>,
+}
+
+/// The calls of the person's other devices.
+struct CallTopics {
     ringing: Option<TypedSubscription<CallIncoming>>,
     ring_end: Option<TypedSubscription<CallProgress>>,
     led: Option<TypedSubscription<MeshCallState>>,
@@ -66,11 +76,15 @@ impl ServiceTopics {
             vpn: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
             handoff: client.subscribe().ok(),
-            helper: client.subscribe().ok(),
-            progress: client.subscribe().ok(),
-            ringing: client.subscribe().ok(),
-            ring_end: client.subscribe().ok(),
-            led: client.subscribe().ok(),
+            agent: AgentTopics {
+                helper: client.subscribe().ok(),
+                progress: client.subscribe().ok(),
+            },
+            phone: CallTopics {
+                ringing: client.subscribe().ok(),
+                ring_end: client.subscribe().ok(),
+                led: client.subscribe().ok(),
+            },
         }
     }
 
@@ -97,20 +111,24 @@ impl ServiceTopics {
         crate::model::mesh::report(d, &progress, now);
         let overview = &mut d.overview;
         let (sources, helper) = (&mut overview.sources, &mut overview.helper);
-        any |= drain(&self.helper, |m| {
+        any |= drain(&self.agent.helper, |m| {
             sources.helper = true;
             helper.brain = Some(m.brain);
         });
-        any |= drain(&self.progress, |m| {
+        any |= drain(&self.agent.progress, |m| {
             helper.progress(m);
         });
         let notes = &mut d.notes;
         any |= drain(&self.dismissed, |m| {
             notes.dismiss(m.id);
         });
-        any |= drain(&self.ringing, |m| crate::model::calls::incoming(d, m, now));
-        any |= drain(&self.ring_end, |m| crate::model::calls::progress(d, &m));
-        any |= drain(&self.led, |m| crate::model::calls::led(d, &m, now));
+        any |= drain(&self.phone.ringing, |m| {
+            crate::model::calls::incoming(d, m, now)
+        });
+        any |= drain(&self.phone.ring_end, |m| {
+            crate::model::calls::progress(d, &m)
+        });
+        any |= drain(&self.phone.led, |m| crate::model::calls::led(d, &m, now));
         crate::model::calls::keep(d, now);
         let calendar = drain(&self.calendar, |_| {});
         follow_presence(d);

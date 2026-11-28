@@ -153,7 +153,11 @@ mod tests {
         let m = outgoing(&sms, Privacy::Normal).unwrap();
         assert_eq!((m.title.as_str(), m.text.as_str()), ("Samer", "hi"));
         assert!(!m.hide_on_locked && !m.confidential);
-        assert!(outgoing(&sms, Privacy::HideOnLocked).unwrap().hide_on_locked);
+        assert!(
+            outgoing(&sms, Privacy::HideOnLocked)
+                .unwrap()
+                .hide_on_locked
+        );
         // Interface texts only: nothing to carry.
         let keys = Post {
             title: Text::key("notify.update.ready"),

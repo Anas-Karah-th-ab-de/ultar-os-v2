@@ -102,12 +102,12 @@ impl Node {
                     .as_ref()
                     .is_some_and(|d| d.can(Capability::AudioOut))
         });
-        if !speaker || self.media.open_count() >= MAX_SESSIONS {
+        if !speaker || self.calls.media.open_count() >= MAX_SESSIONS {
             return (0, Vec::new());
         }
-        self.media.next += 1;
-        let id = self.media.next;
-        self.media.out.insert(id, device.to_owned());
+        self.calls.media.next += 1;
+        let id = self.calls.media.next;
+        self.calls.media.out.insert(id, device.to_owned());
         let frame = Frame::MediaOpen {
             id,
             title: cut(plain(title)),
@@ -119,7 +119,7 @@ impl Node {
     /// Sends one frame of the session `id` to `device`; refused for a wrong size or an
     /// unknown session.
     pub fn media_pcm(&mut self, device: &str, id: u64, seq: u64, pcm: &[u8]) -> Vec<Effect> {
-        let known = self.media.out.get(&id).is_some_and(|p| p == device);
+        let known = self.calls.media.out.get(&id).is_some_and(|p| p == device);
         if !known || !self.paired(device) || !audio_link::is_frame(pcm) {
             return Vec::new();
         }
@@ -136,15 +136,15 @@ impl Node {
     /// A control toward the other end of session `id` (`device` plays, or is the source).
     /// [`MediaCtl::Stop`] ends the session here too.
     pub fn media_ctl(&mut self, device: &str, id: u64, ctl: MediaCtl) -> Vec<Effect> {
-        let source = self.media.out.get(&id).is_some_and(|p| p == device);
-        let sink = self.media.sinks.contains(&(device.to_owned(), id));
+        let source = self.calls.media.out.get(&id).is_some_and(|p| p == device);
+        let sink = self.calls.media.sinks.contains(&(device.to_owned(), id));
         if !(source || sink) || !self.paired(device) {
             return Vec::new();
         }
         let mut effects = vec![Effect::Send(device.to_owned(), Frame::MediaCtl { id, ctl })];
         if ctl == MediaCtl::Stop {
-            self.media.out.remove(&id);
-            self.media.sinks.remove(&(device.to_owned(), id));
+            self.calls.media.out.remove(&id);
+            self.calls.media.sinks.remove(&(device.to_owned(), id));
             effects.push(ended(id, device));
         }
         effects
@@ -168,12 +168,12 @@ impl Node {
         let fits = title.len() <= MAX_TEXT && artist.len() <= MAX_TEXT;
         if !can
             || !fits
-            || self.media.sinks.contains(&key)
-            || self.media.open_count() >= MAX_SESSIONS
+            || self.calls.media.sinks.contains(&key)
+            || self.calls.media.open_count() >= MAX_SESSIONS
         {
             return Vec::new();
         }
-        self.media.sinks.insert(key);
+        self.calls.media.sinks.insert(key);
         let from_name = self
             .links
             .get(peer)
@@ -189,7 +189,7 @@ impl Node {
     }
 
     fn on_media_pcm(&mut self, peer: &str, id: u64, seq: u64, pcm: String) -> Vec<Effect> {
-        let known = self.media.sinks.contains(&(peer.to_owned(), id));
+        let known = self.calls.media.sinks.contains(&(peer.to_owned(), id));
         let sized = device::decode(&pcm).is_some_and(|b| audio_link::is_frame(&b));
         if !known || !sized {
             return Vec::new();
@@ -203,15 +203,15 @@ impl Node {
     }
 
     fn on_media_ctl(&mut self, peer: &str, id: u64, ctl: MediaCtl) -> Vec<Effect> {
-        let source = self.media.out.get(&id).is_some_and(|p| p == peer);
-        let sink = self.media.sinks.contains(&(peer.to_owned(), id));
+        let source = self.calls.media.out.get(&id).is_some_and(|p| p == peer);
+        let sink = self.calls.media.sinks.contains(&(peer.to_owned(), id));
         if !(source || sink) {
             return Vec::new();
         }
         let mut effects = Vec::new();
         if ctl == MediaCtl::Stop {
-            self.media.out.remove(&id);
-            self.media.sinks.remove(&(peer.to_owned(), id));
+            self.calls.media.out.remove(&id);
+            self.calls.media.sinks.remove(&(peer.to_owned(), id));
             effects.push(ended(id, peer));
         }
         effects.push(Effect::MediaControl(MediaControl {

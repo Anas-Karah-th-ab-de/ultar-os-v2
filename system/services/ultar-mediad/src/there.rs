@@ -299,7 +299,10 @@ mod tests {
         };
         let out = outputs(&state);
         assert_eq!(out.len(), 1);
-        assert_eq!((out[0].device.as_str(), out[0].name.as_str()), ("desk", "dev-desk"));
+        assert_eq!(
+            (out[0].device.as_str(), out[0].name.as_str()),
+            ("desk", "dev-desk")
+        );
         let off = MeshState {
             enabled: false,
             ..state
@@ -351,7 +354,10 @@ mod tests {
         assert!(card.open());
         card.play(&[1, -2]);
         card.close();
-        assert_eq!(std::fs::read(&path).unwrap(), [1, 0, 1, 0, 254, 255, 254, 255]);
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            [1, 0, 1, 0, 254, 255, 254, 255]
+        );
         assert!(!CardSink::new(dir.path().join("none")).open());
     }
 }

@@ -6,10 +6,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ultar_bus::messages::mesh::Done;
 use ultar_bus::messages::mesh_calls::{NoteMirror, NoteRemote};
-use ultar_bus::messages::notify::{Body, Category, Post, PostReply, Posted, Urgency};
+use ultar_bus::messages::notify::{Body, Category, Post, Posted, Urgency};
 use ultar_bus::messages::notify_mirror::{PostEx, Privacy};
 use ultar_bus::messages::session::SessionState;
-use ultar_bus::{BusError, Call, Client, ErrorCode, Text, TextArg};
+use ultar_bus::{BusError, Call, Client, ErrorCode, Text, TextArg, TypedSubscription};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 
 const POLICY: &str = r#"
@@ -132,46 +132,12 @@ fn what_leaves_is_what_may_leave() {
     assert_eq!(daemon.terminate(), Some(0));
 }
 
-#[test]
-fn what_arrives_names_its_device_and_respects_a_locked_screen() {
-    let world = World::new(
-        "mirror-in",
-        POLICY,
-        &["system.notifyd", "system.mesh", "system.session", "system.shell"],
-    );
-    let mut daemon = start(&world);
-    let shell = world.client("system.shell");
-    let posted = shell.subscribe::<Posted>().unwrap();
-    let from_mesh = world.client("system.mesh");
-    // Nobody is signed in yet: the device is locked. The first note asks to be hidden, the
-    // second only to be shown without content.
-    let publish_until_posted = |notes: &[NoteRemote]| {
-        let mut seen = None;
-        wait_until(WAIT, || {
-            for n in notes {
-                from_mesh.publish(n).unwrap();
-            }
-            seen = posted.recv_timeout(Duration::from_millis(300)).ok();
-            seen.is_some()
-        });
-        seen.unwrap()
-    };
-    let locked = publish_until_posted(&[
-        remote(true, "Samer", "secret"),
-        remote(false, "Samer", "secret"),
-    ]);
-    assert_eq!(locked.sender, "mesh");
-    assert_eq!(locked.post.title.key, "desk.note.mirror.locked");
-    assert_eq!(locked.post.title.args, [TextArg::Verbatim("Anas phone".into())]);
-    assert_eq!(locked.post.body, Body::Empty);
-    assert!(!format!("{locked:?}").contains("secret"));
-    assert_eq!(locked.post.urgency, Urgency::Normal, "it cannot alert");
-    // The hidden one never shows up, even later.
-    while let Ok(p) = posted.recv_timeout(Duration::from_millis(300)) {
-        assert_eq!(p.post.title.key, "desk.note.mirror.locked");
-    }
-
-    // Signed in: the content appears, with the device named.
+/// Signed in: the content appears, with the device named.
+fn signed_in_shows_the_content(
+    world: &World,
+    posted: &TypedSubscription<Posted>,
+    from_mesh: &Client,
+) {
     let session = world.client("system.session");
     session
         .publish(&SessionState {
@@ -198,6 +164,55 @@ fn what_arrives_names_its_device_and_respects_a_locked_screen() {
         ]
     );
     assert_eq!(shown.post.body, Body::Verbatim("hello".into()));
-    let _ = PostReply { id: shown.id };
+}
+
+#[test]
+fn what_arrives_names_its_device_and_respects_a_locked_screen() {
+    let world = World::new(
+        "mirror-in",
+        POLICY,
+        &[
+            "system.notifyd",
+            "system.mesh",
+            "system.session",
+            "system.shell",
+        ],
+    );
+    let mut daemon = start(&world);
+    let shell = world.client("system.shell");
+    let posted = shell.subscribe::<Posted>().unwrap();
+    let from_mesh = world.client("system.mesh");
+    // Nobody is signed in yet: the device is locked. The first note asks to be hidden, the
+    // second only to be shown without content.
+    let publish_until_posted = |notes: &[NoteRemote]| {
+        let mut seen = None;
+        wait_until(WAIT, || {
+            for n in notes {
+                from_mesh.publish(n).unwrap();
+            }
+            seen = posted.recv_timeout(Duration::from_millis(300)).ok();
+            seen.is_some()
+        });
+        seen.unwrap()
+    };
+    let locked = publish_until_posted(&[
+        remote(true, "Samer", "secret"),
+        remote(false, "Samer", "secret"),
+    ]);
+    assert_eq!(locked.sender, "mesh");
+    assert_eq!(locked.post.title.key, "desk.note.mirror.locked");
+    assert_eq!(
+        locked.post.title.args,
+        [TextArg::Verbatim("Anas phone".into())]
+    );
+    assert_eq!(locked.post.body, Body::Empty);
+    assert!(!format!("{locked:?}").contains("secret"));
+    assert_eq!(locked.post.urgency, Urgency::Normal, "it cannot alert");
+    // The hidden one never shows up, even later.
+    while let Ok(p) = posted.recv_timeout(Duration::from_millis(300)) {
+        assert_eq!(p.post.title.key, "desk.note.mirror.locked");
+    }
+
+    signed_in_shows_the_content(&world, &posted, &from_mesh);
     assert_eq!(daemon.terminate(), Some(0));
 }

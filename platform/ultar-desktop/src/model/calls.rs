@@ -240,7 +240,11 @@ mod tests {
     }
 
     fn title_of(d: &Desktop, id: u64) -> Option<Text> {
-        d.notes.list().iter().find(|n| n.id == id).map(|n| n.title.clone())
+        d.notes
+            .list()
+            .iter()
+            .find(|n| n.id == id)
+            .map(|n| n.title.clone())
     }
 
     #[test]
@@ -303,7 +307,10 @@ mod tests {
             muted: false,
         };
         led(&mut d, &state, 1);
-        assert!(d.calls.ringing.is_empty(), "answered: the ring banner is gone");
+        assert!(
+            d.calls.ringing.is_empty(),
+            "answered: the ring banner is gone"
+        );
         let title = title_of(&d, ACTIVE).unwrap();
         assert_eq!(
             (title.key.as_str(), title.args),
@@ -323,7 +330,14 @@ mod tests {
             Some(Call::CallMute(true))
         );
         // The call service reports the mute: the button turns into "unmute".
-        led(&mut d, &MeshCallState { muted: true, ..state.clone() }, 2);
+        led(
+            &mut d,
+            &MeshCallState {
+                muted: true,
+                ..state.clone()
+            },
+            2,
+        );
         assert_eq!(acts(&d), ["unmute", "hangup"]);
         assert_eq!(
             d.calls.pressed(ACTIVE, "unmute", &mut d.notes),
