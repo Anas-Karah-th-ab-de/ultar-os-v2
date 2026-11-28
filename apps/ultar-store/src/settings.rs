@@ -21,8 +21,14 @@ pub const WINDOW_FROM: &str = "updates.window.from";
 /// `updates.window.until` – end of the daily install window (`HH:MM`, UTC).
 pub const WINDOW_UNTIL: &str = "updates.window.until";
 
-/// Every setting the Store follows for app updates (read at start and on `settings.changed`).
-pub const KEYS: [&str; 4] = [AUTO_APPS, METERED, WINDOW_FROM, WINDOW_UNTIL];
+/// `apps.install_selection` – Store ids of the components chosen at the installation
+/// (written once by `ultar-firstboot`); the Store marks those not installed yet.
+pub const CHOSEN: &str = "apps.install_selection";
+/// Most chosen components taken (the schema's list limit).
+pub const MAX_CHOSEN: usize = 16;
+
+/// Every setting the Store follows (read at start and on `settings.changed`).
+pub const KEYS: [&str; 5] = [AUTO_APPS, METERED, WINDOW_FROM, WINDOW_UNTIL, CHOSEN];
 
 /// Minutes in a day.
 const DAY_MINUTES: u16 = 24 * 60;
@@ -38,6 +44,8 @@ pub struct AppUpdateSettings {
     pub window_from: u16,
     /// `updates.window.until` as minutes of the day (UTC).
     pub window_until: u16,
+    /// `apps.install_selection`: the components chosen at the installation.
+    pub chosen: Vec<String>,
 }
 
 impl Default for AppUpdateSettings {
@@ -47,6 +55,7 @@ impl Default for AppUpdateSettings {
             metered: false,
             window_from: 2 * 60,
             window_until: 5 * 60,
+            chosen: Vec::new(),
         }
     }
 }
@@ -99,6 +108,23 @@ impl AppUpdateSettings {
         }
     }
 
+    /// Takes a list setting (`apps.install_selection`); true when the key is it and every id
+    /// is a valid package id within the limit. Anything else is refused (the last value stays).
+    pub fn set_list(&mut self, key: &str, items: &[String]) -> bool {
+        let valid = |id: &String| {
+            !id.is_empty()
+                && id.len() <= 64
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b))
+        };
+        if key != CHOSEN || items.len() > MAX_CHOSEN || !items.iter().all(valid) {
+            return false;
+        }
+        self.chosen = items.to_vec();
+        true
+    }
+
     /// Takes one setting from the bus; true when it belongs to the Store and parses. A value
     /// of the wrong type or out of range is refused (the last good value stays).
     #[cfg(feature = "bus")]
@@ -107,6 +133,7 @@ impl AppUpdateSettings {
         match value {
             SettingValue::Flag(on) => self.set_flag(key, *on),
             SettingValue::Text(t) => self.set_text(key, t),
+            SettingValue::List(items) => self.set_list(key, items),
             _ => false,
         }
     }

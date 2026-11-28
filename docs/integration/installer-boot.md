@@ -48,8 +48,13 @@ binaries (the patch deletes the committed test binaries below).
    start after firstboot (`make-vmware.sh`); settingsd adopts the files at its start (init's `dirs`).
    `installer-e2e.py` checks the line (8 values from the defaults, nothing refused or damaged, selection
    written). Unit tests: right file per scope, settingsd's `Store::open` reads them without a notice, kept and
-   damaged files, refused values, hostile component text. **Open:** the Store does not read `selection.toml`
-   yet (shows/installs the chosen components when online).
+   damaged files, refused values, hostile component text. **The Store shows them (2026-11-28):** the chosen
+   components also go to the setting `apps.install_selection` (their Store catalogue ids,
+   `Component::catalog_id`, checked against the shipped catalogue in a test). The Store follows it like
+   `updates.*`: Discover names how many are still missing (info bar) and their cards carry the accent badge
+   "Chosen at installation"; each is installed from its app page with its rights shown (APP-RULES §3 – no
+   silent bulk install). The Store only reads the setting (`settings.get`, no new bus right); installed or
+   unknown ids drop out by themselves. `installer-e2e` expects 9 stored values.
 5. **authd is not in this base** (`wip/desktop-shell`). `ultar-firstboot` writes the account in authd's file
    format (`/data/ultar/auth/users`, header `#ultar-auth crc32=…`, `user <name> admin=1 display=<hex>
    password=<argon2id phc> pin=-`, owner 813 = authd's id there). The installer profile does not start authd

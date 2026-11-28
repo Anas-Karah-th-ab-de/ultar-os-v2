@@ -23,8 +23,8 @@ CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 WAIT = float(os.environ.get("WAIT", "900"))
 # Values the first start stores from the installer defaults (language, 2x keyboard, 2x time zone,
-# 2x accessibility, device name: firstboot_settings.rs)
-SETTINGS_STORED = 8
+# 2x accessibility, device name, chosen components: firstboot_settings.rs)
+SETTINGS_STORED = 9
 USER = os.environ.get("USER_NAME", "anas")
 FULL = "Anas Kara"
 PASSWORD = "km-Secret-2026"

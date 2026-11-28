@@ -73,6 +73,9 @@ pub(super) fn apps() -> Vec<SettingDef> {
             "ask",
         ),
         SettingDef::list("apps.autostart", P, TextFormat::AppId, 64),
+        // Store ids of the components chosen at the installation (`ultar-firstboot`); the
+        // Store marks those not installed yet. Read only by the Store, never set by it.
+        SettingDef::list("apps.install_selection", P, TextFormat::AppId, 16),
         // Rights per app (the launcher asks on first use, the answer lands here).
         SettingDef::flag("apps.right.<id>.camera", P, false),
         SettingDef::flag("apps.right.<id>.microphone", P, false),

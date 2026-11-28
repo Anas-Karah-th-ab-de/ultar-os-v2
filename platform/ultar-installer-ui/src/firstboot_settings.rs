@@ -1,6 +1,7 @@
 //! First start, part 2: the installer's other choices become settings and a selection record.
 //!
-//! * Language, keyboard, time zone, the two accessibility switches and the device name go into
+//! * Language, keyboard, time zone, the two accessibility switches, the device name and the
+//!   Store ids of the chosen components (`apps.install_selection`) go into
 //!   the store of the settings service (`ultar-settingsd`, `/data/ultar/settings`): each key is
 //!   resolved and its value checked against the seed schema, the file is chosen by the key's
 //!   scope (`system.toml` or `user-<user>.toml`), written atomically in the service's own format.
@@ -85,7 +86,21 @@ pub fn settings_from(a: &Answers) -> Vec<(&'static str, Value)> {
     if let Some(device) = a.get("device") {
         out.push(("sharing.device_name", Value::text(device)));
     }
+    if let Some(ids) = a.get("components") {
+        out.push(("apps.install_selection", Value::List(catalog_ids(ids))));
+    }
     out
+}
+
+/// The Store catalogue ids of the component ids in `list` (`a,b,c`), unknown ids left out,
+/// each once, in the installer's order.
+pub fn catalog_ids(list: &str) -> Vec<String> {
+    use crate::components::Component;
+    Component::ALL
+        .iter()
+        .filter(|c| list.split(',').any(|id| id == c.id()))
+        .map(|c| c.catalog_id().to_owned())
+        .collect()
 }
 
 /// The installer's keyboard id as (switch list, active layout) of the settings schema.
@@ -300,7 +315,7 @@ mod tests {
             report.refused.is_empty() && report.damaged.is_empty(),
             "{report:?}"
         );
-        assert_eq!(report.stored.len(), 8);
+        assert_eq!(report.stored.len(), 9);
         let system = read(&dir, SYSTEM_FILE);
         assert_eq!(
             system.values.get("datetime.timezone.name"),
@@ -319,6 +334,10 @@ mod tests {
         assert_eq!(
             user.values.get("accessibility.large_text"),
             Some(&Value::Bool(true))
+        );
+        assert_eq!(
+            user.values.get("apps.install_selection"),
+            Some(&Value::list(&["km-office", "assistant", "linux-programs"]))
         );
         // Every key sits in the file of its scope only.
         let registry = ultar_settingsd::seed::registry().unwrap();
@@ -435,6 +454,27 @@ mod tests {
             .unwrap()
             .contains("server"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_component_has_its_entry_in_the_store_catalogue() {
+        let catalogue: toml::Table =
+            include_str!("../../../apps/ultar-store/assets/ultar-catalog.toml")
+                .parse()
+                .unwrap();
+        let ids: Vec<&str> = catalogue["app"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["id"].as_str().unwrap())
+            .collect();
+        for c in crate::components::Component::ALL {
+            assert!(ids.contains(&c.catalog_id()), "{}", c.catalog_id());
+        }
+        assert_eq!(
+            catalog_ids("linux,bogus,office,office"),
+            ["km-office", "linux-programs"]
+        );
     }
 
     #[test]

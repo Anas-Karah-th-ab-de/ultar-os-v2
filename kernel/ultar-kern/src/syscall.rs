@@ -2944,6 +2944,21 @@ pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64
 /// Largest mapping (a language model file is mapped as a whole: tens of gigabytes).
 const MMAP_MAX: u64 = 1 << 36;
 
+/// The content of the file `fd` names for `mmap`: `-EBADF` for no file, `-EPERM` for executable
+/// pages of a file below a `noexec` mount (as Linux).
+fn mmap_file(fd: i64, prot: u64) -> Result<Arc<Vec<u8>>, i64> {
+    match with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
+        Some(FdKind::File { data, no_exec, .. }) => Some((data.clone(), *no_exec)),
+        _ => None,
+    })
+    .flatten()
+    {
+        Some((_, true)) if prot & PROT_EXEC != 0 => Err(-EPERM),
+        Some((d, _)) => Ok(d),
+        None => Err(-EBADF),
+    }
+}
+
 fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i64 {
     if len == 0 || len > MMAP_MAX {
         return -EINVAL;
@@ -2956,16 +2971,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         }
     }
     let data = if flags & 0x20 == 0 {
-        match with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
-            Some(FdKind::File { data, no_exec, .. }) => Some((data.clone(), *no_exec)),
-            _ => None,
-        })
-        .flatten()
-        {
-            // a file below a `noexec` mount is never mapped executable (as Linux: EPERM)
-            Some((_, true)) if prot & PROT_EXEC != 0 => return -EPERM,
-            Some((d, _)) => Some(d),
-            None => return -EBADF,
+        match mmap_file(fd, prot) {
+            Ok(d) => Some(d),
+            Err(e) => return e,
         }
     } else {
         None

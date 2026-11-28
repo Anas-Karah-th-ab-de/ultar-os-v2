@@ -68,6 +68,24 @@ impl Component {
         }
     }
 
+    /// The id of the component's entry in the Store catalogue (`apps/ultar-store/assets`).
+    pub fn catalog_id(self) -> &'static str {
+        match self {
+            Component::Office => "km-office",
+            Component::Developer => "coder",
+            Component::Media => "media",
+            Component::Communication => "communication",
+            Component::Mesh => "mesh",
+            Component::Assistant => "assistant",
+            Component::Linux => "linux-programs",
+            Component::Firefox => "firefox",
+            Component::Windows => "windows-programs",
+            Component::Android => "android-apps",
+            Component::Containers => "containers-server",
+            Component::Remote => "remote-access",
+        }
+    }
+
     /// Icon (ICONS.md).
     pub fn icon(self) -> IconId {
         match self {

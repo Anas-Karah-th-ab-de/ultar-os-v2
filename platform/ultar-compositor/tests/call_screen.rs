@@ -59,8 +59,16 @@ fn call_screen_needs_its_right() {
         .any(|(name, r)| *name == "ui.call-screen" && *r == Rights::CALL_SCREEN));
 }
 
-#[test]
-fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cannot_unlock() {
+/// A locked desktop (app window, lock screen) with a call screen on top.
+struct Locked {
+    comp: ultar_compositor::Compositor,
+    lock: Peer,
+    phone: Peer,
+    call: SurfaceId,
+    _app: Peer,
+}
+
+fn locked_with_call() -> Locked {
     let rights = Rights::LOCK_SCREEN.union(Rights::CALL_SCREEN);
     let mut comp = compositor(config_with(rights), &[(800, 600)]);
     let mut app = Peer::hello(&mut comp);
@@ -74,9 +82,32 @@ fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cann
         0x00ff00,
         "lock screen covers the app"
     );
-
     let mut phone = Peer::hello(&mut comp);
     let call = layer(&mut phone, &mut comp, 1, Role::CallScreen, 0x0000ff);
+    Locked {
+        comp,
+        lock,
+        phone,
+        call,
+        _app: app,
+    }
+}
+
+fn pointer_buttons(p: &mut Peer) -> usize {
+    p.take()
+        .iter()
+        .filter(|e| matches!(e, Event::PointerButton { .. }))
+        .count()
+}
+
+#[test]
+fn call_screen_is_a_band_above_the_lock() {
+    let Locked {
+        mut comp,
+        phone,
+        call,
+        ..
+    } = locked_with_call();
     let band = phone.last_configure(call).unwrap();
     assert_eq!(
         (band.width, band.height),
@@ -97,18 +128,23 @@ fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cann
         0x00ff00,
         "the lock's entry area stays visible"
     );
+}
 
+#[test]
+fn locked_call_screen_takes_pointer_in_the_band_only_and_no_keys() {
+    let Locked {
+        mut comp,
+        mut lock,
+        mut phone,
+        ..
+    } = locked_with_call();
     phone.take();
     lock.take();
     click(&mut comp, 400.0, 60.0);
     phone.pump(&mut comp);
-    let buttons = phone
-        .take()
-        .iter()
-        .filter(|e| matches!(e, Event::PointerButton { .. }))
-        .count();
     assert_eq!(
-        buttons, 2,
+        pointer_buttons(&mut phone),
+        2,
         "press and release in the band reach the call screen"
     );
 
@@ -116,19 +152,12 @@ fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cann
     click(&mut comp, 400.0, 400.0);
     phone.pump(&mut comp);
     lock.pump(&mut comp);
-    assert!(
-        !phone
-            .take()
-            .iter()
-            .any(|e| matches!(e, Event::PointerButton { .. })),
+    assert_eq!(
+        pointer_buttons(&mut phone),
+        0,
         "no tap of the entry area reaches the call screen"
     );
-    assert!(
-        lock.take()
-            .iter()
-            .any(|e| matches!(e, Event::PointerButton { .. })),
-        "the lock screen gets them"
-    );
+    assert!(pointer_buttons(&mut lock) > 0, "the lock screen gets them");
 
     key(&mut comp, 30, true);
     key(&mut comp, 30, false);
@@ -142,7 +171,18 @@ fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cann
         lock.take().iter().any(|e| matches!(e, Event::Key { .. })),
         "keys stay with the lock"
     );
+}
 
+#[test]
+fn call_screen_cannot_unlock_and_the_lock_returns_when_it_goes() {
+    let Locked {
+        mut comp,
+        mut lock,
+        mut phone,
+        call,
+        ..
+    } = locked_with_call();
+    lock.pump(&mut comp);
     phone.send(&Request::Unlock { surface: call });
     phone.pump(&mut comp);
     assert_eq!(phone.error(), Some(ErrorCode::Permission));
@@ -151,6 +191,7 @@ fn call_screen_is_a_band_above_the_lock_takes_pointer_there_but_no_keys_and_cann
     // When the call screen goes, the lock screen shows again.
     phone.send(&Request::DestroySurface { surface: call });
     phone.pump(&mut comp);
+    lock.pump(&mut comp);
     comp.render_now();
     assert_eq!(pixel(&comp, 400, 300), 0x00ff00);
 }

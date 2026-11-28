@@ -37,23 +37,26 @@ static ROOT: AtomicU64 = AtomicU64::new(0);
 static BASE0: AtomicU64 = AtomicU64::new(0);
 
 fn rd32(base: u64, off: u64) -> u32 {
-    // SICHERHEIT: `base` ist die von der DMAR-Tabelle genannte, identisch und ungepuffert abgebildete
+    // SAFETY: `base` ist die von der DMAR-Tabelle genannte, identisch und ungepuffert abgebildete
     // Registerseite der VT-d-Einheit; ausgerichteter 32-Bit-Zugriff.
     unsafe { core::ptr::read_volatile((base + off) as *const u32) }
 }
 fn rd64(base: u64, off: u64) -> u64 {
+    // SAFETY: `base` is the identity-mapped, uncached register page of the VT-d unit the DMAR names; aligned access.
     unsafe { core::ptr::read_volatile((base + off) as *const u64) }
 }
 fn wr32(base: u64, off: u64, v: u32) {
+    // SAFETY: `base` is the identity-mapped, uncached register page of the VT-d unit the DMAR names; aligned access.
     unsafe { core::ptr::write_volatile((base + off) as *mut u32, v) }
 }
 fn wr64(base: u64, off: u64, v: u64) {
+    // SAFETY: `base` is the identity-mapped, uncached register page of the VT-d unit the DMAR names; aligned access.
     unsafe { core::ptr::write_volatile((base + off) as *mut u64, v) }
 }
 
 fn zero_page() -> Option<u64> {
     let p = crate::mem::alloc_page_kernel()?;
-    // SICHERHEIT: frisch zugeteilte, identisch abgebildete Seite; auf null setzen vor Gebrauch.
+    // SAFETY: frisch zugeteilte, identisch abgebildete Seite; auf null setzen vor Gebrauch.
     unsafe { core::ptr::write_bytes(p as *mut u8, 0, 4096) };
     Some(p)
 }
@@ -72,10 +75,12 @@ fn build_slpt(ram_top: u64, levels: u32) -> Option<u64> {
         let mut lvl = levels;
         while lvl > 2 {
             let e = tbl + idx(gpa, lvl) * 8;
+            // SAFETY: the table pages come from `zero_page` (fresh, identity-mapped kernel pages); the index stays inside the 4 KiB page.
             let mut ent = unsafe { core::ptr::read_volatile(e as *const u64) };
             if ent & 1 == 0 {
                 let next = zero_page()?;
                 ent = next | 0b11; // Lesen+Schreiben, zeigt auf nächste Tabelle
+                // SAFETY: the table pages come from `zero_page` (fresh, identity-mapped kernel pages); the index stays inside the 4 KiB page.
                 unsafe { core::ptr::write_volatile(e as *mut u64, ent) };
             }
             tbl = ent & 0x000f_ffff_ffff_f000;
@@ -83,6 +88,7 @@ fn build_slpt(ram_top: u64, levels: u32) -> Option<u64> {
         }
         // Ebene 2: 2-MiB-Großseite (PS = Bit 7), Lesen+Schreiben, 1:1
         let e = tbl + idx(gpa, 2) * 8;
+        // SAFETY: the table pages come from `zero_page` (fresh, identity-mapped kernel pages); the index stays inside the 4 KiB page.
         unsafe { core::ptr::write_volatile(e as *mut u64, (gpa & !((2 << 20) - 1)) | (1 << 7) | 0b11) };
         gpa += 2 << 20;
     }
@@ -95,6 +101,7 @@ fn build_root(slpt: u64, aw: u64) -> Option<u64> {
     let ctx = zero_page()?; // eine Kontexttabelle, von allen Bussen geteilt (256 Einträge)
     for d in 0..256u64 {
         // Kontexteintrag: present | TT=00 (nur zweite Ebene) | SLPTPTR; obere 64: DID=1 | AW
+        // SAFETY: the table pages come from `zero_page` (fresh, identity-mapped kernel pages); the index stays inside the 4 KiB page.
         unsafe {
             core::ptr::write_volatile((ctx + d * 16) as *mut u64, slpt | 1);
             core::ptr::write_volatile((ctx + d * 16 + 8) as *mut u64, (1u64 << 8) | aw);
@@ -103,6 +110,7 @@ fn build_root(slpt: u64, aw: u64) -> Option<u64> {
     let root = zero_page()?;
     for b in 0..256u64 {
         // Wurzeleintrag je Bus: present | Zeiger auf die (geteilte) Kontexttabelle
+        // SAFETY: the table pages come from `zero_page` (fresh, identity-mapped kernel pages); the index stays inside the 4 KiB page.
         unsafe { core::ptr::write_volatile((root + b * 16) as *mut u64, ctx | 1) };
     }
     Some(root)
@@ -125,7 +133,7 @@ fn enable_unit(base: u64) -> Result<(), &'static str> {
     wr64(base, RTADDR, root);
     wr32(base, GCMD, SRTP);
     if !warte(base, RTPS) {
-        return Err("Wurzeltabelle nicht übernommen");
+        return Err("root table not taken over");
     }
     // Kontext-Zwischenspeicher global leeren (CCMD: ICC=Bit63, CIRG global=01b in Bit 62:61)
     wr64(base, CCMD, 1u64 << 63 | 1u64 << 61);
@@ -147,19 +155,16 @@ fn enable_unit(base: u64) -> Result<(), &'static str> {
     // Übersetzung einschalten
     wr32(base, GCMD, TE);
     if !warte(base, TES) {
-        return Err("Übersetzung nicht eingeschaltet");
+        return Err("translation not enabled");
     }
     Ok(())
 }
 
-/// DMAR lesen, zweite Ebene und Wurzeltabelle bauen, alle Einheiten einschalten. Nach `pci::scan`,
-/// vor `bind_all` (bevor Treiber mit DMA beginnen). `ram_top` = oberste Adresse des nutzbaren RAM.
-pub fn init(rsdp: u64, ram_top: u64) {
-    // SICHERHEIT: find_table liest nur die von der Firmware übergebenen ACPI-Tabellen.
-    let Some(t) = (unsafe { crate::apic::find_table(rsdp, b"DMAR") }) else {
-        crate::kprintln!("[iommu] kein DMAR – ohne DMA-Schutz (kein VT-d)");
-        return;
-    };
+/// The register bases of the DMAR's remapping units (at most 8), their number and the
+/// capability register of the first one.
+fn units(t: u64) -> ([u64; 8], usize, u64) {
+    // SAFETY: `t` ist die von der Firmware übergebene DMAR-Tabelle; gelesen wird nur innerhalb
+    // ihrer eigenen Länge.
     let len = unsafe { core::ptr::read_unaligned((t + 4) as *const u32) } as u64;
 
     // Erste Einheit lesen, um Fähigkeiten (Adressbreite, Registerbasis) zu bestimmen.
@@ -169,6 +174,7 @@ pub fn init(rsdp: u64, ram_top: u64) {
     let mut bases = [0u64; 8];
     let mut n = 0usize;
     while off + 4 <= len && n < bases.len() {
+        // SAFETY: reads inside the firmware DMAR table, bounded by its own length field.
         let typ = unsafe { core::ptr::read_unaligned((t + off) as *const u16) };
         let slen = unsafe { core::ptr::read_unaligned((t + off + 2) as *const u16) } as u64;
         if slen == 0 {
@@ -176,6 +182,7 @@ pub fn init(rsdp: u64, ram_top: u64) {
         }
         if typ == 0 {
             // DRHD: Flags u8 (off+4), reserviert u8, Segment u16, Registerbasis u64 (off+8)
+            // SAFETY: reads inside the firmware DMAR table, bounded by its own length field.
             let base = unsafe { core::ptr::read_unaligned((t + off + 8) as *const u64) };
             if base != 0 {
                 crate::paging::map_identity(base & !0xfff, (base & !0xfff) + 0x1000, true);
@@ -188,8 +195,20 @@ pub fn init(rsdp: u64, ram_top: u64) {
         }
         off += slen;
     }
+    (bases, n, first_cap)
+}
+
+/// DMAR lesen, zweite Ebene und Wurzeltabelle bauen, alle Einheiten einschalten. Nach `pci::scan`,
+/// vor `bind_all` (bevor Treiber mit DMA beginnen). `ram_top` = oberste Adresse des nutzbaren RAM.
+pub fn init(rsdp: u64, ram_top: u64) {
+    // SAFETY: find_table liest nur die von der Firmware übergebenen ACPI-Tabellen.
+    let Some(t) = (unsafe { crate::apic::find_table(rsdp, b"DMAR") }) else {
+        crate::kprintln!("[iommu] no DMAR - no DMA protection (no VT-d)");
+        return;
+    };
+    let (bases, n, first_cap) = units(t);
     if n == 0 {
-        crate::kprintln!("[iommu] DMAR ohne Einheit – kein VT-d");
+        crate::kprintln!("[iommu] DMAR without a unit - no VT-d");
         return;
     }
     // Adressbreite aus SAGAW (CAP Bit 9 = 39 Bit/3 Ebenen, Bit 10 = 48 Bit/4 Ebenen) wählen
@@ -199,15 +218,15 @@ pub fn init(rsdp: u64, ram_top: u64) {
     } else if sagaw & (1 << 2) != 0 {
         (4u32, 0b010u64)
     } else {
-        crate::kprintln!("[iommu] keine unterstützte Adressbreite (SAGAW {sagaw:#x}) – kein VT-d");
+        crate::kprintln!("[iommu] no supported address width (SAGAW {sagaw:#x}) - no VT-d");
         return;
     };
     let Some(slpt) = build_slpt(ram_top, levels) else {
-        crate::kprintln!("[iommu] kein Speicher für Seitentabellen – kein VT-d");
+        crate::kprintln!("[iommu] no memory for page tables - no VT-d");
         return;
     };
     let Some(root) = build_root(slpt, aw) else {
-        crate::kprintln!("[iommu] kein Speicher für die Wurzeltabelle – kein VT-d");
+        crate::kprintln!("[iommu] no memory for the root table - no VT-d");
         return;
     };
     ROOT.store(root, Ordering::Relaxed);
@@ -215,14 +234,14 @@ pub fn init(rsdp: u64, ram_top: u64) {
     for &base in &bases[..n] {
         match enable_unit(base) {
             Ok(()) => ok += 1,
-            Err(e) => crate::kprintln!("[iommu] Einheit {base:#x}: {e}"),
+            Err(e) => crate::kprintln!("[iommu] unit {base:#x}: {e}"),
         }
     }
     ON.store(ok > 0, Ordering::Relaxed);
     BASE0.store(bases[0], Ordering::Relaxed);
     let ver = rd32(bases[0], VER);
     crate::kprintln!(
-        "[iommu] VT-d {}.{}: {ok}/{n} Einheit(en) an, DMA-Schutz für RAM bis {} MiB ({}-Ebenen-Tabelle)",
+        "[iommu] VT-d {}.{}: {ok}/{n} unit(s) on, DMA protection for RAM up to {} MiB ({}-level table)",
         (ver >> 4) & 0xf,
         ver & 0xf,
         ram_top >> 20,
