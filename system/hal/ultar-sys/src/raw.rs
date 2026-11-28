@@ -316,3 +316,13 @@ pub fn unshare_namespaces(flags: usize) -> Result<(), Errno> {
     // the descriptor table of this process.
     check(unsafe { raw(nr::UNSHARE, [flags, 0, 0, 0, 0]) }).map(|_| ())
 }
+
+/// `unshare(CLONE_NEWUSER)`: the calling process gets a user namespace of its own (Linux; the
+/// Ultar kernel answers `EINVAL`). Only for a single-threaded caller (the kernel refuses
+/// otherwise). The id maps are written by [`crate::cellnet::enter_user_namespace`].
+pub fn unshare_user() -> Result<(), Errno> {
+    const CLONE_NEWUSER: usize = 0x1000_0000;
+    // SAFETY: a single integer argument, the one flag `CLONE_NEWUSER`: it changes which
+    // ids and capabilities the calling thread has, never memory or the descriptor table.
+    check(unsafe { raw(nr::UNSHARE, [CLONE_NEWUSER, 0, 0, 0, 0]) }).map(|_| ())
+}

@@ -4,10 +4,14 @@
 //! integration test of the engine.
 //!
 //! `shot <ultar-web-engine> <proxy> <address> <out.png> [width height]`
-//! (`<proxy>`: the first line `ultar-tor-port` prints)
+//! (`<proxy>`: the first line `ultar-tor-port` prints). With `unix:SOCKET` (the third line of
+//! `ultar-tor-port --unix SOCKET`) the host runs **in its page cell without network**: the socket
+//! is the only way out; the cell sees the folders of `ULTAR_SHOT_CELL_RO` (colon separated,
+//! default `/usr:/lib:/lib64:/bin:/etc/ssl:/etc/fonts`, the system libraries, the CA certificates and the font setup the host needs here) read-only.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use ultar_web::cell::CellSpec;
 use ultar_web::engine::remote::{HostConfig, RemoteEngine};
 use ultar_web::engine::{EngineEvent, FrameView, WebEngine};
 
@@ -24,7 +28,7 @@ fn main() -> Result<(), Failure> {
     };
     let work = std::env::temp_dir().join(format!("ultar-shot-{}", std::process::id()));
     std::fs::create_dir_all(work.join("profile"))?;
-    let config = HostConfig {
+    let mut config = HostConfig {
         program: PathBuf::from(program),
         cell: None,
         profile: work.join("profile"),
@@ -32,7 +36,30 @@ fn main() -> Result<(), Failure> {
         user_agent: "UltarWeb/0.8".into(),
         filter: None,
         proxy: Some(proxy.clone()),
+        proxy_socket: None,
     };
+    if let Some(socket) = proxy.strip_prefix("unix:") {
+        let socket = PathBuf::from(socket);
+        let engine_dir = socket.parent().ok_or("socket has no folder")?.to_path_buf();
+        let read_only = std::env::var("ULTAR_SHOT_CELL_RO")
+            .unwrap_or_else(|_| "/usr:/lib:/lib64:/bin:/etc/ssl:/etc/fonts".into())
+            .split(':')
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .collect();
+        let spec = CellSpec {
+            network: false,
+            read_only,
+            read_write: vec![engine_dir.clone(), work.clone()],
+            memory_mb: 2048,
+        };
+        spec.validate()?;
+        config.cell = Some(spec);
+        config.profile = engine_dir;
+        config.proxy = None;
+        config.proxy_socket = Some(socket);
+        println!("host in its page cell (no network), only way out: the Tor socket");
+    }
     let started = Instant::now();
     let mut engine = RemoteEngine::start(&config)?;
     println!("host ready after {:?}", started.elapsed());

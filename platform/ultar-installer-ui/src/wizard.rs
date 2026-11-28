@@ -196,8 +196,9 @@ pub struct Wizard {
     pub layout: DiskUse,
     /// Encryption.
     pub encryption: Encryption,
-    /// Full name, user name, device name.
-    pub account: [String; 3],
+    /// Full name, user name, device name and – optional – the PC's public SSH key for the
+    /// developer access (`ultar-sshd`, [`crate::ssh_key`]).
+    pub account: [String; 4],
     /// Password and passphrase as typed (memory only).
     pub secrets: Secrets,
     /// The erase box on the summary.
@@ -266,7 +267,12 @@ impl Wizard {
                 share: 40,
                 ..DiskUse::default()
             },
-            account: [String::new(), String::new(), "ultar-pc".to_owned()],
+            account: [
+                String::new(),
+                String::new(),
+                "ultar-pc".to_owned(),
+                String::new(),
+            ],
             ..Wizard::default()
         }
     }
@@ -278,6 +284,9 @@ impl Wizard {
             Step::Disk | Step::Encryption => self.disk_blocked(),
             Step::Account if !valid_name(&self.account[1]) => Some("installer.reason.user"),
             Step::Account if !valid_name(&self.account[2]) => Some("installer.reason.device"),
+            Step::Account if !crate::ssh_key::valid_or_empty(&self.account[3]) => {
+                Some("installer.reason.ssh_key")
+            }
             Step::Account => self.password_blocked(),
             Step::Summary if !self.erase_confirmed => Some("installer.reason.confirm"),
             Step::Summary if !matches!(self.plan, Some(Ok(_))) => Some("installer.reason.disk"),
@@ -497,6 +506,9 @@ impl Wizard {
         a.set("full_name", &self.account[0]);
         a.set("user", &self.account[1]);
         a.set("device", &self.account[2]);
+        if !self.account[3].trim().is_empty() {
+            a.set("ssh_key", self.account[3].trim());
+        }
         a.set(
             "disk_mode",
             ["whole", "beside", "manual"][self.layout.mode as usize],

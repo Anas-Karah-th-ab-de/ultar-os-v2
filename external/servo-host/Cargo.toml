@@ -25,6 +25,8 @@ euclid = "0.22"
 dpi = "0.1"
 url = "2"
 rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event", "pipe"] }
+# the page cell (src/cell): namespaces, mounts, loopback, capabilities – the safe calls of the HAL
+ultar-sys = { path = "../../system/hal/ultar-sys" }
 
 [dev-dependencies]
 # examples/shot.rs: a PNG of the frame. The Tor port comes from a separate process
