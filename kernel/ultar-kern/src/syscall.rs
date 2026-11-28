@@ -1657,7 +1657,10 @@ fn sys_readlink(dirfd: i64, path: u64, buf: u64, n: u64) -> i64 {
     // /proc/<pid>/exe (own process) and /proc/<pid>/ns/*; otherwise a symbolic link of the file tree
     let entry = if loc.host.starts_with("/proc/") { crate::procfs::pid_entry(&loc.host) } else { None };
     let own = |tgid: u64| tgid == proc::current_group();
+    // /proc/self is a link to the own number (as the reader's pid namespace counts)
+    let entry = if loc.host == "/proc/self" { Some((0, "self")) } else { entry };
     let t = match entry {
+        Some((_, "self")) => alloc::format!("{}", with(|p| shown(p, p.tgid)).unwrap_or(0)),
         Some((tgid, "exe")) if own(tgid) => with(|p| p.g.exe.clone()).unwrap_or_default(),
         Some((tgid, "cwd")) if own(tgid) => with(|p| p.g.cwd.clone()).unwrap_or_default(),
         Some((tgid, "root")) if own(tgid) => String::from("/"),
