@@ -2,6 +2,7 @@
  * of a file below a noexec mount never becomes executable. */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <pthread.h>
 #include <sched.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -10,6 +11,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -35,6 +38,53 @@ static int in_child(void (*fn)(void *), void *arg) {
 
 static void write_to(void *p) { *(volatile char *)p = 1; }
 static void call(void *p) { ((void (*)(void))p)(); }
+
+/* a thread that writes the page again and again (on another core when there is one) */
+static void *writer(void *p) {
+    for (volatile unsigned i = 0;; i++) *(volatile unsigned *)p = i;
+    return NULL;
+}
+
+/* the main thread takes the right away while the writer runs: the writer must fault at once
+ * (TLB shootdown), not go on through the translation its core cached */
+static void shootdown(void *unused) {
+    (void)unused;
+    unsigned *p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    pthread_t t;
+    if (p == MAP_FAILED || pthread_create(&t, NULL, writer, p) != 0) _exit(2);
+    unsigned before = 0;
+    while ((before = *p) < 1000) sched_yield();
+    mprotect(p, 4096, PROT_READ);
+    /* the writer is on another core: no switch of address space flushes its TLB */
+    for (long i = 0; i < 2000000000L; i++) __asm__ volatile("pause");
+    _exit(0);
+}
+
+/* sendmsg with SCM_CREDENTIALS (pid, uid, gid); the result or -errno */
+static int send_creds(int fd, pid_t pid, uid_t uid, gid_t gid) {
+    char byte = 'x';
+    struct iovec io = {&byte, 1};
+    union { struct cmsghdr h; char b[CMSG_SPACE(sizeof(struct ucred))]; } c;
+    memset(&c, 0, sizeof c);
+    struct msghdr m = {0};
+    m.msg_iov = &io, m.msg_iovlen = 1, m.msg_control = c.b, m.msg_controllen = sizeof c.b;
+    struct cmsghdr *h = CMSG_FIRSTHDR(&m);
+    h->cmsg_level = SOL_SOCKET, h->cmsg_type = SCM_CREDENTIALS, h->cmsg_len = CMSG_LEN(sizeof(struct ucred));
+    struct ucred u = {pid, uid, gid};
+    memcpy(CMSG_DATA(h), &u, sizeof u);
+    return sendmsg(fd, &m, 0) == 1 ? 0 : -errno;
+}
+
+/* without the right SET_ID only the own credentials may be claimed */
+static void claim_creds(void *unused) {
+    (void)unused;
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0 || prctl(0x554c5201, 0x100UL, 0, 0, 0) != 0) _exit(2);
+    int own = send_creds(sv[0], getpid(), getuid(), getgid());
+    int other_uid = send_creds(sv[0], getpid(), getuid() + 1234, getgid());
+    int other_pid = send_creds(sv[0], getpid() + 1, getuid(), getgid());
+    _exit(own == 0 && other_uid == -EPERM && other_pid == -EPERM ? 0 : 1);
+}
 
 int main(void) {
     printf("SCHUTZTEST: mprotect\n");
@@ -75,6 +125,13 @@ int main(void) {
         check("noexec-Datei: auch die Kopie im Kind (fork)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 0);
     }
     if (fd >= 0) close(fd);
+    check("Faden auf anderem Kern schreibt -> mprotect trifft ihn sofort (SIGSEGV)", in_child(shootdown, NULL) == SIGSEGV);
+    {
+        pid_t c = fork();
+        if (c == 0) claim_creds(NULL);
+        int st = -1;
+        check("SCM_CREDENTIALS: nur die eigenen ohne SET_ID (sonst EPERM)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 0);
+    }
     errno = 0;
     check("clone(CLONE_THREAD) ohne CLONE_VM -> EINVAL", syscall(SYS_clone, 0x10000 | 0x800 | SIGCHLD, 0, 0, 0, 0) == -1 && errno == EINVAL);
     printf("SCHUTZTEST: %d Fehler\n", fails);

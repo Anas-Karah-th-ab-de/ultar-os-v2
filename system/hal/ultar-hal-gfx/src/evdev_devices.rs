@@ -40,6 +40,9 @@ pub struct SeatPolicy {
     /// Device names (`EVIOCGNAME`/sysfs `name`) of software devices that
     /// are accepted.
     pub virtual_allowed: Vec<String>,
+    /// User ids whose software devices are accepted (the Ultar kernel names the maker in
+    /// sysfs `device/ultar_creator`; the maker cannot choose it).
+    pub virtual_owners: Vec<u32>,
 }
 
 /// Where sysfs lists input class devices (to tell software devices apart).
@@ -64,6 +67,12 @@ impl SeatPolicy {
             .is_ok_and(|target| target.to_string_lossy().contains("/devices/virtual/"))
             || bus_of(file) == Some(BUS_VIRTUAL);
         if !software {
+            return true;
+        }
+        let creator = std::fs::read_to_string(class.join("device/ultar_creator"))
+            .ok()
+            .and_then(|t| t.trim().parse::<u32>().ok());
+        if creator.is_some_and(|uid| self.virtual_owners.contains(&uid)) {
             return true;
         }
         let label = std::fs::read_to_string(class.join("device/name")).unwrap_or_default();

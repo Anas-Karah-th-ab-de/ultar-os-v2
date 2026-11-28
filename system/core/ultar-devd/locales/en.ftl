@@ -41,6 +41,7 @@ devd.error.bad-request = The request is not valid.
 devd.notice.keys-missing = There are no trusted keys, so no driver can be verified.
 devd.notice.keys-unreadable = The key file {a} could not be read and was ignored.
 devd.notice.depot-unreadable = The driver depot cannot be used: {a}
+devd.notice.index-older = The driver depot is older than the one already in use (serial {a}): it is not used.
 devd.notice.hardware-unreadable = The device list could not be read: {a}
 devd.notice.state-recovered = The state file was damaged ({a}); the service started with an empty state and kept the damaged file.
 devd.notice.state-unavailable = The choices could not be saved ({a}); they stay in effect until shutdown.

@@ -1,6 +1,11 @@
 //! Messages on connected Unix sockets with ancillary data: `SCM_RIGHTS` (descriptors travel with the
 //! bytes, as on Linux), `MSG_DONTWAIT` and `MSG_NOSIGNAL`.
 //!
+//! `SCM_CREDENTIALS` a sender attaches are checked as on Linux – its own process id (as its pid
+//! namespace numbers it) and one of its own user and group ids, other values only with the right
+//! `SET_ID` – else `EPERM`; they are not passed on (receivers learn who is at the other end from
+//! `SO_PEERCRED`, which the kernel fills itself).
+//!
 //! The descriptors of one `sendmsg` travel with its first byte. A `recvmsg` that reads that byte gets
 //! them as new descriptors; it never reads past the next byte that carries descriptors, so the
 //! descriptors of two messages never arrive together. A plain `read` discards them.
@@ -19,6 +24,8 @@ const EOPNOTSUPP: i64 = 95;
 
 const SOL_SOCKET: u32 = 1;
 const SCM_RIGHTS: u32 = 1;
+const SCM_CREDENTIALS: u32 = 2;
+const EPERM: i64 = 1;
 /// Most descriptors one message carries (Linux: `SCM_MAX_FD`).
 pub const MAX_FDS: usize = 253;
 pub const MSG_CTRUNC: u32 = 8;
@@ -63,6 +70,34 @@ fn rights_in(ctl: &[u8]) -> Result<Vec<i32>, i64> {
     Ok(out)
 }
 
+/// The `struct ucred` (pid, uid, gid) of every `SCM_CREDENTIALS` message in a control buffer.
+fn credentials_in(ctl: &[u8]) -> Vec<(i32, u32, u32)> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while at + 16 <= ctl.len() {
+        let len = u64::from_le_bytes(ctl[at..at + 8].try_into().unwrap_or([0; 8])) as usize;
+        let level = u32::from_le_bytes(ctl[at + 8..at + 12].try_into().unwrap_or([0; 4]));
+        let kind = u32::from_le_bytes(ctl[at + 12..at + 16].try_into().unwrap_or([0; 4]));
+        if len < 16 || at + len > ctl.len() {
+            break;
+        }
+        if level == SOL_SOCKET && kind == SCM_CREDENTIALS && len >= 28 {
+            let word = |o: usize| u32::from_le_bytes(ctl[at + o..at + o + 4].try_into().unwrap_or([0; 4]));
+            out.push((word(16) as i32, word(20), word(24)));
+        }
+        at += len.div_ceil(8) * 8;
+    }
+    out
+}
+
+/// Whether the caller may claim the credentials `(pid, uid, gid)` (see the module text).
+fn may_claim(p: &Proc, (pid, uid, gid): (i32, u32, u32)) -> bool {
+    let cred = p.g.iso.cred;
+    let privileged = p.g.iso.rights.has(crate::isolation::rights::Rights::SET_ID);
+    let own_pid = pid >= 0 && p.link.ns().local(p.tgid) == Some(pid as u64);
+    privileged || (own_pid && cred.uid.contains(&uid) && cred.gid.contains(&gid))
+}
+
 /// Copies of the caller's descriptors `nums` (they stay open in the caller). Unix sockets cannot be
 /// passed (`EOPNOTSUPP`): a socket in flight inside itself would never be freed (no collector).
 fn copies(p: &mut Proc, nums: &[i32]) -> Result<Vec<Fd>, i64> {
@@ -86,8 +121,12 @@ pub fn send(fd: u64, data: &[u8], ctl: &[u8], flags: u64) -> Step {
         Ok(n) => n,
         Err(e) => return Step::Val(e),
     };
+    let claimed = credentials_in(ctl);
     let seen = crate::socket::gen();
     crate::syscall::with(|p| {
+        if !claimed.iter().all(|&c| may_claim(p, c)) {
+            return Step::Val(-EPERM);
+        }
         let fds = match copies(p, &nums) {
             Ok(f) => f,
             Err(e) => return Step::Val(e),

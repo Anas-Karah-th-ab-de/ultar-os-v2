@@ -66,6 +66,9 @@ pub const VEC_SYSCALL: u64 = 0x80;
 pub const VEC_GPU: u64 = 0x41;
 /// Sent between cores: an idle core looks for threads that became ready.
 pub const VEC_WAKE: u64 = 0x42;
+/// Sent between cores: drop the cached translations of user pages (TLB shootdown, see
+/// `apic::flush_tlb_others`).
+pub const VEC_TLB: u64 = 0x43;
 pub const VEC_SPURIOUS: u64 = 0xff;
 
 
@@ -105,6 +108,7 @@ TRAP_NOERR 19
 TRAP_NOERR 32
 TRAP_NOERR 65
 TRAP_NOERR 66
+TRAP_NOERR 67
 TRAP_NOERR 255
 
 # MSI/MSI-X-Vektoren 0x90..0xEF (dezimal 144..239): je ein kleiner Einsprung, der 0 als Fehlercode
@@ -262,6 +266,7 @@ extern "sysv64" {
     fn ultar_trap32();
     fn ultar_trap65();
     fn ultar_trap66();
+    fn ultar_trap67();
     fn ultar_trap255();
     fn ultar_syscall();
     /// Adresstabelle der 96 MSI/MSI-X-Einsprünge (Vektor 0x90..0xEF), in .rodata erzeugt.
@@ -281,7 +286,7 @@ pub unsafe fn init_msrs() {
 }
 
 pub unsafe fn init() {
-    let v: [(usize, unsafe extern "sysv64" fn()); 21] = [
+    let v: [(usize, unsafe extern "sysv64" fn()); 22] = [
         (0, ultar_trap0),
         (1, ultar_trap1),
         (2, ultar_trap2),
@@ -302,6 +307,7 @@ pub unsafe fn init() {
         (32, ultar_trap32),
         (65, ultar_trap65),
         (66, ultar_trap66),
+        (67, ultar_trap67),
         (255, ultar_trap255),
     ];
     for (i, h) in v {
@@ -335,6 +341,10 @@ extern "sysv64" fn ultar_trap_rust(f: &mut TrapFrame) {
             crate::apic::eoi();
         }
         VEC_WAKE => crate::apic::eoi(),
+        VEC_TLB => {
+            crate::apic::on_flush_tlb();
+            crate::apic::eoi();
+        }
         VEC_SPURIOUS => {}
         VEC_SYSCALL => crate::proc::on_syscall(f),
         v if crate::msi::in_pool(v as u8) => {

@@ -41,6 +41,7 @@ devd.error.bad-request = الطلب غير صالح.
 devd.notice.keys-missing = لا توجد مفاتيح موثوقة، لذلك لا يمكن التحقق من أي تعريف.
 devd.notice.keys-unreadable = تعذّرت قراءة ملف المفاتيح {a} وتم تجاهله.
 devd.notice.depot-unreadable = تعذّر استخدام مستودع التعريفات: {a}
+devd.notice.index-older = مستودع التعريفات أقدم من المستخدم حاليًا (الرقم {a}): لن يُستخدم.
 devd.notice.hardware-unreadable = تعذّرت قراءة قائمة الأجهزة: {a}
 devd.notice.state-recovered = ملف الحالة كان تالفًا ({a})؛ بدأت الخدمة بحالة فارغة واحتُفظ بالملف التالف.
 devd.notice.state-unavailable = تعذّر حفظ الاختيارات ({a})؛ تبقى سارية حتى إيقاف التشغيل.

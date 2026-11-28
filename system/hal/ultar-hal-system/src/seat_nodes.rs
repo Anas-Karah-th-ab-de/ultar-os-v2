@@ -45,6 +45,16 @@ pub fn is_virtual_device(resolved: &Path) -> bool {
     resolved.to_string_lossy().contains("/devices/virtual/")
 }
 
+/// The user id that made a software input device (`device/ultar_creator`, written by the Ultar
+/// kernel only); `None` for hardware and on Linux.
+pub fn input_creator(class: &Path) -> Option<u32> {
+    std::fs::read_to_string(class.join("device/ultar_creator"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
 /// `BUS_VIRTUAL` of `struct input_id`, as sysfs writes it (`device/id/bustype`).
 pub const BUS_VIRTUAL: &str = "0006";
 
