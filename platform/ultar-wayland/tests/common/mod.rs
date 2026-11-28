@@ -34,14 +34,31 @@ impl Harness {
 
     /// Same, with extra environment for the program.
     pub fn start_with(name: &str, program: &[&str], env: &[(&str, &str)]) -> Harness {
-        let dir = std::env::temp_dir().join(format!("uwl-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("run")).unwrap();
         let config = Config {
             lang: ultar_ui::Lang::En,
             cursor: false,
             ..Config::default()
         };
+        Harness::launch(name, program, env, config)
+    }
+
+    /// Same, with the English layout first (typing ASCII into real apps).
+    pub fn start_english(name: &str, program: &[&str], env: &[(&str, &str)]) -> Harness {
+        use ultar_compositor::keymap::Layout;
+        let layouts = vec![Layout::English, Layout::Arabic, Layout::German];
+        let config = Config {
+            lang: ultar_ui::Lang::En,
+            cursor: false,
+            layouts,
+            ..Config::default()
+        };
+        Harness::launch(name, program, env, config)
+    }
+
+    fn launch(name: &str, program: &[&str], env: &[(&str, &str)], config: Config) -> Harness {
+        let dir = std::env::temp_dir().join(format!("uwl-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("run")).unwrap();
         let mut comp = Compositor::new(
             config,
             Box::new(Headless::new(&[SCREEN])),

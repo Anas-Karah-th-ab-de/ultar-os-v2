@@ -124,12 +124,17 @@ fn spawn(args: &Args, dir: &std::path::Path) -> std::io::Result<Child> {
         .env("GDK_BACKEND", "wayland")
         .env("QT_QPA_PLATFORM", "wayland")
         .env("SDL_VIDEODRIVER", "wayland")
+        .env("SDL_VIDEO_DRIVER", "wayland")
         .env("MOZ_ENABLE_WAYLAND", "1")
         .env("CLUTTER_BACKEND", "wayland")
         .env("_JAVA_AWT_WM_NONREPARENTING", "1")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_SOCKET")
         .env_remove(ultar_surface::client::ACTIVATION_ENV);
+    // Fork + exec instead of posix_spawn: the Ultar kernel releases a vfork
+    // parent only when the child exits (kernel gap K10, docs/COMPOSITOR.md).
+    // Setting the unchanged user id makes std take the fork path.
+    std::os::unix::process::CommandExt::uid(&mut cmd, rustix::process::getuid().as_raw());
     cmd.spawn()
 }
 
