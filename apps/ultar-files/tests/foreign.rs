@@ -83,7 +83,8 @@ fn a_linux_package_installs_with_nothing_granted_until_the_person_chooses() {
     click(&mut app, internet);
     let lan = node(&app, &Target::ForeignLan);
     click(&mut app, lan);
-    click(&mut app, lan_again(&app));
+    let lan = lan_again(&app);
+    click(&mut app, lan);
     let docs = node(&app, &Target::ForeignFolder("documents".into()));
     click(&mut app, docs);
     let ok = node(&app, &Target::DialogOk);
