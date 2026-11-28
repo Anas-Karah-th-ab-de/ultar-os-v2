@@ -56,13 +56,21 @@ pub fn build(ui: &mut Ui, s: &State, fs: &crate::fs::Fs) -> Result<Built, UiErro
         let id = ui.add(list, tile)?;
         b.mark(id, Target::Item(item.entry.name.clone()));
         b.item_nodes.push((id, item.entry.name.clone()));
-        ui.set_context_menu(id, Some(menu(true, false)))?;
+        let mut m = menu(true, false);
+        if crate::foreign::is_installable_name(&item.entry.name) {
+            // a package from another system can be installed from its icon too
+            let install = Command::Install;
+            m.items
+                .insert(1, MenuItem::new(install.id(), Label::key(install.key())));
+        }
+        ui.set_context_menu(id, Some(m))?;
     }
     super::dialogs::build(ui, &mut b, s, fs)?;
     Ok(b)
 }
 
-/// Right click: Open, Rename, Move to trash, Properties; on a drive also Eject.
+/// Right click: Open, Rename, Move to trash, Properties; on a drive also Eject (and on a
+/// package from another system Install, added by the caller).
 fn menu(item: bool, drive: bool) -> Menu {
     let entry = |c: Command| MenuItem::new(c.id(), Label::key(c.key()));
     let mut v = vec![entry(Command::Open)];
@@ -100,7 +108,7 @@ pub fn action(s: &mut State, target: &Target, kind: &ActionKind, key_input: bool
                 s.dialog = Some(Dialog::Properties(icon_loc(s, target)));
                 Vec::new()
             }
-            Some(c @ (Command::Rename | Command::Trash)) => match target {
+            Some(c @ (Command::Rename | Command::Trash | Command::Install)) => match target {
                 Target::Item(name) => {
                     s.selected = vec![name.clone()];
                     update::command(s, c)

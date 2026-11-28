@@ -167,3 +167,7 @@ mobile.dialog.handoff.encrypted = مشفّر من طرف إلى طرف
 mobile.dialog.handoff.system = سؤال من النظام · يُرفض تلقائياً إن لم تُجب خلال دقيقة
 mobile.dialog.handoff.accept = قبول
 mobile.dialog.handoff.decline = رفض
+mobile.app.source.linux = {name} · لينكس
+mobile.app.source.windows = {name} · ويندوز
+mobile.app.source.android = {name} · أندرويد
+mobile.app.source.other = {name} · نظام آخر

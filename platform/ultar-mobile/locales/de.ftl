@@ -159,3 +159,7 @@ mobile.dialog.handoff.encrypted = Ende-zu-Ende verschlüsselt
 mobile.dialog.handoff.system = Frage des Systems · ohne Antwort nach einer Minute abgelehnt
 mobile.dialog.handoff.accept = Annehmen
 mobile.dialog.handoff.decline = Ablehnen
+mobile.app.source.linux = {name} · Linux
+mobile.app.source.windows = {name} · Windows
+mobile.app.source.android = {name} · Android
+mobile.app.source.other = {name} · anderes System

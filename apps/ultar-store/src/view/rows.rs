@@ -33,13 +33,24 @@ pub(crate) fn badge_for(store: &Store, id: &str) -> Badge {
 /// The publisher line `{publisher} · verified`: the signature of the
 /// catalogue attests its publisher rows (offline first: an unverifiable
 /// catalogue never loads — [`crate::source`]).
+///
+/// A program from another system names that system too (`{publisher} · Linux · verified`,
+/// docs/FREMD-APPS.md: the source mark), so it is never mistaken for an Ultar app.
 pub(crate) fn publisher_line(store: &Store, app: &CatalogApp) -> Label {
-    let key = if store.catalog.verified {
-        "store.publisher.verified"
-    } else {
-        "store.publisher.unverified"
+    let foreign = app.source != crate::catalog::Source::Ultar;
+    let key = match (store.catalog.verified, foreign) {
+        (true, false) => "store.publisher.verified",
+        (false, false) => "store.publisher.unverified",
+        (true, true) => "store.publisher.verified_from",
+        (false, true) => "store.publisher.unverified_from",
     };
-    Label::key_with(key, &[("publisher", app.publisher.as_str())])
+    Label::key_with(
+        key,
+        &[
+            ("publisher", app.publisher.as_str()),
+            ("source", app.source.label()),
+        ],
+    )
 }
 
 /// The desktop card (board Store). Cards never install directly: the header
@@ -208,4 +219,43 @@ pub(crate) fn catalog_icon(store: &Store, id: &str) -> IconId {
         .entry(id)
         .map(|a| icon_by_name(&a.icon))
         .unwrap_or(IconId::Package)
+}
+
+#[cfg(test)]
+mod source_mark {
+    use super::publisher_line;
+    use crate::action::StoreEvent;
+    use crate::catalog::Catalog;
+    use crate::source::LoadedCatalog;
+    use crate::Store;
+    use ultar_ui::widgets::Label;
+
+    fn store(verified: bool) -> Store {
+        let mut s = Store::new();
+        let _ = s.event(StoreEvent::CatalogLoaded(Ok(LoadedCatalog {
+            catalog: Catalog::parse(crate::BUILT_IN_CATALOG).unwrap(),
+            verified,
+            signer: Some("test".into()),
+            dir: None,
+        })));
+        s
+    }
+
+    fn key(label: &Label) -> String {
+        format!("{label:?}")
+    }
+
+    #[test]
+    fn programs_from_other_systems_name_their_system() {
+        for verified in [true, false] {
+            let s = store(verified);
+            let firefox = s.entry("firefox").unwrap();
+            let line = key(&publisher_line(&s, firefox));
+            assert!(line.contains("_from"), "{line}");
+            assert!(line.contains("Linux"), "{line}");
+            let office = s.entry("km-office").unwrap();
+            let line = key(&publisher_line(&s, office));
+            assert!(!line.contains("_from"), "an Ultar app has no source mark: {line}");
+        }
+    }
 }

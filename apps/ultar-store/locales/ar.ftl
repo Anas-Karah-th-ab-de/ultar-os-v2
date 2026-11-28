@@ -38,6 +38,8 @@ store.aria.open = افتح {name}
 store.aria.details = {name}: التفاصيل
 store.publisher.verified = {publisher} · موثَّق
 store.publisher.unverified = {publisher} · غير موثَّق
+store.publisher.verified_from = {publisher} · {source} · موثَّق
+store.publisher.unverified_from = {publisher} · {source} · غير موثَّق
 store.note.sizes = — = تُحسب الأحجام عند التشغيل؛ لا قيمة لها في المواصفة.
 store.note.discover = — = الحجم من الكتالوج عند التشغيل؛ لا قيمة له في المواصفة. التثبيت والإزالة في صفحة التطبيق.
 store.size.unknown = —

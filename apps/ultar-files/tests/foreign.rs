@@ -79,14 +79,10 @@ fn a_linux_package_installs_with_nothing_granted_until_the_person_chooses() {
     assert!(matches!(phase(&app), Phase::Ready(_)));
     // the file suggests network and a folder: the sheet still starts with nothing
     assert!(app.built().node(&Target::ForeignLan).is_none());
-    let internet = node(&app, &Target::ForeignInternet);
-    click(&mut app, internet);
-    let lan = node(&app, &Target::ForeignLan);
-    click(&mut app, lan);
-    let lan = lan_again(&app);
-    click(&mut app, lan);
-    let docs = node(&app, &Target::ForeignFolder("documents".into()));
-    click(&mut app, docs);
+    tap(&mut app, &Target::ForeignInternet);
+    tap(&mut app, &Target::ForeignLan);
+    tap(&mut app, &Target::ForeignLan);
+    tap(&mut app, &Target::ForeignFolder("documents".into()));
     let ok = node(&app, &Target::DialogOk);
     click(&mut app, ok);
     let installs = fake.0.borrow().installs.clone();
@@ -117,8 +113,11 @@ fn a_linux_package_installs_with_nothing_granted_until_the_person_chooses() {
     );
 }
 
-fn lan_again(app: &App) -> ultar_ui::ui::NodeId {
-    node(app, &Target::ForeignLan)
+/// Scrolls the sheet to `target` like a person would, then clicks it.
+fn tap(app: &mut App, target: &Target) {
+    let id = node(app, target);
+    app.ui.scroll_into_view(id).unwrap();
+    click(app, id);
 }
 
 fn step(app: &mut App, fake: &Shared, step: Step, apps: &[&str]) {
@@ -216,9 +215,10 @@ fn the_sheet_in_arabic_and_english_dark_and_light() {
             app.ui.set_theme(theme);
             app.rebuild().unwrap();
             let tag = format!("{lang:?}-{}", theme.name()).to_lowercase();
-            let internet = node(&app, &Target::ForeignInternet);
-            click(&mut app, internet);
             shot(&mut app, &format!("files-foreign-ready-{tag}"));
+            tap(&mut app, &Target::ForeignInternet);
+            assert!(app.built().node(&Target::ForeignLan).is_some(), "internet is on");
+            shot(&mut app, &format!("files-foreign-choices-{tag}"));
             let ok = node(&app, &Target::DialogOk);
             click(&mut app, ok);
             app.poll().unwrap();
@@ -232,4 +232,26 @@ fn the_sheet_in_arabic_and_english_dark_and_light() {
             shot(&mut app, &format!("files-foreign-not-yet-{tag}"));
         }
     }
+}
+
+#[test]
+fn a_package_on_the_desktop_installs_from_its_menu() {
+    let r = Root::new();
+    r.write("desktop/mousepad.deb", b"!<arch>\n");
+    let (mut app, fake) = app(&r, Mode::Desk, Lang::Ar, None);
+    fake.borrow_mut().inspect_answer = Some(found(Source::Deb));
+    let item = node(&app, &Target::Item("mousepad.deb".into()));
+    click_with(
+        &mut app,
+        item,
+        ultar_ui::event::Modifiers::default(),
+        ultar_ui::event::PointerButton::Secondary,
+    );
+    assert_eq!(app.ui.menu_owner(), Some(item));
+    act(&mut app, item, ActionKind::MenuChosen(Command::Install.id()));
+    assert_eq!(phase(&app), Phase::Reading);
+    assert_eq!(
+        fake.borrow().inspected,
+        ["/data/ultar/areas/desktop/mousepad.deb"]
+    );
 }

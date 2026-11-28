@@ -56,6 +56,8 @@ fn press(app: &mut App, act: Act) {
         .view
         .node(act)
         .unwrap_or_else(|| panic!("{act:?} not shown"));
+    // a person scrolls to what is below the fold
+    app.ui.scroll_into_view(node).unwrap();
     click(app, node);
 }
 
