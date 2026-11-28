@@ -29,7 +29,9 @@ struct RangeDep {
 
 impl RangeDep {
     fn contains(&self, k: Key) -> bool {
-        k.0 == self.sheet && (self.r0..=self.r1).contains(&k.1) && (self.c0..=self.c1).contains(&k.2)
+        k.0 == self.sheet
+            && (self.r0..=self.r1).contains(&k.1)
+            && (self.c0..=self.c1).contains(&k.2)
     }
 }
 
@@ -151,7 +153,12 @@ impl Calc {
             if let Some(owners) = self.readers.get(&k) {
                 queue.extend(owners.iter().copied());
             }
-            queue.extend(self.ranges.iter().filter(|d| d.contains(k)).map(|d| d.owner));
+            queue.extend(
+                self.ranges
+                    .iter()
+                    .filter(|d| d.contains(k))
+                    .map(|d| d.owner),
+            );
         }
         // the cells that were thrown away are parsed again when read
         for k in &gone {

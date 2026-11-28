@@ -10,7 +10,6 @@ use crate::sheet_refs::{
 use crate::style::CellStyle;
 use std::cmp::Ordering;
 
-
 /// Why a sheet could not be renamed, added or deleted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NameError {
@@ -96,7 +95,9 @@ impl Workbook {
             return false;
         }
         let target = sh.name.clone();
-        remap(&mut self.sheets[sheet], axis, &|i| Some(if i >= at { i + n } else { i }));
+        remap(&mut self.sheets[sheet], axis, &|i| {
+            Some(if i >= at { i + n } else { i })
+        });
         self.rewrite_formulas(&|f, home| insert_refs(f, home, &target, axis, at, n));
         true
     }
@@ -155,7 +156,10 @@ impl Workbook {
         self.sheets.remove(sheet);
         self.rewrite_formulas(&|f, _| {
             map_refs(f, &mut |t| {
-                let hit = t.sheet.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(&old));
+                let hit = t
+                    .sheet
+                    .as_deref()
+                    .is_some_and(|s| s.eq_ignore_ascii_case(&old));
                 hit.then(|| "#REF!".to_owned())
             })
         });
@@ -177,7 +181,7 @@ impl Workbook {
     }
 
     /// Copies the first column of the rectangle to the right over the others.
-    pub fn fill_right(&mut self, sheet: usize, r0: u32, c0: u32, r1: u32, c1: u32) {
+    pub fn fill_right(&mut self, sheet: usize, r0: u32, c0: u32, r1: u32, c1: u32) { // physical
         self.fill(sheet, (r0, c0, r1, c1), false);
     }
 
@@ -193,7 +197,11 @@ impl Workbook {
             let steps = if down { r1 - r0 } else { c1 - c0 };
             for k in 1..=steps {
                 let (r, c) = if down { (r0 + k, line) } else { (line, c0 + k) };
-                let (dr, dc) = if down { (i64::from(k), 0) } else { (0, i64::from(k)) };
+                let (dr, dc) = if down {
+                    (i64::from(k), 0)
+                } else {
+                    (0, i64::from(k))
+                };
                 sh.set(r, c, &relocate(&raw, dr, dc));
                 sh.set_style(r, c, style.clone());
             }
@@ -356,4 +364,3 @@ pub fn parse_tsv(text: &str) -> Vec<Vec<String>> {
     }
     rows
 }
-

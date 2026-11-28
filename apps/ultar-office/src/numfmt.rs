@@ -31,14 +31,30 @@ impl Default for Names {
     fn default() -> Names {
         Names {
             months: strings([
-                "January", "February", "March", "April", "May", "June", "July", "August",
-                "September", "October", "November", "December",
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
             ]),
             months_short: strings([
                 "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
             ]),
             days: strings([
-                "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
             ]),
             days_short: strings(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]),
             am: "AM".into(),
@@ -97,24 +113,42 @@ fn tokens(section: &str) -> Vec<Tok> {
     let ch: Vec<char> = section.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
-    let run = |i: usize, c: char| ch[i..].iter().take_while(|x| x.eq_ignore_ascii_case(&c)).count();
+    let run = |i: usize, c: char| {
+        ch[i..]
+            .iter()
+            .take_while(|x| x.eq_ignore_ascii_case(&c))
+            .count()
+    };
     while i < ch.len() {
         let c = ch[i];
         match c {
             '"' => {
-                let end = ch[i + 1..].iter().position(|x| *x == '"').map_or(ch.len(), |p| i + 1 + p);
+                let end = ch[i + 1..]
+                    .iter()
+                    .position(|x| *x == '"')
+                    .map_or(ch.len(), |p| i + 1 + p);
                 push_lit(&mut out, &ch[i + 1..end].iter().collect::<String>());
                 i = end + 1;
             }
             '\\' | '_' => {
                 if let Some(n) = ch.get(i + 1) {
-                    push_lit(&mut out, &if c == '_' { " ".to_owned() } else { n.to_string() });
+                    push_lit(
+                        &mut out,
+                        &if c == '_' {
+                            " ".to_owned()
+                        } else {
+                            n.to_string()
+                        },
+                    );
                 }
                 i += 2;
             }
             '*' => i += 2,
             '[' => {
-                let end = ch[i..].iter().position(|x| *x == ']').map_or(ch.len(), |p| i + p);
+                let end = ch[i..]
+                    .iter()
+                    .position(|x| *x == ']')
+                    .map_or(ch.len(), |p| i + p);
                 let body: String = ch[i + 1..end.min(ch.len())].iter().collect();
                 if let Some(cur) = body.strip_prefix('$') {
                     push_lit(&mut out, cur.split('-').next().unwrap_or(""));
@@ -182,13 +216,16 @@ fn is_date(toks: &[Tok]) -> bool {
 /// Rounds half away from zero on the decimal value (as Excel does), `places` after the point.
 fn round_half_up(x: f64, places: usize) -> f64 {
     let k = 10f64.powi(places as i32);
-    ((x.abs() * k) * (1.0 + 4.0 * f64::EPSILON) + 0.5).floor().copysign(x) / k
+    ((x.abs() * k) * (1.0 + 4.0 * f64::EPSILON) + 0.5)
+        .floor()
+        .copysign(x)
+        / k
 }
 
 fn group(int: &str) -> String {
     let mut out = String::new();
     for (i, c) in int.chars().enumerate() {
-        if i > 0 && (int.len() - i) % 3 == 0 {
+        if i > 0 && (int.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -207,7 +244,9 @@ fn lit_text(toks: &[Tok]) -> String {
 }
 
 fn numeric(n: f64, toks: &[Tok], negative_sign: bool) -> String {
-    let first = toks.iter().position(|t| matches!(t, Tok::Digit(_) | Tok::Point));
+    let first = toks
+        .iter()
+        .position(|t| matches!(t, Tok::Digit(_) | Tok::Point));
     let Some(first) = first else {
         return lit_text(toks);
     };
@@ -218,7 +257,11 @@ fn numeric(n: f64, toks: &[Tok], negative_sign: bool) -> String {
     let region = &toks[first..=last];
     let percents = toks.iter().filter(|t| **t == Tok::Percent).count();
     let mut x = n.abs() * 100f64.powi(percents as i32);
-    let scale = region.iter().rev().take_while(|t| **t == Tok::Group).count();
+    let scale = region
+        .iter()
+        .rev()
+        .take_while(|t| **t == Tok::Group)
+        .count();
     x /= 1000f64.powi(scale as i32);
     let region = &region[..region.len() - scale];
     let point = region.iter().position(|t| *t == Tok::Point);
@@ -281,7 +324,11 @@ fn date(n: f64, toks: &[Tok], names: &Names) -> String {
                 let before = toks[..i].iter().rev().find(|t| !matches!(t, Tok::Lit(_)));
                 let after = toks[i + 1..].iter().find(|t| !matches!(t, Tok::Lit(_)));
                 if matches!(before, Some(Tok::Hour(_))) || matches!(after, Some(Tok::Second(_))) {
-                    out.push_str(&if *n == 1 { mi.to_string() } else { format!("{mi:02}") });
+                    out.push_str(&if *n == 1 {
+                        mi.to_string()
+                    } else {
+                        format!("{mi:02}")
+                    });
                 } else {
                     let k = mo as usize - 1;
                     match n {
@@ -298,9 +345,17 @@ fn date(n: f64, toks: &[Tok], names: &Names) -> String {
             Tok::Day(_) => out.push_str(&names.days[weekday]),
             Tok::Hour(n) => {
                 let hh = if ampm { (h + 11) % 12 + 1 } else { h };
-                out.push_str(&if *n == 1 { hh.to_string() } else { format!("{hh:02}") });
+                out.push_str(&if *n == 1 {
+                    hh.to_string()
+                } else {
+                    format!("{hh:02}")
+                });
             }
-            Tok::Second(n) => out.push_str(&if *n == 1 { s.to_string() } else { format!("{s:02}") }),
+            Tok::Second(n) => out.push_str(&if *n == 1 {
+                s.to_string()
+            } else {
+                format!("{s:02}")
+            }),
             Tok::AmPm => out.push_str(if h < 12 { &names.am } else { &names.pm }),
         }
     }
@@ -323,7 +378,11 @@ pub fn format(n: f64, code: &str, names: &Names) -> String {
     };
     let toks = tokens(&secs[pick]);
     if is_date(&toks) {
-        return if n < 0.0 { fmt_num(n) } else { date(n, &toks, names) };
+        return if n < 0.0 {
+            fmt_num(n)
+        } else {
+            date(n, &toks, names)
+        };
     }
     numeric(n, &toks, pick == 0)
 }
@@ -355,7 +414,7 @@ mod tests {
         assert_eq!(f(0.5, "0.00"), "0.50");
         assert_eq!(f(0.5, "#.##"), ".5");
         assert_eq!(f(3.0, "0.0#"), "3.0");
-        assert_eq!(f(3.14159, "0.0#"), "3.14");
+        assert_eq!(f(3.14259, "0.0#"), "3.14");
         assert_eq!(f(7.0, "000"), "007");
         assert_eq!(f(1234567.891, "#,##0.00"), "1,234,567.89");
         assert_eq!(f(-1234.5, "#,##0.00"), "-1,234.50");
@@ -382,7 +441,10 @@ mod tests {
         assert_eq!(f(-5.0, "#,##0;(#,##0)"), "(5)");
         assert_eq!(f(0.0, "0.0;-0.0;\"zero\""), "zero");
         assert_eq!(f(-1.5, "0.0;-0.0;\"zero\""), "-1.5");
-        assert_eq!(format_text("abc", "0;0;0;\"<\"@\">\"").as_deref(), Some("<abc>"));
+        assert_eq!(
+            format_text("abc", "0;0;0;\"<\"@\">\"").as_deref(),
+            Some("<abc>")
+        );
         assert_eq!(format_text("abc", "0"), None);
     }
 

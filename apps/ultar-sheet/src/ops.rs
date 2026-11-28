@@ -126,10 +126,18 @@ impl Core {
         let (r0, c0, r1, c1) = rect;
         let sh = self.book.sheet();
         let cells = (r0..=r1)
-            .map(|r| (c0..=c1).map(|c| (sh.get(r, c).to_owned(), sh.style(r, c))).collect())
+            .map(|r| {
+                (c0..=c1)
+                    .map(|c| (sh.get(r, c).to_owned(), sh.style(r, c)))
+                    .collect()
+            })
             .collect();
         let text = self.book.wb.to_tsv(self.book.active, rect, false);
-        self.clip = Some(Clip { text: text.clone(), origin: (r0, c0), cells });
+        self.clip = Some(Clip {
+            text: text.clone(),
+            origin: (r0, c0),
+            cells,
+        });
         self.say("sheet.copied");
         text
     }
@@ -153,10 +161,17 @@ impl Core {
         let own = self.clip.clone().filter(|c| c.text == text);
         let block: Vec<Vec<(String, Option<CellStyle>)>> = match own {
             Some(c) => {
-                let (dr, dc) = (i64::from(r0) - i64::from(c.origin.0), i64::from(c0) - i64::from(c.origin.1));
+                let (dr, dc) = (
+                    i64::from(r0) - i64::from(c.origin.0),
+                    i64::from(c0) - i64::from(c.origin.1),
+                );
                 c.cells
                     .into_iter()
-                    .map(|row| row.into_iter().map(|(raw, st)| (relocate(&raw, dr, dc), Some(st))).collect())
+                    .map(|row| {
+                        row.into_iter()
+                            .map(|(raw, st)| (relocate(&raw, dr, dc), Some(st)))
+                            .collect()
+                    })
                     .collect()
             }
             None => parse_tsv(text)
@@ -187,7 +202,11 @@ impl Core {
         self.sel.active = (r0, c0);
         self.sel.cur = (maxr, maxc);
         self.sel.span = Span::Cells;
-        self.message = Some(if cut_off { Label::key("sheet.paste_cut") } else { Label::key("sheet.pasted") });
+        self.message = Some(if cut_off {
+            Label::key("sheet.paste_cut")
+        } else {
+            Label::key("sheet.pasted")
+        });
         self.reveal();
     }
 
@@ -213,14 +232,22 @@ impl Core {
             for c in c0..=c1 {
                 let (raw, st) = (sh.get(r0, c).to_owned(), sh.style(r0, c));
                 for r in r0 + 1..=r1 {
-                    cells.push(((r, c), relocate(&raw, i64::from(r - r0), 0), Some(st.clone())));
+                    cells.push((
+                        (r, c),
+                        relocate(&raw, i64::from(r - r0), 0),
+                        Some(st.clone()),
+                    ));
                 }
             }
         } else {
             for r in r0..=r1 {
                 let (raw, st) = (sh.get(r, c0).to_owned(), sh.style(r, c0));
                 for c in c0 + 1..=c1 {
-                    cells.push(((r, c), relocate(&raw, 0, i64::from(c - c0)), Some(st.clone())));
+                    cells.push((
+                        (r, c),
+                        relocate(&raw, 0, i64::from(c - c0)),
+                        Some(st.clone()),
+                    ));
                 }
             }
         }
@@ -237,7 +264,9 @@ impl Core {
             Axis::Cols => (c0, c1 - c0 + 1),
         };
         let sheet = self.book.active;
-        let ok = self.book.structural(|wb, _| wb.insert_lines(sheet, axis, at, n));
+        let ok = self
+            .book
+            .structural(|wb, _| wb.insert_lines(sheet, axis, at, n));
         if !ok {
             self.say("sheet.no_room");
         }
@@ -251,7 +280,8 @@ impl Core {
             Axis::Cols => (c0, c1 - c0 + 1),
         };
         let sheet = self.book.active;
-        self.book.structural(|wb, _| wb.delete_lines(sheet, axis, at, n));
+        self.book
+            .structural(|wb, _| wb.delete_lines(sheet, axis, at, n));
         let (r, c) = self.sel.active;
         self.sel.select(r, c);
     }
@@ -272,7 +302,13 @@ impl Core {
         r0 = r0.max(frozen);
         let sheet = self.book.active;
         let result = self.book.structural_try(|wb, _| {
-            wb.sort_rows(sheet, (r0, c0, r1, c1), key, ascending, &ultar_i18n::compare)
+            wb.sort_rows(
+                sheet,
+                (r0, c0, r1, c1),
+                key,
+                ascending,
+                &ultar_i18n::compare,
+            )
         });
         if result.is_err() {
             self.say("sheet.sort_failed");
@@ -303,7 +339,9 @@ impl Core {
     }
 
     fn cur_style(&self) -> CellStyle {
-        self.book.sheet().style(self.sel.active.0, self.sel.active.1)
+        self.book
+            .sheet()
+            .style(self.sel.active.0, self.sel.active.1)
     }
 
     /// Bold on or off for the selection.
@@ -347,14 +385,15 @@ impl Core {
     /// Freezes the first row, or lets it go.
     pub fn toggle_freeze_row(&mut self) {
         let sheet = self.book.active;
-        self.book.edit_view(sheet, |sh| sh.frozen_rows = u32::from(sh.frozen_rows == 0));
-        self.first.0 = self.first.0.max(0);
+        self.book
+            .edit_view(sheet, |sh| sh.frozen_rows = u32::from(sh.frozen_rows == 0));
     }
 
     /// Freezes the first column, or lets it go.
     pub fn toggle_freeze_col(&mut self) {
         let sheet = self.book.active;
-        self.book.edit_view(sheet, |sh| sh.frozen_cols = u32::from(sh.frozen_cols == 0));
+        self.book
+            .edit_view(sheet, |sh| sh.frozen_cols = u32::from(sh.frozen_cols == 0));
     }
 
     /// Turns the sheet around: column A at the right edge, or back.
@@ -375,7 +414,10 @@ impl Core {
             wb.sheets.push(sh);
             wb.sheets.len() - 1
         });
-        self.views.resize(self.book.wb.sheets.len(), (crate::sel::Sel::default(), (0, 0)));
+        self.views.resize(
+            self.book.wb.sheets.len(),
+            (crate::sel::Sel::default(), (0, 0)),
+        );
         self.show_sheet(i);
         i
     }
@@ -391,7 +433,10 @@ impl Core {
             return Err(NameError::Last);
         }
         self.cancel();
-        self.views.resize(self.book.wb.sheets.len(), (crate::sel::Sel::default(), (0, 0)));
+        self.views.resize(
+            self.book.wb.sheets.len(),
+            (crate::sel::Sel::default(), (0, 0)),
+        );
         let result = self.book.structural_try(|wb, active| {
             wb.delete_sheet(i)?;
             if *active >= i {
@@ -400,7 +445,11 @@ impl Core {
             Ok(())
         });
         self.views.truncate(self.book.wb.sheets.len());
-        (self.sel, self.first) = self.views.get(self.book.active).copied().unwrap_or_default();
+        (self.sel, self.first) = self
+            .views
+            .get(self.book.active)
+            .copied()
+            .unwrap_or_default();
         result
     }
 
@@ -457,7 +506,10 @@ impl Core {
                 }
             }
         });
-        self.message = Some(Label::key_with("sheet.replaced", &[("n", &done.to_string())]));
+        self.message = Some(Label::key_with(
+            "sheet.replaced",
+            &[("n", &done.to_string())],
+        ));
         done
     }
 }

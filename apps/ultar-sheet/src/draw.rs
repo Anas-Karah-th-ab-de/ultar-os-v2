@@ -57,7 +57,10 @@ impl Drawer {
     pub fn new(env: PaintEnv) -> Result<Drawer, DrawError> {
         let text = TextEngine::new().map_err(|e| DrawError(format!("{e:?}")))?;
         let icons = IconCache::new().map_err(|e| DrawError(format!("{e:?}")))?;
-        Ok(Drawer { resources: Resources { text, icons }, env })
+        Ok(Drawer {
+            resources: Resources { text, icons },
+            env,
+        })
     }
 
     /// Draws `book`'s shown sheet seen through `frame` into a picture of `w` × `h` device
@@ -78,7 +81,11 @@ impl Drawer {
         let ground = p.color(ColorRole::Surface);
         p.clear(ground);
         let line = p.color(ColorRole::Line);
-        let dir = if frame.rtl { Direction::Rtl } else { Direction::Ltr };
+        let dir = if frame.rtl {
+            Direction::Rtl
+        } else {
+            Direction::Ltr
+        };
         let body = TextSpec::new(typography::BODY).role(FontRole::Text);
         // cells
         for row in &frame.rows {
@@ -98,7 +105,6 @@ impl Drawer {
         if let Some(e) = edit {
             Self::editor(&mut p, book, frame, e, dir, body);
         }
-        drop(p);
         canvas.take_damage();
         Ok(canvas)
     }
@@ -119,8 +125,16 @@ impl Drawer {
         }
         let hair = p.hairline();
         // grid line at the end and the bottom edge of the cell
-        p.fill(Rect::new(rect.x, rect.bottom() - hair, rect.w, hair), None, line);
-        p.fill(Rect::new(rect.x + rect.w - hair, rect.y, hair, rect.h), None, line);
+        p.fill(
+            Rect::new(rect.x, rect.bottom() - hair, rect.w, hair),
+            None,
+            line,
+        );
+        p.fill(
+            Rect::new(rect.x + rect.w - hair, rect.y, hair, rect.h),
+            None,
+            line,
+        );
         if book.sheet().get(row.idx, col.idx).is_empty() {
             return;
         }
@@ -135,15 +149,39 @@ impl Drawer {
             (None, None) if shown.error => p.color(ColorRole::Danger),
             (None, None) => p.color(ColorRole::Text),
         };
-        let spec = if style.bold { body.weight(Weight::Bold) } else { body };
-        let spec = if style.wrap { spec.overflow(Overflow::Wrap) } else { spec };
+        let spec = if style.bold {
+            body.weight(Weight::Bold)
+        } else {
+            body
+        };
+        let spec = if style.wrap {
+            spec.overflow(Overflow::Wrap)
+        } else {
+            spec
+        };
         let width = (rect.w - 2.0 * PAD).max(1.0);
-        let layout = p.layout_directed(&shown.text, spec, style.wrap.then_some(width), dir);
+        // numbers and errors (`#DIV/0!`) read left to right even in a right-to-left sheet;
+        // they are placed by the sheet's start and end edges, not by their own direction
+        let latin = shown.number || shown.error;
+        let rtl_sheet = dir == Direction::Rtl;
+        let base = if latin { Direction::Ltr } else { dir };
+        let layout = p.layout_directed(&shown.text, spec, style.wrap.then_some(width), base);
+        let at_start = |start: bool| {
+            // `start`: the start edge of the sheet; the paragraph's own start is the left
+            // edge when it runs left to right
+            if latin && rtl_sheet == start {
+                TextAlign::End
+            } else if latin || start {
+                TextAlign::Start
+            } else {
+                TextAlign::End
+            }
+        };
         let align = match style.align {
-            Align::General if shown.number => TextAlign::End,
-            Align::General | Align::Start => TextAlign::Start,
+            Align::General if latin => at_start(false),
+            Align::General | Align::Start => at_start(true),
             Align::Center => TextAlign::Center,
-            Align::End => TextAlign::End,
+            Align::End => at_start(false),
         };
         let inner = Rect::new(rect.x + PAD, rect.y, width, rect.h);
         let prev = p.clip(rect.intersect(&Rect::new(rect.x, rect.y, rect.w - 0.5, rect.h - 0.5)));
@@ -157,10 +195,18 @@ impl Drawer {
         let fr = frame.rows.iter().rfind(|s| s.frozen);
         let fc = frame.cols.iter().rfind(|s| s.frozen);
         if let Some(r) = fr {
-            p.fill(Rect::new(0.0, r.pos + r.size - hair, frame.w, hair), None, c);
+            p.fill(
+                Rect::new(0.0, r.pos + r.size - hair, frame.w, hair),
+                None,
+                c,
+            );
         }
         if let Some(s) = fc {
-            let x = if frame.rtl { s.pos } else { s.pos + s.size - hair };
+            let x = if frame.rtl {
+                s.pos
+            } else {
+                s.pos + s.size - hair
+            };
             p.fill(Rect::new(x, 0.0, hair, frame.h), None, c);
         }
     }
@@ -168,8 +214,16 @@ impl Drawer {
     /// The selected rectangle clipped to what is on screen.
     fn visible(frame: &Frame, rect: (u32, u32, u32, u32)) -> Option<Rect> {
         let (r0, c0, r1, c1) = rect;
-        let rows: Vec<&Seg> = frame.rows.iter().filter(|s| (r0..=r1).contains(&s.idx)).collect();
-        let cols: Vec<&Seg> = frame.cols.iter().filter(|s| (c0..=c1).contains(&s.idx)).collect();
+        let rows: Vec<&Seg> = frame
+            .rows
+            .iter()
+            .filter(|s| (r0..=r1).contains(&s.idx))
+            .collect();
+        let cols: Vec<&Seg> = frame
+            .cols
+            .iter()
+            .filter(|s| (c0..=c1).contains(&s.idx))
+            .collect();
         let x0 = cols.iter().map(|s| s.pos).fold(f32::MAX, f32::min);
         let x1 = cols.iter().map(|s| s.pos + s.size).fold(f32::MIN, f32::max);
         let y0 = rows.iter().map(|s| s.pos).fold(f32::MAX, f32::min);
@@ -199,12 +253,20 @@ impl Drawer {
         let text = p.color(ColorRole::Text);
         let accent = p.color(ColorRole::Accent);
         let (r0, c0, r1, c1) = sel.rect();
-        let hdr_x = if frame.rtl { frame.w - frame.hdr_w } else { 0.0 };
+        let hdr_x = if frame.rtl {
+            frame.w - frame.hdr_w
+        } else {
+            0.0
+        };
         // bands
         p.fill(Rect::new(0.0, 0.0, frame.w, frame.hdr_h), None, bar);
         p.fill(Rect::new(hdr_x, 0.0, frame.hdr_w, frame.h), None, bar);
         let hair = p.hairline();
-        p.fill(Rect::new(0.0, frame.hdr_h - hair, frame.w, hair), None, line);
+        p.fill(
+            Rect::new(0.0, frame.hdr_h - hair, frame.w, hair),
+            None,
+            line,
+        );
         let edge = if frame.rtl { hdr_x } else { frame.hdr_w - hair };
         p.fill(Rect::new(edge, 0.0, hair, frame.h), None, line);
         let small = body.weight(Weight::Medium);
@@ -212,23 +274,39 @@ impl Drawer {
             let rect = Rect::new(s.pos, 0.0, s.size, frame.hdr_h);
             let on = (c0..=c1).contains(&s.idx);
             if on {
-                p.fill(rect, None, accent.with_alpha(if sel.span == Span::Cols { 0.35 } else { 0.18 }));
+                p.fill(
+                    rect,
+                    None,
+                    accent.with_alpha(if sel.span == Span::Cols { 0.35 } else { 0.18 }),
+                );
             }
             let l = p.layout(&col_name(s.idx), small, None);
             let prev = p.clip(rect);
             p.text(&l, rect, TextAlign::Center, if on { text } else { muted });
             p.restore_clip(prev);
-            p.fill(Rect::new(s.pos + s.size - hair, 0.0, hair, frame.hdr_h), None, line);
+            p.fill(
+                Rect::new(s.pos + s.size - hair, 0.0, hair, frame.hdr_h),
+                None,
+                line,
+            );
         }
         for s in &frame.rows {
             let rect = Rect::new(hdr_x, s.pos, frame.hdr_w, s.size);
             let on = (r0..=r1).contains(&s.idx);
             if on {
-                p.fill(rect, None, accent.with_alpha(if sel.span == Span::Rows { 0.35 } else { 0.18 }));
+                p.fill(
+                    rect,
+                    None,
+                    accent.with_alpha(if sel.span == Span::Rows { 0.35 } else { 0.18 }),
+                );
             }
             let l = p.layout(&(s.idx + 1).to_string(), small, None);
             p.text(&l, rect, TextAlign::Center, if on { text } else { muted });
-            p.fill(Rect::new(hdr_x, s.pos + s.size - hair, frame.hdr_w, hair), None, line);
+            p.fill(
+                Rect::new(hdr_x, s.pos + s.size - hair, frame.hdr_w, hair),
+                None,
+                line,
+            );
         }
         let _ = book;
     }
@@ -263,9 +341,17 @@ impl Drawer {
         p.text(&layout, inner, TextAlign::Start, text);
         let s = p.env().scale;
         let cx = layout.caret_x(e.caret.min(layout.text.len())) / s;
-        let origin = if layout.rtl { inner.x + inner.w - layout.width / s } else { inner.x };
+        let origin = if layout.rtl {
+            inner.x + inner.w - layout.width / s
+        } else {
+            inner.x
+        };
         let top = rect.y + (rect.h - layout.height / s) / 2.0;
-        p.fill(Rect::new(origin + cx, top, 1.5, layout.height / s), None, accent);
+        p.fill(
+            Rect::new(origin + cx, top, 1.5, layout.height / s),
+            None,
+            accent,
+        );
         p.restore_clip(prev);
         let _ = book;
     }

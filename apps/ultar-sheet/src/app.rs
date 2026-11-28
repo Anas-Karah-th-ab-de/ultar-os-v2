@@ -10,11 +10,13 @@ use crate::recover::Recovery;
 use std::path::PathBuf;
 use std::time::Instant;
 use ultar_ui::event::Modifiers;
+use ultar_ui::icon::IconId;
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
 use ultar_ui::tokens::{ColorRole, InputMode, SizeClass, Space};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{Button, ButtonVariant, EmptyState, Label, PixelArea, Text, TextField};
-use ultar_ui::icon::IconId;
+use ultar_ui::widgets::{
+    Button, ButtonVariant, Dialog, EmptyState, Label, PixelArea, Text, TextField,
+};
 
 pub use crate::cmd::Cmd;
 
@@ -150,7 +152,11 @@ impl SheetApp {
 
     /// The window title: the workbook's name, with a dot while unsaved.
     pub fn title(&self) -> String {
-        let name = self.core.book.name().unwrap_or_else(|| self.t("sheet.untitled"));
+        let name = self
+            .core
+            .book
+            .name()
+            .unwrap_or_else(|| self.t("sheet.untitled"));
         let dot = if self.core.book.dirty() { "• " } else { "" };
         format!("{dot}{name} – {}", self.t("app.sheet.name"))
     }
@@ -180,6 +186,37 @@ impl SheetApp {
         b.path.clone().filter(|_| !b.dirty())
     }
 
+    /// The node of a command's button (tests and the window).
+    pub fn node_of(&self, cmd: Cmd) -> Option<NodeId> {
+        self.cmds.iter().find(|(_, c)| *c == cmd).map(|(n, _)| *n)
+    }
+
+    /// The nodes of the open question: OK, cancel, "don't save" and the text field.
+    pub fn dialog_nodes(&self) -> [Option<NodeId>; 4] {
+        let n = &self.nodes;
+        [
+            n.dialog_ok,
+            n.dialog_cancel,
+            n.dialog_discard,
+            n.dialog_field,
+        ]
+    }
+
+    /// The open question.
+    pub fn question(&self) -> Option<&crate::ask::Ask> {
+        self.ask.as_ref()
+    }
+
+    /// The node of the formula bar.
+    pub fn formula_node(&self) -> Option<NodeId> {
+        self.nodes.formula
+    }
+
+    /// The node of the sheet picture.
+    pub fn grid_node(&self) -> Option<NodeId> {
+        self.nodes.grid
+    }
+
     /// The window state.
     pub fn state(&self) -> &State {
         &self.state
@@ -192,7 +229,11 @@ impl SheetApp {
     }
 
     /// The background read ended.
-    pub fn loaded(&mut self, path: PathBuf, result: Result<Opened, DocError>) -> Result<(), UiError> {
+    pub fn loaded(
+        &mut self,
+        path: PathBuf,
+        result: Result<Opened, DocError>,
+    ) -> Result<(), UiError> {
         match result {
             Ok(o) => {
                 let book = Book::of(o.book, Some(path.clone()), o.format);
@@ -202,7 +243,11 @@ impl SheetApp {
                 self.state = State::Ready;
                 self.ask = None;
                 if let Some(spot) = self.pending_spot.take() {
-                    if let Some(i) = spot.sheet.as_deref().and_then(|n| self.core.book.wb.sheet_index(n)) {
+                    if let Some(i) = spot
+                        .sheet
+                        .as_deref()
+                        .and_then(|n| self.core.book.wb.sheet_index(n))
+                    {
                         self.core.show_sheet(i);
                     }
                     if let Some((r, c)) = spot.cell {
@@ -220,7 +265,11 @@ impl SheetApp {
 
     /// Goes to the sheet and cell named by a URI fragment.
     pub fn go_to(&mut self, spot: &crate::place::Spot) -> Result<(), UiError> {
-        if let Some(i) = spot.sheet.as_deref().and_then(|n| self.core.book.wb.sheet_index(n)) {
+        if let Some(i) = spot
+            .sheet
+            .as_deref()
+            .and_then(|n| self.core.book.wb.sheet_index(n))
+        {
             self.core.show_sheet(i);
         }
         if let Some((r, c)) = spot.cell {
@@ -236,7 +285,8 @@ impl SheetApp {
         self.cmds.clear();
         self.nodes = Nodes::default();
         self.ui.clear();
-        self.ui.set_root_flex(Flex::column().cross(CrossAlign::Stretch));
+        self.ui
+            .set_root_flex(Flex::column().cross(CrossAlign::Stretch));
         match self.state.clone() {
             State::Ready => self.build_main()?,
             other => self.build_state(&other)?,
@@ -262,7 +312,10 @@ impl SheetApp {
             State::TooBig => (
                 IconId::Warning,
                 Label::key("sheet.too_big.title"),
-                Label::key_with("sheet.too_big", &[("mb", &(crate::file::MAX_BYTES >> 20).to_string())]),
+                Label::key_with(
+                    "sheet.too_big",
+                    &[("mb", &(crate::file::MAX_BYTES >> 20).to_string())],
+                ),
             ),
             State::Damaged(why) => {
                 let reason = self.t(why.key());
@@ -275,9 +328,19 @@ impl SheetApp {
             State::Ready => return Ok(()),
         };
         let root = self.ui.root();
-        self.ui.add_sized(root, EmptyState::new(icon, title).message(message), Sizing::grow(1))?;
+        self.ui.add_sized(
+            root,
+            EmptyState::new(icon, title).message(message),
+            Sizing::grow(1),
+        )?;
         if !matches!(state, State::Loading(_)) {
-            let row = self.ui.add(root, Flex::row().gap(Space::S8).padding(Padding::all(Space::S12)).main(MainAlign::Center))?;
+            let row = self.ui.add(
+                root,
+                Flex::row()
+                    .gap(Space::S8)
+                    .padding(Padding::all(Space::S12))
+                    .main(MainAlign::Center),
+            )?;
             self.button(row, Cmd::New, "sheet.new", false, ButtonVariant::Primary)?;
             self.button(row, Cmd::Open, "sheet.open", false, ButtonVariant::Plain)?;
         }
@@ -305,14 +368,22 @@ impl SheetApp {
     fn bar(&mut self, parent: NodeId) -> Result<NodeId, UiError> {
         self.ui.add(
             parent,
-            Flex::row().wrap().gap(Space::S4).padding(Padding::symmetric(Space::S8, Space::S4)).cross(CrossAlign::Center),
+            Flex::row()
+                .wrap()
+                .gap(Space::S4)
+                .padding(Padding::symmetric(Space::S8, Space::S4))
+                .cross(CrossAlign::Center),
         )
     }
 
     fn build_main(&mut self) -> Result<(), UiError> {
         let root = self.ui.root();
         let compact = self.ui.size_class() == SizeClass::Compact;
-        let st = self.core.book.sheet().style(self.core.sel.active.0, self.core.sel.active.1);
+        let st = self
+            .core
+            .book
+            .sheet()
+            .style(self.core.sel.active.0, self.core.sel.active.1);
         let sh = self.core.book.sheet();
         let (frozen_r, frozen_c, rtl) = (sh.frozen_rows > 0, sh.frozen_cols > 0, sh.rtl);
         // first bar: the file and the history
@@ -324,38 +395,80 @@ impl SheetApp {
         if compact {
             let open = self.tools_open;
             self.plain(bar, Cmd::Tools, "sheet.tools", open)?;
+            if self.ui.input_mode() == InputMode::Touch {
+                let on = self.core.extend;
+                self.plain(bar, Cmd::Extend, "sheet.extend", on)?;
+            }
         } else {
             self.plain(bar, Cmd::New, "sheet.new", false)?;
             self.plain(bar, Cmd::Open, "sheet.open", false)?;
             self.plain(bar, Cmd::SaveAs, "sheet.save_as", false)?;
-            let name = self.core.book.name().map_or_else(|| Label::key("sheet.untitled"), |n| Label::data(&n));
-            self.ui.add_sized(bar, Text::new(name).color(ColorRole::TextMuted), Sizing::grow(1))?;
+            let name = self
+                .core
+                .book
+                .name()
+                .map_or_else(|| Label::key("sheet.untitled"), |n| Label::data(&n));
+            self.ui.add_sized(
+                bar,
+                Text::new(name).color(ColorRole::TextMuted),
+                Sizing::grow(1),
+            )?;
         }
-        if !compact || self.tools_open {
+        if !compact {
             let tools = self.bar(root)?;
-            self.build_tools(tools, &st, (frozen_r, frozen_c, rtl), compact)?;
+            self.build_tools(tools, &st, (frozen_r, frozen_c, rtl), false)?;
         }
         // formula bar
         let fbar = self.ui.add(
             root,
-            Flex::row().gap(Space::S8).padding(Padding::symmetric(Space::S8, Space::S4)).cross(CrossAlign::Center),
+            Flex::row()
+                .gap(Space::S8)
+                .padding(Padding::symmetric(Space::S8, Space::S4))
+                .cross(CrossAlign::Center),
         )?;
         self.nodes.name_box = Some(self.ui.add_sized(
             fbar,
             Text::new(Label::data(&self.core.cell_name())).color(ColorRole::TextMuted),
             Sizing::width(48.0),
         )?);
-        let field = TextField::new(Label::key("sheet.formula")).placeholder(Label::key("sheet.formula.hint"));
+        let field = TextField::new(Label::key("sheet.formula"))
+            .placeholder(Label::key("sheet.formula.hint"));
         self.nodes.formula = Some(self.ui.add_sized(fbar, field, Sizing::grow(1))?);
         // grid
-        self.nodes.grid = Some(self.ui.add_sized(root, PixelArea::new(Label::key("sheet.grid")), Sizing::grow(1))?);
+        self.nodes.grid = Some(self.ui.add_sized(
+            root,
+            PixelArea::new(Label::key("sheet.grid")),
+            Sizing::grow(1),
+        )?);
         if self.core.find.open {
             self.build_find(root)?;
         }
         self.build_tabs(root)?;
-        let status = self.ui.add(root, Flex::row().padding(Padding::symmetric(Space::S8, Space::S4)))?;
-        self.nodes.status =
-            Some(self.ui.add(status, Text::new(Label::data("")).color(ColorRole::TextMuted))?);
+        let status = self.ui.add(
+            root,
+            Flex::row().padding(Padding::symmetric(Space::S8, Space::S4)),
+        )?;
+        self.nodes.status = Some(self.ui.add(
+            status,
+            Text::new(Label::data("")).color(ColorRole::TextMuted),
+        )?);
+        if compact && self.tools_open && self.ask.is_none() {
+            // a phone: the tools are a sheet over the grid, not rows that squeeze it away
+            let sheet = self
+                .ui
+                .add(root, Dialog::sheet(Label::key("sheet.tools")))?;
+            let tools = self.bar(sheet)?;
+            self.build_tools(tools, &st, (frozen_r, frozen_c, rtl), true)?;
+            let row = self.ui.add(sheet, Flex::row().main(MainAlign::End))?;
+            self.button(
+                row,
+                Cmd::Tools,
+                "sheet.close",
+                false,
+                ButtonVariant::Primary,
+            )?;
+            self.ui.open_dialog(sheet)?;
+        }
         Ok(())
     }
 
@@ -375,9 +488,24 @@ impl SheetApp {
         }
         self.plain(bar, Cmd::Italic, "sheet.italic", st.italic)?;
         self.plain(bar, Cmd::Wrap, "sheet.wrap", st.wrap)?;
-        self.plain(bar, Cmd::Align(Align::Start), "sheet.align_start", st.align == Align::Start)?;
-        self.plain(bar, Cmd::Align(Align::Center), "sheet.align_center", st.align == Align::Center)?;
-        self.plain(bar, Cmd::Align(Align::End), "sheet.align_end", st.align == Align::End)?;
+        self.plain(
+            bar,
+            Cmd::Align(Align::Start),
+            "sheet.align_start",
+            st.align == Align::Start,
+        )?;
+        self.plain(
+            bar,
+            Cmd::Align(Align::Center),
+            "sheet.align_center",
+            st.align == Align::Center,
+        )?;
+        self.plain(
+            bar,
+            Cmd::Align(Align::End),
+            "sheet.align_end",
+            st.align == Align::End,
+        )?;
         self.plain(bar, Cmd::Color, "sheet.color", st.color.is_some())?;
         self.plain(bar, Cmd::Fill, "sheet.fill", st.fill.is_some())?;
         for (f, key) in [
@@ -395,23 +523,23 @@ impl SheetApp {
         self.plain(bar, Cmd::Sort(true), "sheet.sort_asc", false)?;
         self.plain(bar, Cmd::Sort(false), "sheet.sort_desc", false)?;
         self.plain(bar, Cmd::FillDown, "sheet.fill_down", false)?;
-        self.plain(bar, Cmd::FillRight, "sheet.fill_right", false)?;
+        self.plain(bar, Cmd::FillRight, "sheet.fill_right", false)?; // physical
         self.plain(bar, Cmd::InsRow, "sheet.row_add", false)?;
         self.plain(bar, Cmd::DelRow, "sheet.row_del", false)?;
         self.plain(bar, Cmd::InsCol, "sheet.col_add", false)?;
         self.plain(bar, Cmd::DelCol, "sheet.col_del", false)?;
         self.plain(bar, Cmd::Find, "sheet.find", self.core.find.open)?;
-        if self.ui.input_mode() == InputMode::Touch {
-            let on = self.core.extend;
-            self.plain(bar, Cmd::Extend, "sheet.extend", on)?;
-        }
         Ok(())
     }
 
     fn build_find(&mut self, root: NodeId) -> Result<(), UiError> {
         let bar = self.ui.add(
             root,
-            Flex::row().wrap().gap(Space::S8).padding(Padding::symmetric(Space::S8, Space::S4)).cross(CrossAlign::Center),
+            Flex::row()
+                .wrap()
+                .gap(Space::S8)
+                .padding(Padding::symmetric(Space::S8, Space::S4))
+                .cross(CrossAlign::Center),
         )?;
         let find = TextField::new(Label::key("sheet.find.field")).text(&self.core.find.needle);
         self.nodes.find = Some(self.ui.add_sized(bar, find, Sizing::width(180.0))?);
@@ -434,9 +562,20 @@ impl SheetApp {
     fn build_tabs(&mut self, root: NodeId) -> Result<(), UiError> {
         let bar = self.ui.add(
             root,
-            Flex::row().wrap().gap(Space::S4).padding(Padding::symmetric(Space::S8, Space::S4)).cross(CrossAlign::Center),
+            Flex::row()
+                .wrap()
+                .gap(Space::S4)
+                .padding(Padding::symmetric(Space::S8, Space::S4))
+                .cross(CrossAlign::Center),
         )?;
-        let names: Vec<String> = self.core.book.wb.sheets.iter().map(|s| s.name.clone()).collect();
+        let names: Vec<String> = self
+            .core
+            .book
+            .wb
+            .sheets
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
         for (i, name) in names.iter().enumerate() {
             let on = i == self.core.book.active;
             let b = Button::new(Label::data(name)).variant(ButtonVariant::Tab(on));
@@ -494,10 +633,18 @@ impl SheetApp {
         };
         self.drawer.env = *self.ui.env();
         let frame = self.core.frame();
-        let hint = (self.core.book.sheet().cells.is_empty() && self.core.edit.is_none()).then(|| self.t("sheet.empty"));
+        let hint = (self.core.book.sheet().cells.is_empty() && self.core.edit.is_none())
+            .then(|| self.t("sheet.empty"));
         let canvas = self
             .drawer
-            .draw(&mut self.core.book, &frame, &self.core.sel, self.core.edit.as_ref(), hint.as_deref(), px)
+            .draw(
+                &mut self.core.book,
+                &frame,
+                &self.core.sel,
+                self.core.edit.as_ref(),
+                hint.as_deref(),
+                px,
+            )
             .map_err(|_| UiError::InvalidSize)?;
         self.ui.set_picture(node, canvas)
     }
@@ -529,7 +676,11 @@ impl SheetApp {
             self.ui.set_label(n, Label::data(&name))?;
         }
         if let Some(f) = self.nodes.formula {
-            let text = self.core.edit.as_ref().map_or_else(|| self.core.raw(), |e| e.text.clone());
+            let text = self
+                .core
+                .edit
+                .as_ref()
+                .map_or_else(|| self.core.raw(), |e| e.text.clone());
             if self.ui.text(f).map(|t| t != text).unwrap_or(false) {
                 self.ui.set_text(f, &text)?;
             }
@@ -556,7 +707,11 @@ impl SheetApp {
             let fmt = |x: f64| ultar_office::sheet::fmt_num((x * 1e6).round() / 1e6);
             let line = Label::key_with(
                 "sheet.stats",
-                &[("sum", &fmt(sum)), ("avg", &fmt(avg)), ("n", &n.to_string())],
+                &[
+                    ("sum", &fmt(sum)),
+                    ("avg", &fmt(avg)),
+                    ("n", &n.to_string()),
+                ],
             );
             parts.push(line.resolve(tr).into_owned());
         }

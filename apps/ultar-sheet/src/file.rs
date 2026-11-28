@@ -114,7 +114,11 @@ pub struct Opened {
 
 /// The separator of delimited text: the one that is most frequent in the first line.
 fn separator(text: &str) -> char {
-    let first = text.trim_start_matches('\u{feff}').lines().next().unwrap_or("");
+    let first = text
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .next()
+        .unwrap_or("");
     let best = [';', '\t', ',']
         .into_iter()
         .max_by_key(|c| first.matches(*c).count())
@@ -183,7 +187,11 @@ pub struct Saved {
 }
 
 /// The bytes of `wb` in `format`; `active` is the sheet delimited text keeps.
-pub fn write_bytes(wb: &Workbook, format: Format, active: usize) -> Result<(Vec<u8>, Saved), DocError> {
+pub fn write_bytes(
+    wb: &Workbook,
+    format: Format,
+    active: usize,
+) -> Result<(Vec<u8>, Saved), DocError> {
     match format {
         Format::Xlsx => {
             let bytes = xlsx::write(wb).map_err(|_| DocError::Io)?;
@@ -209,9 +217,10 @@ pub fn write_bytes(wb: &Workbook, format: Format, active: usize) -> Result<(Vec<
             }
             let _ = enc_used;
             let lossy = wb.sheets.len() > 1
-                || wb.sheets.iter().any(|s| {
-                    !s.styles.is_empty() || s.cells.values().any(|c| c.starts_with('='))
-                });
+                || wb
+                    .sheets
+                    .iter()
+                    .any(|s| !s.styles.is_empty() || s.cells.values().any(|c| c.starts_with('=')));
             Ok((
                 bytes,
                 Saved {
@@ -253,7 +262,8 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ultar-sheet-file-{name}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("ultar-sheet-file-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -294,7 +304,11 @@ mod tests {
         let back = open(&p).unwrap();
         assert_eq!(back.book.sheets[0].get(1, 0), "تفاحة");
         // a Windows-1256 file is read as such and written back as such
-        let ar = Format::Csv { enc: Enc::Win1256, sep: ';', eol: Eol::CrLf };
+        let ar = Format::Csv {
+            enc: Enc::Win1256,
+            sep: ';',
+            eol: Eol::CrLf,
+        };
         let q = d.join("b.csv");
         save(&q, &wb, ar, 0).unwrap();
         let raw = std::fs::read(&q).unwrap();
@@ -309,7 +323,11 @@ mod tests {
     fn a_character_windows_1256_cannot_hold_changes_the_encoding() {
         let mut wb = book();
         wb.sheets[0].set(3, 0, "✓");
-        let ar = Format::Csv { enc: Enc::Win1256, sep: ',', eol: Eol::Lf };
+        let ar = Format::Csv {
+            enc: Enc::Win1256,
+            sep: ',',
+            eol: Eol::Lf,
+        };
         let (bytes, saved) = write_bytes(&wb, ar, 0).unwrap();
         assert_eq!(saved.encoding_changed, Some(Enc::Utf8Bom));
         assert!(String::from_utf8_lossy(&bytes).contains('✓'));
@@ -327,7 +345,10 @@ mod tests {
     #[test]
     fn errors_have_reasons() {
         let d = tmp("err");
-        assert_eq!(open(&d.join("missing.xlsx")).unwrap_err(), DocError::Missing);
+        assert_eq!(
+            open(&d.join("missing.xlsx")).unwrap_err(),
+            DocError::Missing
+        );
         std::fs::write(d.join("bad.xlsx"), b"this is not a zip").unwrap();
         assert_eq!(open(&d.join("bad.xlsx")).unwrap_err(), DocError::Damaged);
         std::fs::write(d.join("empty.xlsx"), b"").unwrap();
@@ -336,7 +357,10 @@ mod tests {
             save(&d.join("nodir/a.xlsx"), &book(), Format::Xlsx, 0).unwrap_err(),
             DocError::Missing
         );
-        assert_eq!(read_bytes(Path::new("a.xlsx"), &vec![0u8; 8]).unwrap_err(), DocError::Damaged);
+        assert_eq!(
+            read_bytes(Path::new("a.xlsx"), &[0u8; 8]).unwrap_err(),
+            DocError::Damaged
+        );
     }
 
     #[test]

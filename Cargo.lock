@@ -9109,6 +9109,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-sheet"
+version = "0.8.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-office",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-shell"
 version = "0.8.0"
 dependencies = [

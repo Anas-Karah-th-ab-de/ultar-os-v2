@@ -109,8 +109,16 @@ struct Session {
 
 fn open(o: &Options) -> Result<Session, String> {
     let socket = o.compositor.clone().ok_or("compositor")?;
-    let theme = if o.light { ThemeKind::Light } else { ThemeKind::Dark };
-    let mode = if o.touch { InputMode::Touch } else { InputMode::Pointer };
+    let theme = if o.light {
+        ThemeKind::Light
+    } else {
+        ThemeKind::Dark
+    };
+    let mode = if o.touch {
+        InputMode::Touch
+    } else {
+        InputMode::Pointer
+    };
     let env = PaintEnv::new(o.lang, theme);
     let tr = ultar_sheet::i18n::translator;
     let ui = |lang| Ui::new(env, mode, Size::new(1.0, 1.0), tr(lang)).map_err(|e| e.to_string());
@@ -131,7 +139,14 @@ fn open(o: &Options) -> Result<Session, String> {
         None => app.offer_recovery_new().map_err(|e| format!("{e:?}"))?,
     }
     std::mem::swap(window.ui_mut(), &mut app.ui);
-    Ok(Session { window, app, loaded, reader, bus, reported: None })
+    Ok(Session {
+        window,
+        app,
+        loaded,
+        reader,
+        bus,
+        reported: None,
+    })
 }
 
 /// Reads a workbook in a thread of its own, so the window stays alive.
@@ -157,7 +172,10 @@ fn report(s: &mut Session) {
         app: APP_ID.to_owned(),
         title: r.name.clone(),
         uri: r.uri.clone(),
-        file: s.app.file_on_this_device().map(|p| p.to_string_lossy().into_owned()),
+        file: s
+            .app
+            .file_on_this_device()
+            .map(|p| p.to_string_lossy().into_owned()),
     });
     let _ = bus.call(&SetActivity { activity }, Duration::from_millis(300));
     s.reported = Some(shown);
@@ -165,7 +183,11 @@ fn report(s: &mut Session) {
 
 /// One event and what follows from it; `false` when the window closes.
 fn turn(s: &mut Session, size: &mut Size) -> Result<bool, String> {
-    let wait = if matches!(s.app.state(), State::Loading(_)) { POLL_LOADING } else { POLL };
+    let wait = if matches!(s.app.state(), State::Loading(_)) {
+        POLL_LOADING
+    } else {
+        POLL
+    };
     let actions = s.window.dispatch(Some(wait)).map_err(|e| e.to_string())?;
     let closing = s.window.window().close_requested();
     let keys = s.window.take_unhandled_keys();

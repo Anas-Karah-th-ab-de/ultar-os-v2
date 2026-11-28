@@ -8,9 +8,21 @@ use ultar_office::style::Align;
 use ultar_ui::ui::UiError;
 
 /// Text colours the colour button goes through (`None`: the theme's).
-const COLORS: [Option<u32>; 5] = [None, Some(0xC62828), Some(0x1565C0), Some(0x2E7D32), Some(0x6A1B9A)];
+const COLORS: [Option<u32>; 5] = [
+    None,
+    Some(0xC62828),
+    Some(0x1565C0),
+    Some(0x2E7D32),
+    Some(0x6A1B9A),
+];
 /// Fill colours the fill button goes through.
-const FILLS: [Option<u32>; 5] = [None, Some(0xFFF59D), Some(0xA5D6A7), Some(0x90CAF9), Some(0xE0E0E0)];
+const FILLS: [Option<u32>; 5] = [
+    None,
+    Some(0xFFF59D),
+    Some(0xA5D6A7),
+    Some(0x90CAF9),
+    Some(0xE0E0E0),
+];
 
 /// A command a button stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +66,7 @@ pub enum Cmd {
     /// Fill down.
     FillDown,
     /// Fill right.
-    FillRight,
+    FillRight, // physical
     /// Insert rows.
     InsRow,
     /// Delete rows.
@@ -100,10 +112,27 @@ impl SheetApp {
         if self.ask.is_some() {
             return Ok(());
         }
-        if !matches!(cmd, Cmd::Tools | Cmd::Find | Cmd::FindPrev | Cmd::FindNext | Cmd::MatchCase | Cmd::CloseFind) {
+        if !matches!(
+            cmd,
+            Cmd::Tools
+                | Cmd::Find
+                | Cmd::FindPrev
+                | Cmd::FindNext
+                | Cmd::MatchCase
+                | Cmd::CloseFind
+        ) {
             self.finish_edit();
         }
-        let st = self.core.book.sheet().style(self.core.sel.active.0, self.core.sel.active.1);
+        let st = self
+            .core
+            .book
+            .sheet()
+            .style(self.core.sel.active.0, self.core.sel.active.1);
+        // on a phone the tools are a sheet; a command closes it
+        let closing_tools = self.tools_open && cmd != Cmd::Tools;
+        if closing_tools {
+            self.tools_open = false;
+        }
         match cmd {
             Cmd::New => return self.new_workbook(),
             Cmd::Open => return self.ask_open(),
@@ -118,7 +147,9 @@ impl SheetApp {
             Cmd::Bold => self.core.toggle_bold(),
             Cmd::Italic => self.core.toggle_italic(),
             Cmd::Wrap => self.core.toggle_wrap(),
-            Cmd::Align(a) => self.core.set_align(if st.align == a { Align::General } else { a }),
+            Cmd::Align(a) => self
+                .core
+                .set_align(if st.align == a { Align::General } else { a }),
             Cmd::Color => self.core.set_color(next(&COLORS, st.color)),
             Cmd::Fill => self.core.set_fill(next(&FILLS, st.fill)),
             Cmd::Fmt(f) => self.core.set_num_fmt(f),
@@ -127,7 +158,7 @@ impl SheetApp {
             Cmd::Rtl => self.core.toggle_rtl(),
             Cmd::Sort(asc) => self.core.sort(asc),
             Cmd::FillDown => self.core.fill(true),
-            Cmd::FillRight => self.core.fill(false),
+            Cmd::FillRight => self.core.fill(false), // physical
             Cmd::InsRow => self.core.insert_lines(Axis::Rows),
             Cmd::DelRow => self.core.delete_lines(Axis::Rows),
             Cmd::InsCol => self.core.insert_lines(Axis::Cols),
@@ -163,7 +194,12 @@ impl SheetApp {
             Cmd::RenameSheet => return self.ask_rename(),
             Cmd::DeleteSheet => return self.delete_sheet(),
         }
-        if matches!(cmd, Cmd::Tab(_) | Cmd::Undo | Cmd::Redo | Cmd::DelRow | Cmd::DelCol) {
+        if closing_tools
+            || matches!(
+                cmd,
+                Cmd::Tab(_) | Cmd::Undo | Cmd::Redo | Cmd::DelRow | Cmd::DelCol
+            )
+        {
             // the tabs may have changed
             return self.rebuild();
         }

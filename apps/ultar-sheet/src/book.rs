@@ -122,14 +122,26 @@ impl Book {
         let v = self.value(r, c);
         let code = self.sheet().style(r, c).num_fmt;
         match v {
-            Value::Empty => Shown { text: String::new(), number: false, error: false },
+            Value::Empty => Shown {
+                text: String::new(),
+                number: false,
+                error: false,
+            },
             Value::Num(n) => Shown {
                 text: numfmt::format(n, &code, &self.names),
                 number: true,
                 error: false,
             },
-            Value::Err(e) => Shown { text: e, number: false, error: true },
-            other => Shown { text: other.text(), number: false, error: false },
+            Value::Err(e) => Shown {
+                text: e,
+                number: false,
+                error: true,
+            },
+            other => Shown {
+                text: other.text(),
+                number: false,
+                error: false,
+            },
         }
     }
 
@@ -233,7 +245,10 @@ impl Book {
         let out = f(&mut self.wb, &mut self.active);
         self.active = self.active.min(self.wb.sheets.len().saturating_sub(1));
         self.calc.clear();
-        self.push(Step::Whole { book: before, active });
+        self.push(Step::Whole {
+            book: before,
+            active,
+        });
         out
     }
 
@@ -249,7 +264,10 @@ impl Book {
             Ok(out) => {
                 self.active = self.active.min(self.wb.sheets.len().saturating_sub(1));
                 self.calc.clear();
-                self.push(Step::Whole { book: before, active });
+                self.push(Step::Whole {
+                    book: before,
+                    active,
+                });
                 Ok(out)
             }
             Err(e) => {
@@ -308,17 +326,27 @@ impl Book {
                 // the undo of an undo: swap old and new
                 let swapped: Vec<Edit> = edits
                     .iter()
-                    .map(|e| Edit { at: e.at, old: e.new.clone(), new: e.old.clone() })
+                    .map(|e| Edit {
+                        at: e.at,
+                        old: e.new.clone(),
+                        new: e.old.clone(),
+                    })
                     .collect();
                 self.apply(sheet, &swapped, true);
                 self.active = sheet;
-                Step::Cells { sheet, edits: swapped }
+                Step::Cells {
+                    sheet,
+                    edits: swapped,
+                }
             }
             Step::Whole { book, active } => {
                 let now = std::mem::replace(&mut self.wb, *book);
                 let was = std::mem::replace(&mut self.active, active);
                 self.calc.clear();
-                Step::Whole { book: Box::new(now), active: was }
+                Step::Whole {
+                    book: Box::new(now),
+                    active: was,
+                }
             }
         }
     }

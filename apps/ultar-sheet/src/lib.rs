@@ -18,6 +18,7 @@
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod agent;
 pub mod app;
@@ -25,11 +26,11 @@ pub mod ask;
 pub mod book;
 pub mod cmd;
 pub mod core;
-pub mod input;
 pub mod draw;
 pub mod file;
 pub mod frame;
 pub mod i18n;
+pub mod input;
 pub mod ops;
 pub mod place;
 pub mod recover;

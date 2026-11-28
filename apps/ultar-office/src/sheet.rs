@@ -136,8 +136,11 @@ pub fn parse_cell(s: &str) -> Option<(u32, u32)> {
     Some((row - 1, col - 1))
 }
 
+/// A parsed range: the sheet name when given, the first and the last cell.
+pub type RangeRef = (Option<String>, (u32, u32), (u32, u32));
+
 /// "A1:C5" / "A1" (optional mit "Blatt!") → (Blatt, (r0,c0), (r1,c1))
-pub fn parse_range(s: &str) -> Option<(Option<String>, (u32, u32), (u32, u32))> {
+pub fn parse_range(s: &str) -> Option<RangeRef> {
     let (sheet, rest) = match s.rsplit_once('!') {
         Some((sh, r)) => (Some(sh.trim_matches('\'').to_string()), r),
         None => (None, s),
@@ -470,9 +473,8 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 i += 1;
             }
             let t: String = ch[st..i].iter().collect();
-            if i < ch.len() && ch[i] == '(' && !t.contains('!') {
-                out.push(Tok::Ident(t.to_ascii_uppercase()));
-            } else if t.eq_ignore_ascii_case("TRUE") || t.eq_ignore_ascii_case("FALSE") {
+            let call = i < ch.len() && ch[i] == '(' && !t.contains('!');
+            if call || t.eq_ignore_ascii_case("TRUE") || t.eq_ignore_ascii_case("FALSE") {
                 out.push(Tok::Ident(t.to_ascii_uppercase()));
             } else {
                 out.push(Tok::Ref(t));
@@ -790,7 +792,7 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
                 }
                 parts
                     .last()
-                    .map_or(true, |l| l.is_empty() || a.ends_with(l))
+                    .is_none_or(|l| l.is_empty() || a.ends_with(l))
             } else {
                 a == b
             }

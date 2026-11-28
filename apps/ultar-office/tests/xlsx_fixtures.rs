@@ -1,8 +1,8 @@
 //! .xlsx files from other programs (tests/fixtures) and the round trip of a file this library
 //! made itself.
 
-use ultar_office::sheet::{Value, Workbook};
 use ultar_office::numfmt::{format as format_number_with, Names};
+use ultar_office::sheet::{Value, Workbook};
 use ultar_office::style::Align;
 
 fn format_number(n: f64, code: &str) -> String {
@@ -44,7 +44,10 @@ fn a_file_written_by_openpyxl_is_read_completely() {
     let pct = u.style(1, 2).num_fmt;
     assert_eq!(format_number(0.6, &pct), "60.0%");
     assert_eq!(format_number(45292.0, &u.style(0, 3).num_fmt), "2024-01-01");
-    assert_eq!(format_number(1_234_567.891, &u.style(0, 6).num_fmt), "1,234,567.89");
+    assert_eq!(
+        format_number(1_234_567.891, &u.style(0, 6).num_fmt),
+        "1,234,567.89"
+    );
     let head = u.style(0, 0);
     assert!(head.bold);
     assert_eq!(head.color, Some(0xFF0000));
@@ -64,7 +67,13 @@ fn a_file_written_by_openpyxl_is_read_completely() {
 #[test]
 fn a_file_in_the_layout_of_excel_is_read_completely() {
     let wb = xlsx::read(&fixture("excel-like.xlsx")).unwrap();
-    assert_eq!(wb.sheets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["Daten", "Zweites"]);
+    assert_eq!(
+        wb.sheets
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Daten", "Zweites"]
+    );
     let d = &wb.sheets[0];
     // shared strings, rich text runs joined, white space kept
     assert_eq!(val(&wb, 0, "A1"), Value::Text("Name".into()));
@@ -78,12 +87,17 @@ fn a_file_in_the_layout_of_excel_is_read_completely() {
     assert_eq!(head.color, Some(0x0000FF));
     assert_eq!(format_number(0.255, &d.style(1, 1).num_fmt), "26%");
     assert_eq!(d.style(1, 3).fill, Some(0xFFFF00));
-    assert_eq!(format_number(1234.5, &d.style(1, 3).num_fmt), "1,234.50 EUR");
+    assert_eq!(
+        format_number(1234.5, &d.style(1, 3).num_fmt),
+        "1,234.50 EUR"
+    );
     assert_eq!(d.style(1, 4).align, Align::Center);
     assert!(d.style(1, 4).wrap);
     // dates (built-in format 14)
-    assert!(format_number(45292.0, &d.style(1, 2).num_fmt).contains("2024")
-        || format_number(45292.0, &d.style(1, 2).num_fmt).ends_with("24"));
+    assert!(
+        format_number(45292.0, &d.style(1, 2).num_fmt).contains("2024")
+            || format_number(45292.0, &d.style(1, 2).num_fmt).ends_with("24")
+    );
     // every kind of cached result: recalculated, not copied
     assert_eq!(val(&wb, 0, "B3"), Value::Err("#DIV/0!".into()));
     assert_eq!(val(&wb, 0, "C3"), Value::Bool(true));
@@ -117,7 +131,10 @@ fn what_the_app_writes_reads_back_the_same() {
         assert_eq!(a.styles, b.styles, "styles of {}", a.name);
         assert_eq!(a.heights, b.heights);
         assert_eq!(a.widths, b.widths);
-        assert_eq!((a.rtl, a.frozen_rows, a.frozen_cols), (b.rtl, b.frozen_rows, b.frozen_cols));
+        assert_eq!(
+            (a.rtl, a.frozen_rows, a.frozen_cols),
+            (b.rtl, b.frozen_rows, b.frozen_cols)
+        );
     }
     for c in ["B3", "C3", "D3", "E3", "B4", "C4", "D4", "A11"] {
         assert_eq!(val(&wb, 0, c), val(&back, 0, c), "{c}");
@@ -153,7 +170,10 @@ fn damaged_and_hostile_files_give_errors_not_crashes() {
     assert!(xlsx::read(&good[..good.len() / 2]).is_err());
     // a sheet whose XML is broken
     let mut broken = good.clone();
-    let at = broken.windows(5).position(|w| w == b"<dime").map_or(0, |p| p);
+    let at = broken
+        .windows(5)
+        .position(|w| w == b"<dime")
+        .map_or(0, |p| p);
     // (deflated: flipping bytes breaks the stream or the XML, either is an error or a sheet)
     for i in 0..40 {
         if let Some(b) = broken.get_mut(at + i) {

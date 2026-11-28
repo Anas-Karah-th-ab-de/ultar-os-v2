@@ -79,13 +79,26 @@ impl Core {
 
     /// The geometry of the visible part.
     pub fn frame(&self) -> Frame {
-        Frame::of(self.book.sheet(), self.first, self.view.0, self.view.1, self.touch)
+        Frame::of(
+            self.book.sheet(),
+            self.first,
+            self.view.0,
+            self.view.1,
+            self.touch,
+        )
     }
 
     /// Scrolls so that the active cell is visible.
     pub fn reveal(&mut self) {
         let at = self.sel.follow();
-        reveal(self.book.sheet(), &mut self.first, at, self.view.0, self.view.1, self.touch);
+        reveal(
+            self.book.sheet(),
+            &mut self.first,
+            at,
+            self.view.0,
+            self.view.1,
+            self.touch,
+        );
     }
 
     /// Says `key` in the status line.
@@ -95,7 +108,10 @@ impl Core {
 
     /// The raw content of the active cell (what the formula bar shows).
     pub fn raw(&self) -> String {
-        self.book.sheet().get(self.sel.active.0, self.sel.active.1).to_owned()
+        self.book
+            .sheet()
+            .get(self.sel.active.0, self.sel.active.1)
+            .to_owned()
     }
 
     /// The name of the active cell, `B7`.
@@ -110,7 +126,8 @@ impl Core {
         }
         self.cancel();
         let n = self.book.wb.sheets.len();
-        self.views.resize(n.max(self.views.len()), (Sel::default(), (0, 0)));
+        self.views
+            .resize(n.max(self.views.len()), (Sel::default(), (0, 0)));
         self.views[self.book.active] = (self.sel, self.first);
         self.book.active = i;
         (self.sel, self.first) = self.views[i];
@@ -175,8 +192,8 @@ impl Core {
                 let n = next(&e.text, e.caret);
                 e.text.replace_range(e.caret..n, "");
             }
-            Key::ArrowLeft => e.caret = prev(&e.text, e.caret),
-            Key::ArrowRight => e.caret = next(&e.text, e.caret),
+            Key::ArrowLeft => e.caret = prev(&e.text, e.caret), // physical
+            Key::ArrowRight => e.caret = next(&e.text, e.caret), // physical
             Key::Home => e.caret = 0,
             Key::End => e.caret = e.text.len(),
             Key::Escape => self.edit = None,
@@ -194,7 +211,8 @@ impl Core {
             }
             Key::ArrowUp | Key::ArrowDown => {
                 if self.commit() {
-                    self.sel.step(if key == Key::ArrowUp { -1 } else { 1 }, 0, false);
+                    self.sel
+                        .step(if key == Key::ArrowUp { -1 } else { 1 }, 0, false);
                     self.reveal();
                 }
             }
@@ -225,7 +243,8 @@ impl Core {
         let (max_r, max_c) = (MAX_ROWS - 1, MAX_COLS - 1);
         let at = |r: u32, c: u32, dr: i64, dc: i64| {
             let (nr, nc) = (i64::from(r) + dr, i64::from(c) + dc);
-            (nr >= 0 && nc >= 0 && nr <= i64::from(max_r) && nc <= i64::from(max_c)).then_some((nr as u32, nc as u32))
+            (nr >= 0 && nc >= 0 && nr <= i64::from(max_r) && nc <= i64::from(max_c))
+                .then_some((nr as u32, nc as u32))
         };
         let limit = |r: u32, c: u32| match (dr, dc) {
             (1, _) => (max_r, c),
@@ -287,8 +306,8 @@ impl Core {
         match key {
             Key::ArrowUp => go(self, -1, 0),
             Key::ArrowDown => go(self, 1, 0),
-            Key::ArrowLeft => go(self, 0, -1),
-            Key::ArrowRight => go(self, 0, 1),
+            Key::ArrowLeft => go(self, 0, -1), // physical
+            Key::ArrowRight => go(self, 0, 1), // physical
             Key::PageUp => {
                 let n = self.page();
                 self.sel.step(-n, 0, ext);
@@ -308,7 +327,8 @@ impl Core {
             }
             Key::End if ctrl => {
                 let (rows, cols) = self.book.sheet().extent();
-                self.sel.select(rows.saturating_sub(1), cols.saturating_sub(1));
+                self.sel
+                    .select(rows.saturating_sub(1), cols.saturating_sub(1));
             }
             Key::Enter => {
                 self.sel.advance(true, ext);
@@ -394,6 +414,7 @@ impl Core {
         self.views.truncate(n);
         let (r, c) = self.book.sheet().extent();
         let (cr, cc) = self.sel.active;
-        self.sel.select(cr.min(r.max(1) + 1000), cc.min(c.max(1) + 100));
+        self.sel
+            .select(cr.min(r.max(1) + 1000), cc.min(c.max(1) + 100));
     }
 }

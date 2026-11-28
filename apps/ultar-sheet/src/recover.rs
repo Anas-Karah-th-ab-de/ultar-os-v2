@@ -42,7 +42,11 @@ fn id_of(path: Option<&Path>) -> String {
 impl Recovery {
     /// The copy of `path` (or of a new workbook) in `dir`.
     pub fn new(dir: &Path, path: Option<&Path>) -> Recovery {
-        Recovery { dir: dir.to_owned(), id: id_of(path), last: 0 }
+        Recovery {
+            dir: dir.to_owned(),
+            id: id_of(path),
+            last: 0,
+        }
     }
 
     /// The recovery folder.
@@ -72,7 +76,10 @@ impl Recovery {
                 }
             }
         }
-        Some(Found { file: data, of: of.map(Path::to_owned) })
+        Some(Found {
+            file: data,
+            of: of.map(Path::to_owned),
+        })
     }
 
     /// Writes the copy when the workbook changed since the last copy.
@@ -133,7 +140,9 @@ mod tests {
         assert_eq!(wb.sheets[0].get(0, 0), "unsaved");
         assert_eq!(wb.sheets[0].get(1, 0), "=1+2");
         // another file has its own copy
-        assert!(Recovery::new(&d.join("rec"), Some(&d.join("b.xlsx"))).find(None).is_none());
+        assert!(Recovery::new(&d.join("rec"), Some(&d.join("b.xlsx")))
+            .find(None)
+            .is_none());
         // saving removes it
         r.clear();
         assert!(again.find(Some(&doc)).is_none());

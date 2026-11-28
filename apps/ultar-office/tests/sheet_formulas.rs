@@ -152,12 +152,18 @@ fn dates_and_the_clock() {
 fn lookups_and_conditional_sums() {
     let mut w = Workbook::new();
     for (c, v) in [
-        ("A1", "1"), ("B1", "one"),
-        ("A2", "3"), ("B2", "three"),
-        ("A3", "5"), ("B3", "five"),
-        ("D1", "apple"), ("E1", "10"),
-        ("D2", "banana"), ("E2", "20"),
-        ("D3", "apple"), ("E3", "30"),
+        ("A1", "1"),
+        ("B1", "one"),
+        ("A2", "3"),
+        ("B2", "three"),
+        ("A3", "5"),
+        ("B3", "five"),
+        ("D1", "apple"),
+        ("E1", "10"),
+        ("D2", "banana"),
+        ("E2", "20"),
+        ("D3", "apple"),
+        ("E3", "30"),
     ] {
         let _ = w.set_ref(0, c, v);
     }
@@ -226,16 +232,20 @@ fn a_cycle_is_detected_in_every_shape() {
     let _ = w.set_ref(0, "E1", "=SUM(E1:E3)");
     let _ = w.set_ref(0, "F1", "=B1+1");
     for c in 0..6 {
-        assert_eq!(w.value_at(0, 0, c, NOW), Value::Err("#CIRC!".into()), "column {c}");
+        assert_eq!(
+            w.value_at(0, 0, c, NOW),
+            Value::Err("#CIRC!".into()),
+            "column {c}"
+        );
     }
 }
 
 #[test]
 fn the_list_of_functions_is_complete() {
     for f in [
-        "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "IF", "AND", "OR", "NOT", "ROUND", "ABS",
-        "CONCAT", "LEN", "LEFT", "RIGHT", "MID", "UPPER", "LOWER", "TODAY", "NOW", "VLOOKUP",
-        "IFERROR", "SUMIF", "COUNTIF",
+        "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "IF", "AND", "OR", "NOT", "ROUND",
+        "ABS", "CONCAT", "LEN", "LEFT", "RIGHT", "MID", "UPPER", "LOWER", "TODAY", "NOW",
+        "VLOOKUP", "IFERROR", "SUMIF", "COUNTIF",
     ] {
         assert!(ultar_office::sheet::FUNCTIONS.contains(&f), "{f}");
     }

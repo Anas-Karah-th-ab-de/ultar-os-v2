@@ -23,7 +23,14 @@ fn plain(c: &mut Core, key: Key) {
 }
 
 fn ctrl(c: &mut Core, ch: char) -> Fx {
-    press(c, Key::Char(ch), Modifiers { ctrl: true, ..Modifiers::NONE })
+    press(
+        c,
+        Key::Char(ch),
+        Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        },
+    )
 }
 
 fn type_text(c: &mut Core, text: &str) {
@@ -130,7 +137,14 @@ fn shift_arrows_select_ranges_and_the_status_adds_up() {
     assert_eq!(c.sel.rect(), (0, 0, 3, 0));
     // Ctrl+arrow jumps to the end of the data
     c.sel.select(0, 0);
-    press(&mut c, Key::ArrowDown, Modifiers { ctrl: true, ..Modifiers::NONE });
+    press(
+        &mut c,
+        Key::ArrowDown,
+        Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        },
+    );
     assert_eq!(c.sel.active, (3, 0));
 }
 
@@ -237,14 +251,21 @@ fn inserting_and_deleting_rows_keeps_formulas_pointing_at_their_data() {
 #[test]
 fn sort_keeps_the_frozen_header_and_moves_whole_rows() {
     let mut c = core();
-    for (r, (a, b)) in [("n", "name"), ("3", "c"), ("1", "a"), ("2", "b")].iter().enumerate() {
+    for (r, (a, b)) in [("n", "name"), ("3", "c"), ("1", "a"), ("2", "b")]
+        .iter()
+        .enumerate()
+    {
         put(&mut c, r as u32, 0, a);
         put(&mut c, r as u32, 1, b);
     }
     c.toggle_freeze_row();
     c.sel.select(1, 0);
     c.sort(true);
-    let col = |c: &Core, k: u32| (0..4).map(|r| c.book.sheet().get(r, k).to_owned()).collect::<Vec<_>>();
+    let col = |c: &Core, k: u32| {
+        (0..4)
+            .map(|r| c.book.sheet().get(r, k).to_owned())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(col(&c, 0), ["n", "1", "2", "3"]);
     assert_eq!(col(&c, 1), ["name", "a", "b", "c"]);
     c.sort(false);
@@ -261,7 +282,9 @@ fn arabic_text_sorts_by_the_alphabet() {
     }
     c.sel.select(0, 0);
     c.sort(true);
-    let got: Vec<_> = (0..4).map(|r| c.book.sheet().get(r, 0).to_owned()).collect();
+    let got: Vec<_> = (0..4)
+        .map(|r| c.book.sheet().get(r, 0).to_owned())
+        .collect();
     assert_eq!(got, ["أحمد", "بسمة", "ليلى", "ياسمين"]);
 }
 
@@ -346,7 +369,10 @@ fn formats_show_in_the_cell_and_toggle() {
     c.toggle_italic();
     let st = c.book.sheet().style(1, 0);
     assert!(st.bold && st.italic && st.wrap);
-    assert_eq!((st.color, st.fill, st.align), (Some(0xC62828), Some(0xFFF59D), Align::Center));
+    assert_eq!(
+        (st.color, st.fill, st.align),
+        (Some(0xC62828), Some(0xFFF59D), Align::Center)
+    );
     c.toggle_bold();
     assert!(!c.book.sheet().style(1, 0).bold);
     // dates
@@ -362,7 +388,11 @@ fn an_rtl_sheet_moves_the_arrows_the_other_way() {
     c.toggle_rtl();
     c.sel.select(0, 3);
     plain(&mut c, Key::ArrowLeft);
-    assert_eq!(c.sel.active, (0, 4), "left in a right-to-left sheet is the next column");
+    assert_eq!(
+        c.sel.active,
+        (0, 4),
+        "left in a right-to-left sheet is the next column"
+    );
     plain(&mut c, Key::ArrowRight);
     assert_eq!(c.sel.active, (0, 3));
 }
@@ -372,15 +402,29 @@ fn the_assistant_reads_freely_and_writes_only_after_the_users_yes() {
     let mut c = core();
     put(&mut c, 0, 0, "4");
     put(&mut c, 0, 1, "=A1*2");
-    let Reply::Done(text) = c.agent(Request::ReadRange { range: "A1:B1".into() }) else {
+    let Reply::Done(text) = c.agent(Request::ReadRange {
+        range: "A1:B1".into(),
+    }) else {
         panic!("read");
     };
     assert_eq!(text, "4\t8 [=A1*2]\n");
-    assert!(matches!(c.agent(Request::ReadRange { range: "Nope!A1".into() }), Reply::Refused(_)));
+    assert!(matches!(
+        c.agent(Request::ReadRange {
+            range: "Nope!A1".into()
+        }),
+        Reply::Refused(_)
+    ));
     // a write waits
-    let req = Request::WriteRange { range: "A3".into(), values: vec![vec!["x".into(), "=A1+1".into()]] };
+    let req = Request::WriteRange {
+        range: "A3".into(),
+        values: vec![vec!["x".into(), "=A1+1".into()]],
+    };
     assert_eq!(c.agent(req.clone()), Reply::Confirm);
-    assert_eq!(c.book.sheet().get(2, 0), "", "nothing written before the answer");
+    assert_eq!(
+        c.book.sheet().get(2, 0),
+        "",
+        "nothing written before the answer"
+    );
     assert!(matches!(c.agent_answer(false), Reply::Refused(_)));
     assert_eq!(c.book.sheet().get(2, 0), "");
     assert_eq!(c.agent(req), Reply::Confirm);
@@ -390,16 +434,32 @@ fn the_assistant_reads_freely_and_writes_only_after_the_users_yes() {
     c.undo();
     assert_eq!(c.book.sheet().get(2, 1), "");
     // a bad formula is refused before the user is asked
-    let bad = Request::WriteRange { range: "A1".into(), values: vec![vec!["=SUM(".into()]] };
+    let bad = Request::WriteRange {
+        range: "A1".into(),
+        values: vec![vec!["=SUM(".into()]],
+    };
     assert!(matches!(c.agent(bad), Reply::Refused(_)));
     // a sheet is added after the yes, and a taken name is refused
-    assert_eq!(c.agent(Request::AddSheet { name: "Totals".into() }), Reply::Confirm);
+    assert_eq!(
+        c.agent(Request::AddSheet {
+            name: "Totals".into()
+        }),
+        Reply::Confirm
+    );
     assert!(matches!(c.agent_answer(true), Reply::Done(_)));
     assert_eq!(c.book.wb.sheets[1].name, "Totals");
-    assert!(matches!(c.agent(Request::AddSheet { name: "Totals".into() }), Reply::Refused(_)));
+    assert!(matches!(
+        c.agent(Request::AddSheet {
+            name: "Totals".into()
+        }),
+        Reply::Refused(_)
+    ));
     // open is handed to the window
     let uri = "files://documents/a.xlsx".to_owned();
-    assert_eq!(c.agent(Request::Open { uri: uri.clone() }), Reply::Open(uri));
+    assert_eq!(
+        c.agent(Request::Open { uri: uri.clone() }),
+        Reply::Open(uri)
+    );
 }
 
 #[test]

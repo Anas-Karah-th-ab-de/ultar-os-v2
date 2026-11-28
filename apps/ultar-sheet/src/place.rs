@@ -137,7 +137,10 @@ mod tests {
     fn a_files_uri_is_a_path_below_the_areas() {
         let a = Path::new("/areas");
         assert_eq!(
-            path_of("files://documents/%D9%85%D9%8A%D8%B2%D8%A7%D9%86%D9%8A%D8%A9.xlsx", a),
+            path_of(
+                "files://documents/%D9%85%D9%8A%D8%B2%D8%A7%D9%86%D9%8A%D8%A9.xlsx",
+                a
+            ),
             Some(PathBuf::from("/areas/documents/ميزانية.xlsx"))
         );
         assert_eq!(path_of("files://documents/../x", a), None);
@@ -177,8 +180,14 @@ mod tests {
     #[test]
     fn new_workbooks_go_to_documents_with_xlsx() {
         let a = Path::new("/areas");
-        assert_eq!(new_path("ميزانية", a), Some(PathBuf::from("/areas/documents/ميزانية.xlsx")));
-        assert_eq!(new_path("a.csv", a), Some(PathBuf::from("/areas/documents/a.csv")));
+        assert_eq!(
+            new_path("ميزانية", a),
+            Some(PathBuf::from("/areas/documents/ميزانية.xlsx"))
+        );
+        assert_eq!(
+            new_path("a.csv", a),
+            Some(PathBuf::from("/areas/documents/a.csv"))
+        );
         assert_eq!(new_path("../x", a), None);
         assert_eq!(new_path("  ", a), None);
     }

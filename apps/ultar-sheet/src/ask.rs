@@ -49,52 +49,88 @@ impl SheetApp {
         let Some(ask) = self.ask.clone() else {
             return Ok(());
         };
-        let name = self.core.book.name().unwrap_or_else(|| self.t("sheet.untitled"));
-        let (title, ok_key, field, message): (Label, &str, Option<(&str, String)>, Option<Label>) = match &ask {
-            Ask::Unsaved(_) => (
-                Label::key_with("sheet.ask.title", &[("name", &name)]),
-                "sheet.ask.save",
-                None,
-                Some(Label::key("sheet.ask.message")),
-            ),
-            Ask::Name(_) => (Label::key("sheet.name.title"), "sheet.name.ok", Some(("sheet.name.field", String::new())), None),
-            Ask::Open => (Label::key("sheet.open.title"), "sheet.open.ok", Some(("sheet.name.field", String::new())), None),
-            Ask::Rename(i) => {
-                let cur = self.core.book.wb.sheets.get(*i).map(|s| s.name.clone()).unwrap_or_default();
-                (Label::key("sheet.rename.title"), "sheet.rename.ok", Some(("sheet.rename.field", cur)), None)
-            }
-            Ask::Recover(_) => (
-                Label::key("sheet.recover.title"),
-                "sheet.recover.ok",
-                None,
-                Some(Label::key("sheet.recover.message")),
-            ),
-            Ask::Agent(what) => (
-                Label::key("sheet.agent.title"),
-                "sheet.agent.allow",
-                None,
-                Some(Label::key_with("sheet.agent.message", &[("what", what)])),
-            ),
-        };
+        let name = self
+            .core
+            .book
+            .name()
+            .unwrap_or_else(|| self.t("sheet.untitled"));
+        let (title, ok_key, field, message): (Label, &str, Option<(&str, String)>, Option<Label>) =
+            match &ask {
+                Ask::Unsaved(_) => (
+                    Label::key_with("sheet.ask.title", &[("name", &name)]),
+                    "sheet.ask.save",
+                    None,
+                    Some(Label::key("sheet.ask.message")),
+                ),
+                Ask::Name(_) => (
+                    Label::key("sheet.name.title"),
+                    "sheet.name.ok",
+                    Some(("sheet.name.field", String::new())),
+                    None,
+                ),
+                Ask::Open => (
+                    Label::key("sheet.open.title"),
+                    "sheet.open.ok",
+                    Some(("sheet.name.field", String::new())),
+                    None,
+                ),
+                Ask::Rename(i) => {
+                    let cur = self
+                        .core
+                        .book
+                        .wb
+                        .sheets
+                        .get(*i)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default();
+                    (
+                        Label::key("sheet.rename.title"),
+                        "sheet.rename.ok",
+                        Some(("sheet.rename.field", cur)),
+                        None,
+                    )
+                }
+                Ask::Recover(_) => (
+                    Label::key("sheet.recover.title"),
+                    "sheet.recover.ok",
+                    None,
+                    Some(Label::key("sheet.recover.message")),
+                ),
+                Ask::Agent(what) => (
+                    Label::key("sheet.agent.title"),
+                    "sheet.agent.allow",
+                    None,
+                    Some(Label::key_with("sheet.agent.message", &[("what", what)])),
+                ),
+            };
         let root = self.ui.root();
         let dialog = self.ui.add(root, Dialog::new(title))?;
         if let Some(m) = message {
-            self.ui.add(dialog, Text::new(m).color(ColorRole::TextMuted))?;
+            self.ui
+                .add(dialog, Text::new(m).color(ColorRole::TextMuted))?;
         }
         if let Some((key, text)) = field {
             let f = TextField::new(Label::key(key)).labelled().text(&text);
             self.nodes.dialog_field = Some(self.ui.add_sized(dialog, f, Sizing::grow(1))?);
         }
-        let row = self.ui.add(dialog, Flex::row().gap(Space::S8).main(MainAlign::End))?;
+        let row = self
+            .ui
+            .add(dialog, Flex::row().gap(Space::S8).main(MainAlign::End))?;
         let cancel_key = match ask {
             Ask::Recover(_) => "sheet.recover.discard",
             Ask::Agent(_) => "sheet.agent.deny",
             _ => "sheet.ask.cancel",
         };
-        let cancel = self.ui.add(row, Button::new(Label::key(cancel_key)).variant(ButtonVariant::Plain))?;
+        let cancel = self.ui.add(
+            row,
+            Button::new(Label::key(cancel_key)).variant(ButtonVariant::Plain),
+        )?;
         self.nodes.dialog_cancel = Some(cancel);
         if matches!(ask, Ask::Unsaved(_)) {
-            let d = self.ui.add(row, Button::new(Label::key("sheet.ask.discard")).variant(ButtonVariant::Danger))?;
+            let d = self.ui.add(
+                row,
+                Button::new(Label::key("sheet.ask.discard")).variant(ButtonVariant::Danger),
+            )?;
             self.nodes.dialog_discard = Some(d);
         }
         let ok = self.ui.add(row, Button::new(Label::key(ok_key)))?;
@@ -142,7 +178,10 @@ impl SheetApp {
 
     fn say_failed(&mut self, name: &str, e: DocError) {
         let why = self.t(e.key());
-        self.core.message = Some(Label::key_with("sheet.save_failed", &[("name", name), ("reason", &why)]));
+        self.core.message = Some(Label::key_with(
+            "sheet.save_failed",
+            &[("name", name), ("reason", &why)],
+        ));
     }
 
     /// Saves to the workbook's file (asks for a name when it has none), then does `then`.
@@ -155,7 +194,10 @@ impl SheetApp {
     }
 
     fn save_to(&mut self, path: PathBuf, then: Then) -> Result<(), UiError> {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let mut format = Format::of_name(&path);
         if let (Format::Csv { .. }, Format::Csv { .. }) = (format, self.core.book.format) {
             format = self.core.book.format;
@@ -205,7 +247,10 @@ impl SheetApp {
 
     /// Reads another workbook in the background.
     pub(crate) fn start_load(&mut self, path: PathBuf) -> Result<(), UiError> {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         self.ask = None;
         self.out.push(Out::Load(path));
         self.loading(&name)
@@ -340,11 +385,16 @@ impl SheetApp {
                         self.refresh()?;
                     } else if node == self.nodes.find && a.kind == ActionKind::Submitted {
                         self.run(Cmd::FindNext)?;
-                    } else if let Some(&(_, cmd)) = self.cmds.iter().find(|(n, _)| Some(*n) == node) {
+                    } else if let Some(&(_, cmd)) = self.cmds.iter().find(|(n, _)| Some(*n) == node)
+                    {
                         self.run(cmd)?;
                     }
                 }
                 ActionKind::TextChanged => self.text_changed(a.node)?,
+                ActionKind::Closed if self.tools_open => {
+                    self.tools_open = false;
+                    self.rebuild()?;
+                }
                 _ => {}
             }
         }

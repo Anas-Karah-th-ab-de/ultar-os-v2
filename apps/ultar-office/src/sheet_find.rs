@@ -2,7 +2,6 @@
 
 use crate::sheet::Workbook;
 
-
 /// How find and replace compare.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FindOpts {
@@ -47,7 +46,13 @@ pub fn replace_text(raw: &str, needle: &str, with: &str, o: &FindOpts) -> Option
         return None;
     }
     let low = |c: char| c.to_lowercase().next().unwrap_or(c);
-    let eq = |a: char, b: char| if o.match_case { a == b } else { low(a) == low(b) };
+    let eq = |a: char, b: char| {
+        if o.match_case {
+            a == b
+        } else {
+            low(a) == low(b)
+        }
+    };
     let hay: Vec<char> = raw.chars().collect();
     let nd: Vec<char> = needle.chars().collect();
     if o.whole_cell {
@@ -57,7 +62,12 @@ pub fn replace_text(raw: &str, needle: &str, with: &str, o: &FindOpts) -> Option
     let mut out = String::new();
     let (mut i, mut hit) = (0, false);
     while i < hay.len() {
-        if i + nd.len() <= hay.len() && hay[i..i + nd.len()].iter().zip(&nd).all(|(a, b)| eq(*a, *b)) {
+        if i + nd.len() <= hay.len()
+            && hay[i..i + nd.len()]
+                .iter()
+                .zip(&nd)
+                .all(|(a, b)| eq(*a, *b))
+        {
             out.push_str(with);
             i += nd.len();
             hit = true;
@@ -72,7 +82,12 @@ pub fn replace_text(raw: &str, needle: &str, with: &str, o: &FindOpts) -> Option
 impl Workbook {
     /// Every cell (sheet, row, column) that matches, sheet by sheet, row by row. `only`
     /// limits the search to one sheet.
-    pub fn find_all(&self, only: Option<usize>, needle: &str, o: &FindOpts) -> Vec<(usize, u32, u32)> {
+    pub fn find_all(
+        &self,
+        only: Option<usize>,
+        needle: &str,
+        o: &FindOpts,
+    ) -> Vec<(usize, u32, u32)> {
         let mut out = Vec::new();
         for (si, sh) in self.sheets.iter().enumerate() {
             if only.is_some_and(|s| s != si) {
@@ -91,4 +106,3 @@ impl Workbook {
         out
     }
 }
-

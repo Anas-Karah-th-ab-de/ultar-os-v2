@@ -105,7 +105,12 @@ impl Frame {
             }
             let size = col_points(sh, c);
             let pos = if rtl { area - x - size } else { hdr_w + x };
-            cols.push(Seg { idx: c, pos, size, frozen: c < fc });
+            cols.push(Seg {
+                idx: c,
+                pos,
+                size,
+                frozen: c < fc,
+            });
             x += size;
             c += 1;
         }
@@ -117,11 +122,25 @@ impl Frame {
                 r = r0;
             }
             let size = row_points(sh, r, touch);
-            rows.push(Seg { idx: r, pos: y, size, frozen: r < fr });
+            rows.push(Seg {
+                idx: r,
+                pos: y,
+                size,
+                frozen: r < fr,
+            });
             y += size;
             r += 1;
         }
-        Frame { cols, rows, hdr_w, hdr_h, w, h, rtl, touch }
+        Frame {
+            cols,
+            rows,
+            hdr_w,
+            hdr_h,
+            w,
+            h,
+            rtl,
+            touch,
+        }
     }
 
     /// The column segment of `c`, when visible.
@@ -151,7 +170,11 @@ impl Frame {
     /// What lies at `(x, y)`.
     pub fn hit(&self, x: f32, y: f32) -> Hit {
         let tol = if self.touch { 12.0 } else { 4.0 };
-        let in_hdr_w = if self.rtl { x >= self.w - self.hdr_w } else { x < self.hdr_w };
+        let in_hdr_w = if self.rtl {
+            x >= self.w - self.hdr_w
+        } else {
+            x < self.hdr_w
+        };
         if y < self.hdr_h {
             if in_hdr_w {
                 return Hit::Corner;

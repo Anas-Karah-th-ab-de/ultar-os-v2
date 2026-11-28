@@ -19,7 +19,6 @@ pub enum Axis {
     Cols,
 }
 
-
 /// One corner of a reference: `$B$7`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Corner {
@@ -138,11 +137,8 @@ pub(crate) fn map_refs(formula: &str, f: &mut dyn FnMut(&RefTok) -> Option<Strin
                 None
             };
             let pre = g("pre").to_owned();
-            let sheet = (!pre.is_empty()).then(|| {
-                pre.trim_end_matches('!')
-                    .trim_matches('\'')
-                    .to_owned()
-            });
+            let sheet =
+                (!pre.is_empty()).then(|| pre.trim_end_matches('!').trim_matches('\'').to_owned());
             let tok = RefTok { pre, sheet, a, b };
             if let Some(text) = f(&tok) {
                 out.push_str(&part[last..all.start()]);
@@ -208,7 +204,10 @@ pub fn relocate(raw: &str, dr: i64, dc: i64) -> String {
 }
 
 fn same_sheet(tok: &RefTok, home: &str, target: &str) -> bool {
-    tok.sheet.as_deref().unwrap_or(home).eq_ignore_ascii_case(target)
+    tok.sheet
+        .as_deref()
+        .unwrap_or(home)
+        .eq_ignore_ascii_case(target)
 }
 
 /// `formula` of the sheet `home` after `n` rows or columns were inserted at `at` in `target`.
@@ -291,7 +290,10 @@ fn quote_name(name: &str) -> String {
 pub fn rename_refs(formula: &str, old: &str, new: &str) -> String {
     let pre = quote_name(new);
     map_refs(formula, &mut |t| {
-        let hit = t.sheet.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(old));
+        let hit = t
+            .sheet
+            .as_deref()
+            .is_some_and(|s| s.eq_ignore_ascii_case(old));
         hit.then(|| {
             let (a, b) = (t.a, t.b);
             let tok = RefTok {
@@ -304,4 +306,3 @@ pub fn rename_refs(formula: &str, old: &str, new: &str) -> String {
         })
     })
 }
-

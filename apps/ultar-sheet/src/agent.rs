@@ -146,7 +146,11 @@ impl Core {
                 }
                 let raw = self.book.wb.sheets[si].get(r, c).to_owned();
                 let v = self.book.value_in(si, r, c);
-                let text = if matches!(v, Value::Empty) { String::new() } else { v.text() };
+                let text = if matches!(v, Value::Empty) {
+                    String::new()
+                } else {
+                    v.text()
+                };
                 out.push_str(&text);
                 if raw.starts_with('=') {
                     out.push_str(&format!(" [{raw}]"));
@@ -169,7 +173,8 @@ impl Core {
         for (i, row) in values.iter().enumerate() {
             for (j, raw) in row.iter().enumerate() {
                 let (r, c) = (r0 + i as u32, c0 + j as u32);
-                if r < ultar_office::sheet_refs::MAX_ROWS && c < ultar_office::sheet_refs::MAX_COLS {
+                if r < ultar_office::sheet_refs::MAX_ROWS && c < ultar_office::sheet_refs::MAX_COLS
+                {
                     cells.push(((r, c), raw.clone(), None));
                 }
             }
@@ -191,7 +196,10 @@ impl Core {
             wb.sheets.push(ultar_office::sheet::Sheet::new(name.trim()));
             wb.sheets.len() - 1
         });
-        self.views.resize(self.book.wb.sheets.len(), (crate::sel::Sel::default(), (0, 0)));
+        self.views.resize(
+            self.book.wb.sheets.len(),
+            (crate::sel::Sel::default(), (0, 0)),
+        );
         self.show_sheet(i);
         Ok(())
     }

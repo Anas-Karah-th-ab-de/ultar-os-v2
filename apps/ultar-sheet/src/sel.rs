@@ -38,7 +38,12 @@ impl Default for Sel {
 impl Sel {
     /// One cell.
     pub fn at(r: u32, c: u32) -> Sel {
-        Sel { anchor: (r, c), cur: (r, c), active: (r, c), span: Span::Cells }
+        Sel {
+            anchor: (r, c),
+            cur: (r, c),
+            active: (r, c),
+            span: Span::Cells,
+        }
     }
 
     /// The rectangle `(row0, col0, row1, col1)`; whole rows or columns reach to the limit.
@@ -55,8 +60,16 @@ impl Sel {
     /// The rectangle cut to the used area `extent` (rows, columns), at least the active cell.
     pub fn used(&self, extent: (u32, u32)) -> (u32, u32, u32, u32) {
         let (r0, c0, r1, c1) = self.rect();
-        let r1 = if self.span == Span::Cols { r1.min(extent.0.saturating_sub(1).max(r0)) } else { r1 };
-        let c1 = if self.span == Span::Rows { c1.min(extent.1.saturating_sub(1).max(c0)) } else { c1 };
+        let r1 = if self.span == Span::Cols {
+            r1.min(extent.0.saturating_sub(1).max(r0))
+        } else {
+            r1
+        };
+        let c1 = if self.span == Span::Rows {
+            c1.min(extent.1.saturating_sub(1).max(c0))
+        } else {
+            c1
+        };
         (r0, c0, r1, c1)
     }
 
@@ -108,7 +121,12 @@ impl Sel {
         if extend && self.span == Span::Rows {
             self.cur.0 = r;
         } else {
-            *self = Sel { anchor: (r, 0), cur: (r, 0), active: (r, 0), span: Span::Rows };
+            *self = Sel {
+                anchor: (r, 0),
+                cur: (r, 0),
+                active: (r, 0),
+                span: Span::Rows,
+            };
         }
     }
 
@@ -117,7 +135,12 @@ impl Sel {
         if extend && self.span == Span::Cols {
             self.cur.1 = c;
         } else {
-            *self = Sel { anchor: (0, c), cur: (0, c), active: (0, c), span: Span::Cols };
+            *self = Sel {
+                anchor: (0, c),
+                cur: (0, c),
+                active: (0, c),
+                span: Span::Cols,
+            };
         }
     }
 
@@ -148,7 +171,17 @@ impl Sel {
             let n = i64::from(r) + sign;
             if n < i64::from(r0) || n > i64::from(r1) {
                 r = if back { r1 } else { r0 };
-                c = if back { if c <= c0 { c1 } else { c - 1 } } else if c >= c1 { c0 } else { c + 1 };
+                c = if back {
+                    if c <= c0 {
+                        c1
+                    } else {
+                        c - 1
+                    }
+                } else if c >= c1 {
+                    c0
+                } else {
+                    c + 1
+                };
             } else {
                 r = n as u32;
             }
@@ -156,7 +189,17 @@ impl Sel {
             let n = i64::from(c) + sign;
             if n < i64::from(c0) || n > i64::from(c1) {
                 c = if back { c1 } else { c0 };
-                r = if back { if r <= r0 { r1 } else { r - 1 } } else if r >= r1 { r0 } else { r + 1 };
+                r = if back {
+                    if r <= r0 {
+                        r1
+                    } else {
+                        r - 1
+                    }
+                } else if r >= r1 {
+                    r0
+                } else {
+                    r + 1
+                };
             } else {
                 c = n as u32;
             }
