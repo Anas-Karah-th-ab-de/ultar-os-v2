@@ -13,7 +13,8 @@ USB tablet, PS/2 keyboard, no virtio):
    Install. Then it waits for "installation written", presses Restart on the last step and waits until the
    machine restarts (the service manager ends every service, the kernel resets; QEMU has -no-reboot).
 2. The target alone (NVMe) starts: loader (A/B) -> kernel -> ultar-init (profile system) -> ultar-firstboot turns
-   the installer's answers into the first account; the image's check service lists the accounts.
+   the installer's answers into the first account and the settings (language, keyboard, time zone,
+   accessibility, device name) plus the selection record; the image's check service lists the accounts.
 Verdict line: "INSTALLER-E2E: OK …" (exit 0) or "INSTALLER-E2E: FEHLER (…)".
 Environment: SMP (2), MEM (1024), WAIT (seconds per phase, 900), USER_NAME (anas)."""
 import os, re, select, shutil, socket, subprocess, sys, tempfile, time
@@ -21,6 +22,9 @@ import os, re, select, shutil, socket, subprocess, sys, tempfile, time
 CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 WAIT = float(os.environ.get("WAIT", "900"))
+# Values the first start stores from the installer defaults (language, 2x keyboard, 2x time zone,
+# 2x accessibility, device name: firstboot_settings.rs)
+SETTINGS_STORED = 8
 USER = os.environ.get("USER_NAME", "anas")
 FULL = "Anas Kara"
 PASSWORD = "km-Secret-2026"
@@ -243,12 +247,17 @@ def first_start(target, prefix):
     try:
         created = vm.wait_for(re.compile(rb"\[firstboot\] account (\S+) created"), WAIT)
         listed = vm.wait_for(re.compile(rb"\[firstboot\] account " + re.escape(USER.encode()) + rb"\r?\n"), WAIT)
+        settings = re.search(rb"\[firstboot\] settings stored=(\d+) kept=\d+ refused=\[([^\]]*)\] damaged=\[([^\]]*)\] selection=(\w+)", vm.buf)
         slot = re.search(rb"\[boot\] slot ([ab])", vm.buf)
         problems = []
         if not created or created.group(1).decode() != USER:
             problems.append("no account created at the first start")
         if not listed:
             problems.append(f"the account {USER} is not in the account file")
+        if not settings:
+            problems.append("the first start did not report the settings")
+        elif int(settings.group(1)) < SETTINGS_STORED or settings.group(2) or settings.group(3) or settings.group(4) != b"true":
+            problems.append("settings not applied: " + settings.group(0).decode(errors="replace"))
         if not slot:
             problems.append("not started by the A/B loader from a slot")
         if re.search(rb"kernel panic|PANIK", vm.buf, re.I):
