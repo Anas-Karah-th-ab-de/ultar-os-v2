@@ -122,8 +122,27 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             "app.settings.helper.forget.title",
             "app.settings.helper.forget.text",
         ),
+        DialogPurpose::ForeignRemove => foreign_remove(state),
         other => fixed(other),
     }
+}
+
+/// "Remove this app from another system?": says whether its data stays.
+fn foreign_remove(state: &State) -> Spec {
+    let f = &state.status.foreign;
+    let name = f.app().map_or("", |a| a.name.as_str());
+    let text = if f.keep_data {
+        "app.settings.foreign.remove.text.keep"
+    } else {
+        "app.settings.foreign.remove.text"
+    };
+    plain(
+        "app.settings.foreign.remove.title",
+        Label::key_with(text, &[("name", name)]),
+        "app.settings.foreign.remove",
+        &[],
+        true,
+    )
 }
 
 /// The three dialogs of Settings › Mesh (boards *MeshPairShow*, *MeshPairJoin*; unpair).

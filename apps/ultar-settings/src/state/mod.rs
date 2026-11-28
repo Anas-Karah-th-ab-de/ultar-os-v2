@@ -1,6 +1,7 @@
 //! The app's state: pure data, changed only by [`crate::update`].
 
 pub mod display;
+pub mod foreign;
 pub mod mesh;
 pub mod more;
 
@@ -25,6 +26,8 @@ pub enum SubPage {
     CreateAccount,
     /// The page of one paired device (Settings › Mesh).
     MeshDevice,
+    /// The page of one app from another system.
+    ForeignApp,
 }
 
 /// State of the Drivers page.
@@ -110,6 +113,8 @@ pub enum DialogPurpose {
     HelperForget,
     /// The address of a provider of the person's own choice is typed.
     CloudAddress,
+    /// "Remove this app from another system?".
+    ForeignRemove,
 }
 
 /// An open dialog.
@@ -136,6 +141,8 @@ pub struct StatusView {
     pub bt_searched: bool,
     /// The device mesh (Settings › Mesh).
     pub mesh: mesh::MeshView,
+    /// Apps from other systems (Settings › Apps from other systems).
+    pub foreign: foreign::ForeignView,
     /// The cloud model (Settings › Assistant; `None`: no such service).
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
     /// What the helper thinks with right now (`None`: no helper).
