@@ -75,7 +75,7 @@ root_owned() { # image source-dir
   rm -f "$cmds"
   [ "$(debugfs -R 'stat /' "$1" 2>/dev/null | sed -n 's/.*User: *\([0-9]*\).*/\1/p')" = 0 ] || { echo "AB-TEST: FEHLER (owners of $1)"; exit 1; }
 }
-system() { # name version index
+system() { # name version index [size]
   local R=$W/root-$1
   mkdir -p "$R/bin" "$R/usr/bin" "$R/etc/ultar/update-keys" "$R/data" "$R/tmp"
   cp "$BIN/ab-agent" "$R/bin/"; cp "$BIN/ultar-updated" "$BIN/uupdate" "$R/usr/bin/"
@@ -97,11 +97,13 @@ offline_root=/media
 reserve_mib=1
 health_service=none
 CONF
-  mke2fs -q -t ext4 -L "system-$1" -d "$R" "$W/sys-$1.ext4" 16M
+  mke2fs -q -t ext4 -L "system-$1" -d "$R" "$W/sys-$1.ext4" "${4:-16M}"
   root_owned "$W/sys-$1.ext4" "$R"
   rm -rf "$R"
 }
-system a 0.7.0 1; system b 0.8.0 2; system c 0.9.0 3; system d 0.10.0 4; system e 0.11.0 5; system f 0.12.0 6
+# B is larger than one written file may be on the Ultar kernel (64 MiB): the updater stages it in
+# segments (A is the medium's system: the installer makes each system slot twice its size)
+system a 0.7.0 1 64M; system b 0.8.0 2 100M; system c 0.9.0 3; system d 0.10.0 4; system e 0.11.0 5; system f 0.12.0 6
 NOW=$(date +%s)
 bundle() { # name version index kernel
   local M=$W/m-$1
@@ -122,12 +124,12 @@ printf 'Ultar OS installation medium\n' > "$W/marker"; mcopy -i "$W/install.fat"
 truncate -s 16M "$W/esp.fat"; mkfs.vfat -n ULTAR-EFI "$W/esp.fat" >/dev/null
 mmd -i "$W/esp.fat" ::/EFI ::/EFI/BOOT ::/ultar; mcopy -i "$W/esp.fat" "$W/loader.efi" ::/EFI/BOOT/BOOTX64.EFI
 printf 'Ultar OS\n' > "$W/inst"; mcopy -i "$W/esp.fat" "$W/inst" ::/ultar/installiert
-mkdir -p "$W/data-root/ultar"; mke2fs -q -t ext4 -L ultar-data -d "$W/data-root" "$W/data.ext4" 64M
+mkdir -p "$W/data-root/ultar"; mke2fs -q -t ext4 -L ultar-data -d "$W/data-root" "$W/data.ext4" 256M
 root_owned "$W/data.ext4" "$W/data-root"; rm -rf "$W/data-root"
 python3 tools/kern-test/gptimg.py "$W/medium.img" "ULTAR-INSTALL:esp:$W/install.fat" "ULTAR-EFI:esp:$W/esp.fat" \
   "ultar-kernel:raw:$W/kernel.efi" "ultar-compat:linux:$W/sys-a.ext4" "ultar-data:linux:$W/data.ext4"
 # 4) The stick with the offline bundles (FAT32, no partition table)
-rm -f "$W/stick.img"; truncate -s 128M "$W/stick.img"; mkfs.vfat -F 32 -n UPDATES "$W/stick.img" >/dev/null
+rm -f "$W/stick.img"; truncate -s 512M "$W/stick.img"; mkfs.vfat -F 32 -n UPDATES "$W/stick.img" >/dev/null
 mcopy -i "$W/stick.img" "$W/b.uup" "$W/c.uup" "$W/d.uup" "$W/e.uup" "$W/f.uup" ::/
 rm -f "$W"/sys-*.ext4 "$W"/*.fat "$W/data.ext4"
 

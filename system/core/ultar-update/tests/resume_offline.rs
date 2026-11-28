@@ -133,7 +133,7 @@ fn damaged_partial_file_is_detected_on_resume() {
     assert!(engine
         .download(&mut source, &offer, &mut NoPacing, &mut |_, _| {})
         .is_err());
-    let part = device.config.state_dir.join("staging/bundle.part");
+    let part = device.config.state_dir.join("staging/bundle.part.000");
     let mut bytes = std::fs::read(&part).unwrap();
     bytes[new.header.raw.len() + 10] ^= 1;
     std::fs::write(&part, bytes).unwrap();
