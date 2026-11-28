@@ -85,6 +85,39 @@ panels).
 * `tools/kern-test/wayland-kern.sh` – static `ultar-compositor`, `ultar-wayland`, `uwl-demo` on
   the Ultar kernel in QEMU; verdict `WAYLAND-QEMU: OK|FAILED` from a screenshot.
 
-## 6. Results
+## 6. Results (28.11.2026, server .8: Ubuntu 26.10, commit d011619)
 
-See section 7 (filled in by the run of this stage).
+* `cargo test -p ultar-wayland`: 9 unit tests, 5 bridge tests, clipboard, fuzzing (200
+  connections, every one ended by a protocol error, the bridge never), 3 limit tests – all ok.
+* `tools/kern-test/wayland-e2e.sh`: `WAYLAND-REAL: 6/6 apps OK`, last line `WAYLAND: ALLES OK`.
+
+| App | Window | Click | Key | Typed in shell | Clipboard (wl-copy → wl-paste) | Super+Up resize | Alt+F4 close |
+|---|---|---|---|---|---|---|---|
+| weston-simple-shm | ok | – (no pointer) | ok | – | – | ok | ok |
+| weston-terminal | ok | ok | ok | ok | ok | ok | ok |
+| foot | ok | ok | ok | ok | ok | ok | ok |
+| gtk4-demo (`GSK_RENDERER=cairo`) | ok | ok | ok | – | – | ok | ok |
+| Qt 6 (PyQt6, `QT_QPA_PLATFORM=wayland`) | ok | ok | ok | – | – | ok | ok |
+| SDL3 testsprite (`--resizable`) | ok | ok | ok | – | – | ok | ok |
+
+  Screenshots: `out/uwl/e2e/shots/<app>-window.png` and `<app>-maximized.png`.
+* Ultar kernel (QEMU, KVM): `tools/kern-test/wayland-kern.sh` → static `ultar-compositor`,
+  `ultar-wayland`, `uwl-demo`, started by `uwl-kern`: `WAYLAND-QEMU: OK frame=1280x800
+  demo_pixels=350128` (screenshot `out/uwl/qemu.png`). The child of the bridge must be started
+  by fork + exec there (K10).
+
+## 7. Open points
+
+* GTK 4 draws its own header bar and does not negotiate xdg-decoration: without the compositor
+  right `CLIENT_HEADER` for the app cell the window shows two title bars. Granting that right to
+  foreign-app cells is a policy decision of the rights table (stage P2/P3).
+* No GPU buffers (`zwp_linux_dmabuf`): apps render in software (GTK with `GSK_RENDERER=cairo`,
+  Qt/SDL fall back to shm by themselves).
+* No Xwayland (X11-only apps), no text input / IME protocol (the XKB keymap covers ar/en/de),
+  no primary selection, no drag and drop, no `wp_viewporter` / fractional scale (integer scale,
+  nearest scaling for odd scales).
+* Popups: shown as native popups of their window, at most 8 per window, nested popups are placed
+  relative to the window; positioner constraints (flip/slide) are not applied – the compositor
+  clamps popups into the window.
+* The bridge ends with its program; helper processes of the app that still hold a Wayland
+  connection (e.g. `wl-copy` serving the clipboard) end with it.
