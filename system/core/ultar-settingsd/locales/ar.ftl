@@ -170,6 +170,8 @@ settings.desktop.icons.start_corner.choice.top_start = أعلى البداية
 settings.desktop.icons.start_corner.choice.top_end = أعلى النهاية
 settings.desktop.icons.start_corner.choice.bottom_start = أسفل البداية
 settings.desktop.icons.start_corner.choice.bottom_end = أسفل النهاية
+settings.desktop.metrics.enabled.label = أداء النظام على سطح المكتب
+settings.desktop.metrics.enabled.desc = عرض المعالج والذاكرة والرسوميات وحركة البيانات على الخلفية
 
 settings.bar.clock.show_seconds.label = إظهار الثواني
 settings.bar.clock.show_seconds.desc = إظهار الثواني في ساعة الشريط

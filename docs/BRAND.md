@@ -57,7 +57,7 @@ Drawn by the icon pipeline of `ultar-ui` as `IconId::Mark` (the check compares t
 | Rule | Product mark | Company logo |
 |---|---|---|
 | Colour | token `accent_text` of the current theme (dark `#E3C55A`, light `#785B00`); nothing else | as drawn; never recoloured |
-| Background | any surface of the theme (the token keeps the contrast in dark and light) | **dark only**: `ultar_brand::logo::PLATE` (`#0B0D11`) or a plate of that colour – the grey name line (`#B4B3B4`) is unreadable on light surfaces |
+| Background | any surface of the theme (the token keeps the contrast in dark and light) | the bitmap's background is transparent: directly on the surface in both themes, no plate (owner's decision 28.11.2026); on the desktop background drawn quietly (half strength on dark, three quarters on light so the grey name line stays readable) |
 | Stroke | token `size.stroke` (1.5 at 24), scaled with the size by the icon pipeline | – |
 | Minimum size | 16 logical points (`mark::MIN_SIZE` = token `size.icon_small`) | 160 px wide (`logo::MIN_WIDTH`); smaller: picture alone ≥ 32 px, or the name as text |
 | Sizes | bar 24 · lock/login 48 · boot, installer welcome, About 96 (`mark::BAR_SIZE`, `SCREEN_SIZE`, `HERO_SIZE`) | `logo::fit(max_w, max_h)`: proportions kept, never above 520 × 218 |
@@ -91,7 +91,7 @@ Status on `main` after this change. "Branch" = not on `main`; the owner of that 
 | Bar: overview button | branch `wip/desktop-shell` | `IconId::Mark` 24, never mirrored, at the start; no text |
 | Overview | branch `wip/desktop-shell` | no second mark (the button is the mark); empty state may show mark 96 + `brand.product` |
 | Settings › About | branch `wip/settings-installer` | mark 96, then rows `brand.about.name` → `brand.product` · `brand.about.version` · `brand.about.build` · `brand.about.vendor` → `brand.vendor` · `brand.about.developer` → `brand.developer` · `brand.about.website` → `brand.website` (link) · `brand.about.contact` → `brand.contact` (`CONTACT_URL`) · `brand.about.licences` → `brand.about.licence.system` + third-party list; version and build from the installed release (`/etc/os-release` `VERSION_ID`, `BUILD_ID`), never a constant |
-| Installer (graphical): welcome, writing, done | fixed (2026-11-28) | welcome: mark 96 + `installer.welcome` + company logo 240 (`BrickKind::Logo`, dark plate in the light theme); the logo also while the system is written and on the last page |
+| Installer (graphical): welcome, writing, done | fixed (2026-11-28) | welcome: mark 96 + `installer.welcome` + company logo 240 (`BrickKind::Logo`, without a plate); the logo also while the system is written and on the last page |
 | Desktop background | fixed (2026-11-28) | system picture "ultar-noir": ground of the theme, company logo in the middle of the work area (a third of the shorter side, at most 420), quiet (half strength) – as in the first desktop |
 | Lock screen cover | fixed (2026-11-28) | company logo 200 above the clock |
 | App grid (start menu) footer | fixed (2026-11-28) | `IconId::Mark` + `brand.product` at the start, the power button at the end |
@@ -127,8 +127,8 @@ table differing from the source. Details: [integration/ultar-check.md](integrati
    disk "0.2"; no build identifier exists. About and the installer summary need one.
 2. **Product mark and company logo** – the split of §3 follows the boards (arcs) and the existing
    splash (company logo). Confirm, or name one of them the only sign.
-3. **Company logo exists only as a bitmap for dark backgrounds.** A vector file and a variant for
-   light surfaces are needed (About and installer in the light theme use a dark plate until then).
+3. **Company logo exists only as a bitmap** (transparent background, used without a plate in both
+   themes since 28.11.2026). A vector file is still wanted for large sizes.
 4. **Gold differs**: tokens `#D4AF37` / `#E3C55A`, kernel console and installer `#C9A227` / `#E6C454`,
    legacy splash `#E9D68A`. The kernel should take the token values.
 5. **Capitals "ULTAR OS"** in the kernel's text mode: kept as the word mark where no picture can be

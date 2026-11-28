@@ -31,10 +31,10 @@ pub fn open(path: &str) -> Option<Node> {
     let host_reader = proc::reader_in_initial_pid_ns();
     match first {
         "" => {
-            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "cmdline", "self", "sys", "ultar"]
+            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "net", "cmdline", "self", "sys", "ultar"]
                 .iter()
                 .filter(|n| host_reader || **n != "ultar")
-                .map(|n| DirEnt { name: String::from(*n), dir: *n == "self" || *n == "ultar" || *n == "sys", size: 0 })
+                .map(|n| DirEnt { name: String::from(*n), dir: matches!(*n, "self" | "ultar" | "sys" | "net"), size: 0 })
                 .collect();
             for p in proc::infos() {
                 v.push(DirEnt { name: format!("{}", p.pid), dir: true, size: 0 });
@@ -43,7 +43,7 @@ pub fn open(path: &str) -> Option<Node> {
         }
         "ultar" if !host_reader => None,
         "ultar" => match sub {
-            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll", "gruppen", "boot_slot"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
+            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll", "gruppen", "boot_slot", "gpu_busy_ns"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
             "verbund" => file(crate::verbund::text()),
             "geraet" => file(crate::geraet::text()),
             "anzeige" => file(crate::grafik::text()),
@@ -53,6 +53,8 @@ pub fn open(path: &str) -> Option<Node> {
             "sicherheit" => file(crate::sicherheit_text()),
             // A/B start: the running slot (a, b, or - without the A/B loader)
             "boot_slot" => file(crate::bootslot::proc_text()),
+            // time the GPU's engines worked so far (ns, all queues): the desktop's GPU load
+            "gpu_busy_ns" => file(format!("{}\n", crate::drivers::intel_display::gt_exec::busy_ns())),
             // Kernprotokoll (Ringpuffer) – für den Entwickler-Zugang (`ssh ultar kernlog`) und Fehlersuche
             "protokoll" => {
                 let mut v = alloc::vec::Vec::new();
@@ -100,9 +102,16 @@ pub fn open(path: &str) -> Option<Node> {
             file(s)
         }
         "stat" => {
-            let t = crate::apic::ticks();
-            file(format!("cpu  {t} 0 0 0 0 0 0 0 0 0\nbtime 0\nprocesses {}\n", proc::infos().len()))
+            // busy time as user time, idle time: the load of all cores (Linux layout)
+            let (busy, idle) = crate::apic::cpu_times();
+            file(format!("cpu  {busy} 0 0 {idle} 0 0 0 0 0 0\nbtime 0\nprocesses {}\n", proc::infos().len()))
         }
+        // traffic of the active network interface in the Linux layout
+        "net" => match sub {
+            "" => Some(Node::Dir(alloc::vec![DirEnt { name: String::from("dev"), dir: false, size: 0 }])),
+            "dev" => file(crate::net::dev_text()),
+            _ => None,
+        },
         "cpuinfo" => {
             let mut nb = [0u8; 48];
             let name = String::from(crate::arch::cpu_name(&mut nb));

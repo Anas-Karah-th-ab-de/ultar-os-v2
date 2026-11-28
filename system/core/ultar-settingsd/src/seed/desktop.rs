@@ -66,6 +66,7 @@ pub(super) fn bar() -> Vec<SettingDef> {
         SettingDef::flag("desktop.icons.enabled", P, true),
         SettingDef::choice("desktop.icons.size", P, SIZES, "medium"),
         SettingDef::choice("desktop.icons.start_corner", P, corners, "top_start"),
+        SettingDef::flag("desktop.metrics.enabled", P, true),
         SettingDef::flag("bar.clock.show_seconds", P, false),
         SettingDef::flag("bar.clock.show_weekday", P, true),
         SettingDef::flag("bar.clock.show_date", P, true),

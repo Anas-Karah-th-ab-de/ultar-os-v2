@@ -1,14 +1,12 @@
 //! The company logo of KM Code Craft as a picture brick (docs/BRAND.md §3): the bitmap of
-//! `ultar-brand`, scaled down with an area filter to exactly the device pixels it covers –
-//! never up, never recoloured, cropped or mirrored. Its light name line needs a dark ground:
-//! in the light theme (and in high contrast) it stands on a plate of the logo's own
-//! background colour ([`ultar_brand::logo::PLATE`]).
+//! `ultar-brand` (transparent background), scaled down with an area filter to exactly the
+//! device pixels it covers – never up, never recoloured, cropped or mirrored. It stands
+//! directly on the surface in both themes, with its clear space around it.
 
 use super::{MeasureCx, Visual};
-use crate::color::Color;
 use crate::geom::{Rect, Size};
 use crate::paint::Painter;
-use crate::tokens::{Radius, Space, ThemeKind};
+use crate::tokens::{Space, ThemeKind};
 use std::cell::RefCell;
 use std::rc::Rc;
 use ultar_brand::logo;
@@ -23,17 +21,17 @@ thread_local! {
     static SCALED: RefCell<Vec<Scaled>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Inner space between the plate's edge and the logo.
-fn plate_pad() -> f32 {
+/// Clear space around the logo.
+fn clear() -> f32 {
     Space::S12.points()
 }
 
 /// Size of a logo `width` points wide at `scale` device pixels per point: the proportions of
 /// the bitmap, never wider than the bitmap's own pixels, never narrower than
-/// [`logo::MIN_WIDTH`] pixels; the plate's padding around it.
+/// [`logo::MIN_WIDTH`] pixels; the clear space around it.
 pub(super) fn measure(cx: &MeasureCx<'_>, width: u16) -> Size {
     let (w, h) = logo_points(f32::from(width), cx.env.scale);
-    let pad = 2.0 * plate_pad();
+    let pad = 2.0 * clear();
     Size::new(w + pad, h + pad)
 }
 
@@ -46,14 +44,17 @@ fn logo_points(width: f32, scale: f32) -> (f32, f32) {
     (w, w * logo::HEIGHT as f32 / logo::WIDTH as f32)
 }
 
-/// Strength of a quiet logo (the desktop background on the dark ground).
+/// Strength of a quiet logo (the desktop background) on the dark ground, and on the light
+/// ground (its grey name line needs more there to stay readable).
 const QUIET: f32 = 0.5;
+const QUIET_LIGHT: f32 = 0.75;
 
-/// Paints the logo centred in `rect` (the plate in the light theme and in high contrast).
+/// Paints the logo centred in `rect`, without a plate: the bitmap's background is
+/// transparent.
 pub(super) fn paint(p: &mut Painter<'_>, rect: Rect, width: u16, quiet: bool, v: &Visual) {
     let _ = v;
     let env = *p.env();
-    let pad = plate_pad();
+    let pad = clear();
     let inner = Rect::new(
         rect.x + pad,
         rect.y + pad,
@@ -69,28 +70,21 @@ pub(super) fn paint(p: &mut Painter<'_>, rect: Rect, width: u16, quiet: bool, v:
         w,
         h,
     );
-    let plated = env.theme == ThemeKind::Light || env.high_contrast;
-    if plated {
-        let plate = Rect::new(at.x - pad, at.y - pad, at.w + 2.0 * pad, at.h + 2.0 * pad);
-        p.fill(plate, Some(Radius::Card), plate_colour());
-    }
-    // On its own plate the logo stands at full strength (a dimmed logo on the dark plate
-    // reads muddy); quiet applies on the dark ground only.
-    let quiet = quiet && !plated;
+    // High contrast never dims it.
+    let quiet = quiet && !env.high_contrast;
+    let strength = if env.theme == ThemeKind::Light {
+        QUIET_LIGHT
+    } else {
+        QUIET
+    };
     let (px_w, px_h) = p.pixel_size(at);
     if let Some(rgba) = scaled(px_w, px_h) {
-        let previous = quiet.then(|| p.set_opacity(QUIET));
+        let previous = quiet.then(|| p.set_opacity(strength));
         p.rgba(&rgba, px_w, px_h, at);
         if let Some(previous) = previous {
             p.set_opacity(previous);
         }
     }
-}
-
-/// The logo's own background colour.
-fn plate_colour() -> Color {
-    let [_, r, g, b] = logo::PLATE.to_be_bytes();
-    Color::rgb(r, g, b)
 }
 
 /// The logo at `width` × `height` pixels (cached); `None` for an empty size or when the

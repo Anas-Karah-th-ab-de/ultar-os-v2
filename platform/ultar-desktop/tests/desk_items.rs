@@ -213,8 +213,12 @@ fn an_app_dragged_out_of_the_grid_lands_on_the_desktop() {
     drag_cell(&mut h, TERMINAL, Point::new(-60.0, 300.0), false);
     assert_eq!(h.shell.d.places.dragging.as_deref(), Some(TERMINAL));
     let ghost = h.background();
-    let faint = ghost.targets.len();
-    assert_eq!(faint, 1, "the ghost is not operable (home only)");
+    let icons = ghost
+        .targets
+        .iter()
+        .filter(|(_, t)| matches!(t, Target::Desk(_)))
+        .count();
+    assert_eq!(icons, 1, "the ghost is not operable (home only)");
     assert!(h.popup.is_some(), "the grid stays open while dragging");
     let p = h.popup.as_mut().unwrap();
     let up = p.view.ui.handle(Event::PointerUp {

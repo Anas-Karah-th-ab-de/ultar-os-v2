@@ -11,6 +11,7 @@ pub mod helper;
 pub mod history;
 pub mod media;
 pub mod mesh;
+pub mod metrics;
 pub mod notes;
 pub mod places;
 pub mod prefs;
