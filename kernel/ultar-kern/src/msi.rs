@@ -92,7 +92,7 @@ fn cap_offset(dev: &PciDev, want: u8) -> Option<u8> {
 /// Rückgabe: Ok, wenn das Gerät MSI hat und es eingeschaltet wurde.
 #[allow(dead_code)] // Einzel-MSI-Pfad für Geräte ohne MSI-X (NVMe/xHCI folgen) – siehe docs/OFFEN-WARNUNGEN.md
 pub fn program_msi(dev: &PciDev, vector: u8, dest_apic: u32) -> Result<(), &'static str> {
-    let cap = cap_offset(dev, PCI_CAP_MSI).ok_or("keine MSI-Fähigkeit")?;
+    let cap = cap_offset(dev, PCI_CAP_MSI).ok_or("no MSI capability")?;
     let head = dev.r32(cap);
     let control = (head >> 16) as u16;
     let wide = control & 1 << 7 != 0;
@@ -126,29 +126,29 @@ pub struct MsixEntry {
 /// gelöscht. Nötig für mehrere Warteschlangen (NVMe, 10G). Die Tabelle liegt in einem BAR des
 /// Geräts; dieser wird identisch und ungepuffert abgebildet (wie die übrigen Geräteregister).
 pub fn program_msix(dev: &PciDev, entries: &[MsixEntry], dest_apic: u32) -> Result<(), &'static str> {
-    let cap = cap_offset(dev, PCI_CAP_MSIX).ok_or("keine MSI-X-Fähigkeit")?;
+    let cap = cap_offset(dev, PCI_CAP_MSIX).ok_or("no MSI-X capability")?;
     let control = (dev.r32(cap) >> 16) as u16;
     let table_size = (control & 0x7ff) + 1;
     // Tabellen-Zeiger: BAR-Index in Bit 2:0, Offset (8-ausgerichtet) im Rest.
     let tbl = dev.r32(cap + 4);
     let bir = (tbl & 0x7) as usize;
     let tbl_off = (tbl & !0x7) as u64;
-    let bar = dev.bars.get(bir).and_then(|b| b.as_ref()).ok_or("MSI-X-BAR fehlt")?;
+    let bar = dev.bars.get(bir).and_then(|b| b.as_ref()).ok_or("MSI-X BAR missing")?;
     if bar.io {
-        return Err("MSI-X-BAR ist ein E/A-Fenster");
+        return Err("MSI-X BAR is an I/O window");
     }
     let tbl_base = bar.addr + tbl_off;
     if tbl_off + (table_size as u64) * 16 > bar.size {
-        return Err("MSI-X-Tabelle außerhalb des BAR");
+        return Err("MSI-X table outside the BAR");
     }
     // Den Tabellenbereich erreichbar machen (ungepuffert über die MTRRs des MMIO-Lochs).
     crate::paging::map_identity(tbl_base & !0xfff, (tbl_base + bar.size - tbl_off + 0xfff) & !0xfff, true);
     for e in entries {
         if e.index >= table_size {
-            return Err("MSI-X-Zeile außerhalb der Tabelle");
+            return Err("MSI-X entry outside the table");
         }
         let row = tbl_base + e.index as u64 * 16;
-        // SICHERHEIT: `row` liegt innerhalb des oben geprüften und abgebildeten MSI-X-Tabellen-
+        // SAFETY: `row` liegt innerhalb des oben geprüften und abgebildeten MSI-X-Tabellen-
         // bereichs des BAR; 32-Bit-volatile-Schreibzugriffe sind der vom Gerät erwartete Zugang.
         unsafe {
             core::ptr::write_volatile(row as *mut u32, msg_address(dest_apic)); // Adresse unten
