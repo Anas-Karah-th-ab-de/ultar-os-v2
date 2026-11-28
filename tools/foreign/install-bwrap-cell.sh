@@ -12,6 +12,12 @@ fail() { echo "install-bwrap-cell: $*" >&2; exit 1; }
 HERE=$(cd "$(dirname "$0")" && pwd)
 AREA=$(cd "${1:?the Linux area}" && pwd)
 [ -f "$AREA/etc/ultar-runtime" ] || fail "$AREA is no Linux area"
+# A Linux area of make-linux-runtime.sh that already brings its own stand-in (package bubblewrap
+# from tools/foreign/bwrap-shim.c) keeps it.
+if grep -qs 'bwrap (Ultar cell)' "$AREA/usr/bin/bwrap"; then
+  echo "install-bwrap-cell: $AREA/usr/bin/bwrap is the area's own stand-in"
+  exit 0
+fi
 CC=${CC:-cc}
 command -v "$CC" >/dev/null || fail "no C compiler ($CC)"
 tmp=$(mktemp -d)

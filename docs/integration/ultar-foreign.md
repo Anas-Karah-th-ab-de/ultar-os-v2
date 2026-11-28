@@ -181,8 +181,10 @@ and runs the helper directly **in the same cell**: it keeps what needs no rights
 --unsetenv`, `--chdir`, `--die-with-parent`, `--new-session`, `--argv0`, the seccomp filters it is handed –
 applied where the kernel has seccomp, so glycin's own syscall filter still holds on Linux), ignores namespace,
 mount, capability and id options and never gives the helper more than the app has; it is static and never
-set-id. The Linux area itself (`make-linux-runtime.sh`) should call the same script – GTK programs need it as
-well (stage P2 found mousepad's pictures failing the same way on the Ultar kernel).
+set-id. Stage P2 (`main` since `a885a16d`) gives the Linux area the same stand-in as its own package
+`bubblewrap` (`tools/foreign/bwrap-shim.c`); `install-bwrap-cell.sh` then leaves that one in place. Once both
+are merged bwrap-cell can go – after its handling of the seccomp filters moved into bwrap-shim (which skips
+them).
 
 **Checked** (`tools/foreign/android-e2e.sh`, 28.11.2026, Linux server, real cells, headless Weston as the
 display): Gravity Defied (`org.happysanta.gd_29.apk` of ATL's test set, SHA-256 `0786257c…d675`, Java, APK
