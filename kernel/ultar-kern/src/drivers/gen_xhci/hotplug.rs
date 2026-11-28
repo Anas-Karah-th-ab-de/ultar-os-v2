@@ -24,6 +24,8 @@ fn function(d: &Desc) -> Option<&'static str> {
         (8, 6, 0x50) => Some("usb-storage"),
         (0xE0, 1, 1) => Some("btusb"),
         (0x0E, 1, _) => Some("uvcvideo"),
+        (0x02, 2, 0xFF) => Some("rndis"), // RNDIS-Steuerung (USB-Netz)
+        (0x0A, _, _) => Some("usb-net"),  // CDC-Daten (RNDIS/ECM)
         _ => None,
     }
 }

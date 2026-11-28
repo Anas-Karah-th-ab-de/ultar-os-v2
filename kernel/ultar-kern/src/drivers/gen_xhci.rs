@@ -22,6 +22,7 @@ pub mod bt;
 mod hid;
 mod hotplug;
 mod pointer;
+mod rndis;
 pub mod uvc;
 pub use hotplug::hotplug;
 
@@ -585,6 +586,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
     let mut hub: Option<(u32, u64, bool)> = None;
     let mut bt_bound = false;
     let mut cam_bound = false;
+    let mut net_bound = false;
     for d in &ifs {
         if d.class == 9 && hub.is_none() {
             // Hub (USB 2.0 Kap. 11 / USB 3.2 Kap. 10)
@@ -643,6 +645,17 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             if let Some((w, h)) = uvc::attach(hc, slot, (inp, out, speed), &cd) {
                 cam_bound = true;
                 what = format!("Kamera {w}x{h} MJPEG {what}");
+            }
+        } else if rndis::is_data_iface(d) && !net_bound {
+            // CDC-Daten-Schnittstelle: Teil einer RNDIS-USB-Netzfunktion (Handy-Tethering, QEMU usb-net).
+            // rndis::attach prüft die Steuer-Schnittstelle; keine RNDIS-Funktion → Ok(None).
+            match rndis::attach(hc, slot, (inp, out, speed), d, &ifs, buf) {
+                Ok(Some(n)) => {
+                    net_bound = true;
+                    what = format!("USB-Netz {n} {what}");
+                }
+                Ok(None) => {}
+                Err(e) => crate::kprintln!("[usb-net] {e}"),
             }
         } else if d.class == 8 && d.sub == 6 && d.proto == 0x50 {
             // Massenspeicher (Bulk-Only, SCSI)
