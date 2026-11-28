@@ -449,3 +449,8 @@ desk.note.screend.stop = Beenden
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert
 mesh.clip.body = Mit Strg+V einfügen
+desk.app.remote = Fernansicht
+dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
+dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
+dialog.view.accept = Erlauben
+dialog.view.decline = Ablehnen

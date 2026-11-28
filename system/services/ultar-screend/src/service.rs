@@ -9,6 +9,7 @@ use crate::engine::{Engine, Sink, Step};
 use crate::input::{self, Inject, ViewOnly};
 use crate::notice;
 use crate::screen::{Compositor, Screen};
+use crate::seat::Seat;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
@@ -17,6 +18,7 @@ use ultar_bus::messages::mesh_view::{
     RemoteInput, ServeEvent, ViewLocked, ViewPicture, ViewReady, ViewStop,
 };
 use ultar_bus::messages::notify::{Dismiss, InvokedHint, TakeInvoked};
+use ultar_bus::messages::session::SessionState;
 use ultar_bus::{Client, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Service};
@@ -31,6 +33,8 @@ const MAX_QUEUED: usize = 256;
 enum Cmd {
     Input(RemoteInput),
     End,
+    /// The person in front changed or left: the screen is not the viewed person's any more.
+    Locked,
 }
 
 struct Worker {
@@ -44,6 +48,7 @@ pub struct ScreendService {
     root: PathBuf,
     worker: Option<Worker>,
     note: Option<u64>,
+    seat: Seat,
 }
 
 /// The mesh as the engine's sink: a rectangle is taken when the mesh says so.
@@ -70,11 +75,18 @@ impl ScreendService {
             root,
             worker: None,
             note: None,
+            seat: Seat::default(),
         }
     }
 
     fn begin(&mut self, id: u64, viewer: String, bus: &Bus<'_, Self>) {
         if self.worker.is_some() {
+            return;
+        }
+        if !self.seat.begin() {
+            // nobody is in front (sign-in screen): there is no screen to show
+            self.seat.end();
+            let _ = bus.call(&ViewLocked {}, CALL);
             return;
         }
         let (tx, rx) = channel();
@@ -106,6 +118,7 @@ impl ScreendService {
     fn stopped(&mut self, id: u64, bus: &Bus<'_, Self>) {
         if self.worker.as_ref().is_some_and(|w| w.id == id) {
             self.worker = None;
+            self.seat.end();
         }
         if let Some(note) = self.note.take() {
             let _ = bus.later(move |client| {
@@ -212,6 +225,11 @@ fn run<S: Screen, I: Inject>(
                         }
                         wait = Duration::ZERO; // input is looked after at once
                     }
+                    Ok(Cmd::Locked) => {
+                        engine.finish(Step::Locked);
+                        let _ = client.call(&ViewLocked {}, CALL);
+                        return;
+                    }
                     Ok(Cmd::End) | Err(RecvTimeoutError::Disconnected) => {
                         engine.finish(Step::Gone);
                         return;
@@ -229,7 +247,7 @@ impl Service for ScreendService {
     }
 
     fn subscriptions(&self) -> Vec<&'static str> {
-        vec![ServeEvent::TOPIC, InvokedHint::TOPIC]
+        vec![ServeEvent::TOPIC, InvokedHint::TOPIC, SessionState::TOPIC]
     }
 
     fn start(&mut self, _bus: &Bus<'_, Self>) {}
@@ -239,6 +257,16 @@ impl Service for ScreendService {
     }
 
     fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        if event.topic == SessionState::TOPIC {
+            if let Ok(state) = event.decode::<SessionState>() {
+                if self.seat.observe(state.user) {
+                    if let Some(w) = self.worker.as_ref() {
+                        let _ = w.tx.send(Cmd::Locked);
+                    }
+                }
+            }
+            return;
+        }
         if event.topic == InvokedHint::TOPIC {
             if let Ok(hint) = event.decode::<InvokedHint>() {
                 if hint.sender == bus.client().identity() {

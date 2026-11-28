@@ -10,11 +10,13 @@ use crate::node::Effect;
 use crate::service::MeshService;
 use crate::view::ViewEnd;
 use std::time::{Duration, Instant};
+use ultar_bus::messages::mesh::Stage;
+use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_bus::messages::mesh_view::{
     EndReason, PictureTaken, RemoteInput, ServeEvent, ViewDone, ViewEvent, ViewInput, ViewLocked,
     ViewPicture, ViewReady, ViewStart, ViewStarted, ViewState, ViewStop,
 };
-use ultar_bus::messages::sysdialog::{self, AskPermission, Decision, Permission};
+use ultar_bus::messages::sysdialog;
 use ultar_bus::{Call, ErrorCode, IncomingRequest};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::Bus;
@@ -25,8 +27,6 @@ pub const SCREEND: &str = "system.screend";
 pub const SHELL: &str = "system.shell";
 /// How long the screen service has to answer a begun session before it is refused.
 pub const READY_TIME: Duration = Duration::from_secs(8);
-/// Id the question to the person carries (it is not an app).
-pub const DIALOG_ID: &str = "mesh.remote-view";
 
 /// A session this device is asked to serve.
 #[derive(Debug)]
@@ -213,18 +213,27 @@ impl MeshService {
             id,
             deadline: None,
         });
-        let question = AskPermission {
-            app_id: DIALOG_ID.to_owned(),
-            app_name: self.peer_name(&peer),
-            permission: Permission::ScreenShare,
-            reason: None,
+        // The dialog of the system has its own text for this stage ("<device> wants to see
+        // and operate this screen", Allow / Deny).
+        let found = self
+            .runtime
+            .node
+            .state()
+            .peers
+            .into_iter()
+            .find(|p| p.id == peer);
+        let question = AskHandoff {
+            from_name: found.as_ref().map_or_else(String::new, |p| p.name.clone()),
+            from_kind: found.map_or_else(Default::default, |p| p.kind),
+            title: String::new(),
+            app: String::new(),
+            size: None,
+            stage: Stage::RemoteView,
         };
         let to = peer.clone();
         let started = bus.later(move |client| {
             let wait = Duration::from_millis(sysdialog::CALL_TIMEOUT_MS);
-            let allowed = client
-                .call(&question, wait)
-                .is_ok_and(|r| matches!(r.decision, Decision::AllowOnce | Decision::AllowAlways));
+            let allowed = client.call(&question, wait).is_ok_and(|r| r.accept);
             Box::new(move |service: &mut Self, bus: &Bus<'_, Self>| {
                 service.view_decided(&to, id, allowed, bus);
             })

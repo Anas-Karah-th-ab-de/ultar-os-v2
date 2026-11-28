@@ -201,3 +201,24 @@ fn a_gone_or_resized_screen_ends_the_session() {
     assert!(k2.events().contains(&(1, 42, 0)));
     let _ = k;
 }
+
+#[test]
+fn the_person_in_front_changing_ends_the_session_and_releases_what_is_held() {
+    // the service ends the session on session.state (see seat.rs): the engine lets go of everything
+    let (mut e, _, p, k) = rig(64, 64);
+    let (mut mesh, mut input) = (Mesh::default(), VecDeque::new());
+    input.push_back(RemoteInput::Key {
+        code: 42,
+        down: true,
+    });
+    input.push_back(RemoteInput::Button {
+        x: 3,
+        y: 3,
+        button: Button::Left,
+        down: true,
+    });
+    look(&mut e, &mut mesh, &mut input);
+    assert_eq!(e.finish(Step::Locked), Step::Locked);
+    assert!(k.events().contains(&(1, 42, 0)), "key released");
+    assert!(p.events().contains(&(1, 0x110, 0)), "button released");
+}

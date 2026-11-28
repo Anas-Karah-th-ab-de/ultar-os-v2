@@ -449,3 +449,8 @@ desk.note.screend.stop = إيقاف
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}
 mesh.clip.body = للصق اضغط Ctrl+V
+desk.app.remote = العرض عن بعد
+dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم بها
+dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
+dialog.view.accept = سماح
+dialog.view.decline = رفض

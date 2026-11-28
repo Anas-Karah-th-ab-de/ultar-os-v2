@@ -1,5 +1,5 @@
 # Ultar remote view - app manifest (docs/APP-RULES.md, docs/integration/remote-view.md).
-id          = "org.ultar.remote"
+id          = "remote"
 version     = "0.1.0"
 publisher   = "km-code-craft"
 kind        = "native"

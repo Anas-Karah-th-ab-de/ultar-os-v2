@@ -211,7 +211,14 @@ fn the_screen_arrives_pixel_exact_and_the_input_arrives_in_the_injector() {
     assert_eq!(picture, screen.data());
 
     // The viewer's events reach the source's node, the source parses and injects them.
-    let words = ["m 12 34", "d 12 34 l", "u 12 34 l", "k 30 down", "k 30 up", "w 12 34 -2"];
+    let words = [
+        "m 12 34",
+        "d 12 34 l",
+        "u 12 34 l",
+        "k 30 down",
+        "k 30 up",
+        "w 12 34 -2",
+    ];
     let mut typed = send_words(&mut w, words);
     assert_eq!(typed.len(), 6);
     engine.step(&mut || typed.pop_front(), &mut ThroughMesh(&mut w));

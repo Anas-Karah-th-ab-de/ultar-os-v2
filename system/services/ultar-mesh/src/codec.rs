@@ -155,12 +155,23 @@ fn add(b: u8, d: i16) -> u8 {
 }
 
 /// One chunk of the stream: the pixels it stands for go to `out`; `None` for a bad chunk.
-fn decode_chunk(data: &[u8], at: &mut usize, colours: &mut Colours, out: &mut Vec<u8>, count: usize) -> Option<()> {
+fn decode_chunk(
+    data: &[u8],
+    at: &mut usize,
+    colours: &mut Colours,
+    out: &mut Vec<u8>,
+    count: usize,
+) -> Option<()> {
     let op = byte(data, at)?;
     let prev = colours.prev;
     let px = match op {
         OP_RGB => [byte(data, at)?, byte(data, at)?, byte(data, at)?, prev[3]],
-        OP_RGBA => [byte(data, at)?, byte(data, at)?, byte(data, at)?, byte(data, at)?],
+        OP_RGBA => [
+            byte(data, at)?,
+            byte(data, at)?,
+            byte(data, at)?,
+            byte(data, at)?,
+        ],
         _ => match op & 0xc0 {
             OP_INDEX => colours.seen[(op & 0x3f) as usize],
             OP_DIFF => [

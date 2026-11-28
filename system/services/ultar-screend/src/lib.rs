@@ -27,6 +27,7 @@ pub mod input;
 pub mod notice;
 pub mod pace;
 pub mod screen;
+pub mod seat;
 pub mod service;
 
 pub use service::ScreendService;

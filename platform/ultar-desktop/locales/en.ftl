@@ -449,3 +449,8 @@ desk.note.screend.stop = Stop
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}
 mesh.clip.body = Paste with Ctrl+V
+desk.app.remote = Remote view
+dialog.view.title = {name} wants to see and control this screen
+dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
+dialog.view.accept = Allow
+dialog.view.decline = Deny

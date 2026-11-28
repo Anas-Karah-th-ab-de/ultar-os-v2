@@ -351,7 +351,7 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 identity  = "system.mesh"
 register  = ["mesh"]
 publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state"]
-call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "sysdialog.permission", "llm.complete", "agent.ask", "notify.post"]
+call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask", "notify.post"]
 subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
@@ -425,7 +425,7 @@ subscribe = ["mesh.state", "mesh.handoff_progress"]
 [[rule]]
 identity  = "system.screend"
 call      = ["mesh.view_ready", "mesh.view_picture", "mesh.view_locked", "mesh.view_stop", "notify.post", "notify.dismiss", "notify.take_invoked"]
-subscribe = ["mesh.view_serve", "notify.invoked"]
+subscribe = ["mesh.view_serve", "notify.invoked", "session.state"]
 
 [[rule]]
 identity  = "app.remote"
