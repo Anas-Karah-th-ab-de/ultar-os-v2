@@ -75,9 +75,13 @@ pub fn mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Op
 fn map(addr: u64, len: u64, flags: u64, what: Backing) -> i64 {
     let Some(frames) = what.frames(len) else { return -ENOMEM };
     let w = what.writable();
-    crate::syscall::with(|p| {
+    let mut pend: Option<crate::tlb::Teardown> = None;
+    let r = crate::syscall::with(|p| {
         let va = match crate::syscall::place(p, addr, len, flags) {
-            Ok(v) => v,
+            Ok((v, td)) => {
+                *pend = td;
+                v
+            }
             Err(e) => return e,
         };
         if !p.space().map_shared(va, &frames, w, what) {
@@ -85,7 +89,11 @@ fn map(addr: u64, len: u64, flags: u64, what: Backing) -> i64 {
         }
         va as i64
     })
-    .unwrap_or(-ENOMEM)
+    .unwrap_or(-ENOMEM);
+    if let Some(td) = pend {
+        td.resolve();
+    }
+    r
 }
 
 /// `MAP_PRIVATE` of a memory object: own pages holding a copy of its bytes.
@@ -116,17 +124,22 @@ pub fn mremap(old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -
     if old < crate::paging::USER_LOW || old + old_len > USER_TOP || flags & MREMAP_FIXED != 0 && flags & MREMAP_MAYMOVE == 0 {
         return -EINVAL;
     }
-    crate::syscall::with(|p| {
+    let mut tds: alloc::vec::Vec<crate::tlb::Teardown> = alloc::vec::Vec::new();
+    let ret = crate::syscall::with(|p| {
         if p.space().has_shared(old, old_len.max(4096)) {
-            return remap_shared(p, old, old_len, new_len, flags, new_addr);
+            remap_shared(p, old, old_len, new_len, flags, new_addr, &mut tds)
+        } else {
+            remap_own(p, old, old_len, new_len, flags, new_addr, &mut tds)
         }
-        remap_own(p, old, old_len, new_len, flags, new_addr)
-    })
-    .unwrap_or(-EINVAL)
+    });
+    for t in tds {
+        t.resolve();
+    }
+    ret.unwrap_or(-EINVAL)
 }
 
 /// Where a mapping that grows goes: in place is not tried (the space behind it may be taken).
-fn target(p: &mut Proc, old: u64, new_len: u64, flags: u64, new_addr: u64) -> Result<u64, i64> {
+fn target(p: &mut Proc, old: u64, new_len: u64, flags: u64, new_addr: u64) -> Result<(u64, Option<crate::tlb::Teardown>), i64> {
     if flags & MREMAP_FIXED != 0 {
         if new_addr < old + new_len && new_addr + new_len > old {
             return Err(-EINVAL);
@@ -140,12 +153,17 @@ fn target(p: &mut Proc, old: u64, new_len: u64, flags: u64, new_addr: u64) -> Re
 }
 
 /// Resize a shared mapping: it is mapped anew from the same object and offset.
-fn remap_shared(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -> i64 {
+fn remap_shared(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64, tds: &mut alloc::vec::Vec<crate::tlb::Teardown>) -> i64 {
     let va = if new_len <= old_len && flags & MREMAP_FIXED == 0 {
         old
     } else {
         match target(p, old, new_len, flags, new_addr) {
-            Ok(v) => v,
+            Ok((v, td)) => {
+                if let Some(t) = td {
+                    tds.push(t);
+                }
+                v
+            }
             Err(e) => return e,
         }
     };
@@ -155,27 +173,31 @@ fn remap_shared(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, 
     if !p.space().map_shared(va, &frames, w, what) {
         return -ENOMEM;
     }
+    // die geleerten alten geteilten Einträge auf den anderen Kernen abgleichen (keine Seite frei)
+    tds.push(crate::tlb::Teardown { pml4: p.space().pml4, start: old, end: old + old_len, freed: alloc::vec::Vec::new() });
     va as i64
 }
 
 /// Resize a mapping of own pages: shrink in place, grow by moving the pages (no copy) to a new place
 /// whose tail is reserved like the old range.
-fn remap_own(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -> i64 {
-    let s = p.space();
+fn remap_own(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64, tds: &mut alloc::vec::Vec<crate::tlb::Teardown>) -> i64 {
     if new_len <= old_len && flags & MREMAP_FIXED == 0 {
+        let s = p.space();
         if !s.unreserve(old + new_len, old_len - new_len) {
             return -ENOMEM;
         }
-        let mut a = old + new_len;
-        while a < old + old_len {
-            s.unmap(a);
-            a += 4096;
-        }
+        let Some(freed) = s.detach(old + new_len, old_len - new_len) else { return -ENOMEM };
+        tds.push(crate::tlb::Teardown { pml4: s.pml4, start: old + new_len, end: old + old_len, freed });
         return old as i64;
     }
     let rights = p.space().reserved_at(old).unwrap_or((true, false));
     let va = match target(p, old, new_len, flags, new_addr) {
-        Ok(v) => v,
+        Ok((v, td)) => {
+            if let Some(t) = td {
+                tds.push(t);
+            }
+            v
+        }
         Err(e) => return e,
     };
     let s = p.space();
@@ -192,11 +214,8 @@ fn remap_own(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new
     }
     // what is left of the old range (and its reservation) goes away
     let _ = s.unreserve(old, old_len);
-    let mut a = old;
-    while a < old + old_len {
-        s.unmap(a);
-        a += 4096;
-    }
+    let Some(freed) = s.detach(old, old_len) else { return -ENOMEM };
+    tds.push(crate::tlb::Teardown { pml4: s.pml4, start: old, end: old + old_len, freed });
     va as i64
 }
 

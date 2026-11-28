@@ -283,19 +283,67 @@ impl AddrSpace {
         parts.iter().all(|&(a, b)| self.reserve(a, b - a, w, x))
     }
 
-    pub fn unmap(&self, va: u64) {
+    /// Ergebnis von [`Self::clear_at`]: was der Aufrufer nach dem Leeren noch tun muss.
+    enum Clear {
+        /// nichts gemappt
+        None,
+        /// geteilte Seite: verlässt nur diesen Adressraum (nichts frei geben)
+        Shared,
+        /// eigene Seite: physische Adresse, die nach dem TLB-Abgleich frei zu geben ist
+        Own(u64),
+    }
+
+    /// Übersetzung bei `va` aus der Seitentabelle räumen (eigene Seiten nicht frei geben). `invlpg`
+    /// nur auf diesem Kern; die anderen bügelt `shoot` ab, erst danach dürfen die Seiten frei werden.
+    fn clear_at(&self, va: u64) -> Clear {
         if let Some(e) = self.walk(va) {
             if *e & P != 0 && *e & U != 0 {
-                // an own page is freed; a shared one (no ownership bit) only leaves this address space
-                if *e & OWN != 0 {
-                    crate::mem::free_page(*e & ADDR);
-                    self.resident.fetch_sub(1, Ordering::Relaxed);
-                }
+                let pa = *e & ADDR;
+                let own = *e & OWN != 0;
                 *e = 0;
                 // SAFETY: invalidates the translation of one user address; no memory is touched.
                 unsafe { core::arch::asm!("invlpg [{}]", in(reg) va) };
+                if own {
+                    self.resident.fetch_sub(1, Ordering::Relaxed);
+                    return Clear::Own(pa);
+                }
+                return Clear::Shared;
             }
         }
+        Clear::None
+    }
+
+    pub fn unmap(&self, va: u64) {
+        if let Clear::Own(pa) = self.clear_at(va) {
+            crate::mem::free_page(pa);
+        }
+    }
+
+    /// Die eigenen Seiten von `[va, va + len)` aus der Seitentabelle räumen (geteilte verlassen nur
+    /// den Adressraum) und ihre physischen Adressen zur späteren Freigabe sammeln – ohne sie frei zu
+    /// geben und ohne Abgleich. `None`: die Liste konnte nicht reserviert werden, nichts wurde
+    /// verändert. Der Aufrufer schließt mit `tlb::shoot` (ohne die Prozesstabelle zu halten) ab und
+    /// gibt die gesammelten Seiten danach frei.
+    pub fn detach(&self, va: u64, len: u64) -> Option<alloc::vec::Vec<u64>> {
+        let mut n = 0usize;
+        let mut a = va;
+        while a < va + len {
+            if let Some(e) = self.walk(a) {
+                if *e & P != 0 && *e & U != 0 && *e & OWN != 0 {
+                    n += 1;
+                }
+            }
+            a += 4096;
+        }
+        let mut freed = crate::mem::try_with_capacity::<u64>(n)?;
+        let mut a = va;
+        while a < va + len {
+            if let Clear::Own(pa) = self.clear_at(a) {
+                freed.push(pa);
+            }
+            a += 4096;
+        }
+        Some(freed)
     }
 
     fn walk(&self, va: u64) -> Option<&'static mut u64> {

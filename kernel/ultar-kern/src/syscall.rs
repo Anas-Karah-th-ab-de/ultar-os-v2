@@ -2885,9 +2885,9 @@ fn sys_getsockopt(fd: u64, level: u64, opt: u64, val: u64, lenp: u64) -> i64 {
 // ------------------------------------------------------------------ Speicher
 
 fn sys_brk(addr: u64) -> i64 {
-    with(|p| {
+    let work = with(|p| {
         if addr <= p.g.brk_start || addr > p.g.brk_limit {
-            return p.g.brk as i64;
+            return Ok((p.g.brk as i64, None));
         }
         let new = (addr + 4095) & !4095;
         let mut a = p.g.brk;
@@ -2899,31 +2899,42 @@ fn sys_brk(addr: u64) -> i64 {
                     a -= 4096;
                     p.space_mut().unmap(a);
                 }
-                return old as i64;
+                return Ok((old as i64, None));
             }
             a += 4096;
         }
-        let mut a = new;
-        while a < p.g.brk {
-            p.space_mut().unmap(a);
-            a += 4096;
-        }
+        let old = p.g.brk;
+        let td = if new < old {
+            let Some(freed) = p.space().detach(new, old - new) else { return Err(-ENOMEM) };
+            Some(crate::tlb::Teardown { pml4: p.space().pml4, start: new, end: old, freed })
+        } else {
+            None
+        };
         p.g.brk = new;
-        addr as i64
-    })
-    .unwrap_or(-ENOMEM)
+        Ok((addr as i64, td))
+    });
+    match work {
+        Some(Ok((ret, Some(td)))) => {
+            td.resolve();
+            ret
+        }
+        Some(Ok((ret, None))) => ret,
+        Some(Err(e)) => e,
+        None => -ENOMEM,
+    }
 }
 
 /// Where a new mapping of `len` bytes goes: the fixed address `addr` (whatever was there is removed)
-/// or the next free one.
-pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64, i64> {
+/// or the next free one. A fixed address hands back a [`tlb::Teardown`] the caller resolves *after*
+/// releasing the process table (the shootdown must not run under it).
+pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<(u64, Option<crate::tlb::Teardown>), i64> {
     if flags & 0x10 == 0 {
         let v = p.g.mmap_next;
         if v + len + 4096 > proc::STACK_TOP - (1 << 30) {
             return Err(-ENOMEM);
         }
         p.g.mmap_next += len + 4096;
-        return Ok(v);
+        return Ok((v, None));
     }
     // above the user half the page-table index wraps (non-canonical addresses) or names the
     // kernel half: a mapping there would replace the kernel's own mappings in this address space
@@ -2934,12 +2945,8 @@ pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64
         return Err(-ENOMEM);
     }
     p.space().unmap_shared(addr, len);
-    let mut a = addr;
-    while a < addr + len {
-        p.space().unmap(a);
-        a += 4096;
-    }
-    Ok(addr)
+    let Some(freed) = p.space().detach(addr, len) else { return Err(-ENOMEM) };
+    Ok((addr, Some(crate::tlb::Teardown { pml4: p.space().pml4, start: addr, end: addr + len, freed })))
 }
 
 /// Largest mapping (a language model file is mapped as a whole: tens of gigabytes).
@@ -2982,9 +2989,13 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
     };
     let file_noexec = data.as_ref().is_some_and(|d| d.1);
     let data = data.map(|d| d.0);
-    with(|p| {
+    let mut pend: Option<crate::tlb::Teardown> = None;
+    let r = with(|p| {
         let va = match place(p, addr, len, flags) {
-            Ok(v) => v,
+            Ok((v, td)) => {
+                *pend = td;
+                v
+            }
             Err(e) => return e,
         };
         let (w, x) = (prot & 2 != 0 || data.is_some(), prot & 4 != 0);
@@ -3019,7 +3030,11 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         }
         va as i64
     })
-    .unwrap_or(-ENOMEM)
+    .unwrap_or(-ENOMEM);
+    if let Some(td) = pend {
+        td.resolve();
+    }
+    r
 }
 
 /// `mprotect(addr, len, prot)`: the rights of mapped pages and of the reserved range change at once.
@@ -3036,22 +3051,29 @@ fn sys_mprotect(addr: u64, len: u64, prot: u64) -> i64 {
     }
     let len = (len + 4095) & !4095;
     let (w, x) = (prot & 2 != 0, prot & PROT_EXEC != 0);
-    with(|p| {
+    let work = with(|p| {
         let sp = p.space();
         if !sp.may_protect(addr, len, w, x) {
-            return -EACCES;
+            return Err(-EACCES);
         }
         if !sp.relabel(addr, len, w, x) {
-            return -ENOMEM;
+            return Err(-ENOMEM);
         }
         let mut a = addr;
         while a < addr + len {
             sp.protect(a, w, x);
             a += 4096;
         }
-        0
-    })
-    .unwrap_or(-ENOMEM)
+        Ok(sp.pml4)
+    });
+    match work {
+        Some(Ok(pml4)) => {
+            crate::tlb::shoot(pml4, addr, addr + len);
+            0
+        }
+        Some(Err(e)) => e,
+        None => -ENOMEM,
+    }
 }
 
 fn sys_munmap(addr: u64, len: u64) -> i64 {
@@ -3059,19 +3081,24 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
     if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > MMAP_MAX || addr >= USER_TOP || addr + len > USER_TOP {
         return -EINVAL;
     }
-    with(|p| {
-        if !p.space().unreserve(addr, (len + 4095) & !4095) {
-            return -ENOMEM;
+    let len = (len + 4095) & !4095;
+    let end = addr + len;
+    let work = with(|p| {
+        if !p.space().unreserve(addr, len) {
+            return Err(-ENOMEM);
         }
-        p.space().unmap_shared(addr, (len + 4095) & !4095);
-        let mut a = addr;
-        while a < addr + ((len + 4095) & !4095) {
-            p.space_mut().unmap(a);
-            a += 4096;
+        p.space().unmap_shared(addr, len);
+        let Some(freed) = p.space().detach(addr, len) else { return Err(-ENOMEM) };
+        Ok(crate::tlb::Teardown { pml4: p.space().pml4, start: addr, end, freed })
+    });
+    match work {
+        Some(Ok(td)) => {
+            td.resolve();
+            0
         }
-        0
-    })
-    .unwrap_or(-EINVAL)
+        Some(Err(e)) => e,
+        None => -EINVAL,
+    }
 }
 
 // ------------------------------------------------------------------ Prozesse
@@ -3345,7 +3372,9 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
             return -8;
         }
     };
+    let new_pml4 = img.space.pml4;
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
+    crate::tlb::leave();
     with(|p| {
         p.g.auxv = img.auxv.clone();
         p.g.space = Some(Arc::new(img.space));
@@ -3363,6 +3392,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
                 *d = None;
             }
         }
+        crate::tlb::enter(new_pml4);
         p.space().activate();
     });
     unsafe { crate::paging::wrmsr(0xC000_0100, 0) };

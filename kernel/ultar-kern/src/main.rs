@@ -62,6 +62,7 @@ mod signal;
 mod slab;
 mod socket;
 mod syscall;
+mod tlb;
 mod trap;
 mod trybuf;
 mod uds;

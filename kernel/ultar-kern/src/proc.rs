@@ -855,7 +855,8 @@ fn kstack_top(p: &Proc) -> u64 {
 static LAST: [AtomicU64; crate::arch::MAXCPU] = [const { AtomicU64::new(0) }; crate::arch::MAXCPU];
 
 /// Einen bereiten Faden auf diesem Kern laufen lassen. None: es gibt keine Prozesse; Some(false): nichts bereit.
-/// Fäden einer Gruppe laufen immer nur auf einem Kern zugleich (gemeinsamer Adressraum ohne TLB-Abgleich).
+/// Fäden einer Gruppe dürfen auf mehreren Kernen zugleich laufen (der TLB-Abgleich synchronisiert den
+/// gemeinsamen Adressraum).
 fn run_one() -> Option<bool> {
     crate::oom::watch();
     let cpu = crate::percpu::id();
@@ -865,16 +866,12 @@ fn run_one() -> Option<bool> {
             return None;
         }
         wake(&mut ps);
-        let busy: Vec<u64> = ps.iter().filter_map(|p| match p.state {
-            State::Running(c) if c != cpu => Some(p.tgid),
-            _ => None,
-        }).collect();
         let n = ps.len();
         let last = LAST[cpu].load(Ordering::Relaxed) as usize;
         let mut found = None;
         for k in 1..=n {
             let i = (last + k) % n;
-            if ps[i].state == State::Ready && !ps[i].on_cpu && !busy.contains(&ps[i].tgid) {
+            if ps[i].state == State::Ready && !ps[i].on_cpu {
                 found = Some(i);
                 break;
             }
@@ -914,12 +911,17 @@ fn run_one() -> Option<bool> {
             crate::arch::set_kernel_stack(top);
             crate::paging::wrmsr(0xC000_0100, p.fs_base);
         }
+        let pml4 = p.space().pml4;
+        crate::tlb::enter(pml4);
         p.space().activate();
         crate::percpu::me().current = p.pid;
         crate::heap::set_context(p.g.res);
         fp
     };
     let _ = unsafe { ultar_resume(fp as *mut TrapFrame, sched_ctx()) };
+    // den Adressraum vor dem CR3-Wechsel abmelden: ab hier hält dieser Kern keine Übersetzung mehr,
+    // also zielt kein Abgleich mehr auf ihn, bevor er wieder in der Prozesstabelle hängen kann.
+    crate::tlb::leave();
     unsafe {
         core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4());
     }

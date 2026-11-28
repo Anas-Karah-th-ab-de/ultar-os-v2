@@ -354,6 +354,11 @@ extern "sysv64" fn ap_main() -> ! {
     crate::proc::ap_loop()
 }
 
+/// Fester IPI an alle anderen Kerne (TLB-Abgleich).
+pub fn ipi_all_others(vector: u32) {
+    icr(0, vector | 1 << 14 | 0b11 << 18);
+}
+
 fn icr(dest: u32, low: u32) {
     if X2.load(Ordering::Relaxed) {
         unsafe { wrmsr(0x830, ((dest as u64) << 32) | low as u64) };
