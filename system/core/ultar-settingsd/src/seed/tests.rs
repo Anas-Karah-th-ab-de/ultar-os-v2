@@ -29,7 +29,7 @@ fn seed_builds_and_covers_every_area() {
             (Panel::Account, 6),
             (Panel::Mobile, 9),
             (Panel::Search, 10),
-            (Panel::Apps, 15),
+            (Panel::Apps, 16),
             (Panel::Pointer, 10),
             (Panel::Keyboard, 10),
             (Panel::Printers, 7),
@@ -46,7 +46,7 @@ fn seed_builds_and_covers_every_area() {
             (Panel::Emergency, 8),
         ]
     );
-    assert_eq!(registry.defs().len(), 281);
+    assert_eq!(registry.defs().len(), 282);
 }
 
 #[test]

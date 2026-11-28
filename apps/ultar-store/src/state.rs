@@ -206,6 +206,8 @@ pub struct Store {
     pub last_error: Option<StoreError>,
     /// Path of the last saved error report (`store.log` answer).
     pub log_saved: Option<String>,
+    /// Components chosen at the installation (`apps.install_selection`).
+    pub chosen: Vec<String>,
 }
 
 impl Store {
@@ -226,7 +228,22 @@ impl Store {
             last_error: None,
             log_saved: None,
             pending_remove: None,
+            chosen: Vec::new(),
         }
+    }
+
+    /// The catalogue entries chosen at the installation that are not installed yet, in
+    /// catalogue order (an id the catalogue does not know is not shown).
+    pub fn chosen_missing(&self) -> Vec<&crate::catalog::CatalogApp> {
+        self.apps()
+            .iter()
+            .filter(|a| self.chosen.contains(&a.id) && !self.is_installed(&a.id))
+            .collect()
+    }
+
+    /// Was this app chosen at the installation and is it still missing?
+    pub fn is_chosen_missing(&self, id: &str) -> bool {
+        self.chosen.iter().any(|c| c == id) && !self.is_installed(id)
     }
 
     /// Is the app with this id installed?

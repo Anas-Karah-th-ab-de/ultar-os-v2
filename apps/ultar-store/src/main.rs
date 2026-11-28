@@ -145,11 +145,15 @@ fn run_auto_update(store: &mut Store, cmd_tx: &Sender<Command>, auto: &mut AutoU
         .metered
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
+    let chosen_changed = store.chosen != settings.chosen;
+    if chosen_changed {
+        store.chosen = settings.chosen.clone();
+    }
     let cmds = store.auto_update(settings.allowed_now(now, metered));
     for cmd in &cmds {
         let _ = cmd_tx.send(cmd.clone());
     }
-    !cmds.is_empty()
+    chosen_changed || !cmds.is_empty()
 }
 
 /// The backend worker: commands in, events out, nothing blocks the UI thread.

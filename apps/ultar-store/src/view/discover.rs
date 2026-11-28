@@ -8,7 +8,7 @@ use ultar_ui::layout::{CrossAlign, Flex, Sizing};
 use ultar_ui::paint::TextSpec;
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{Button, ButtonVariant, Label, List, Scroll, Text, Widget};
+use ultar_ui::widgets::{Button, ButtonVariant, InfoBar, Label, List, Scroll, Text, Tone, Widget};
 
 /// Cards per row on the desktop board (grid: `repeat(4, 1fr)`).
 const GRID_COLUMNS: usize = 4;
@@ -24,6 +24,7 @@ pub(crate) fn discover_page(
     }
     let scroll = ui.add_sized(parent, Scroll::new(), Sizing::grow(1))?;
     let body = ui.add_sized(scroll, Flex::column().gap(Space::S16), Sizing::grow(1))?;
+    chosen_hint(ui, body, store)?;
     section_head(
         ui,
         body,
@@ -57,6 +58,22 @@ pub(crate) fn discover_page(
         Text::new(Label::key("store.note.discover")).color(ColorRole::TextMuted),
     )?;
     Ok(())
+}
+
+/// The hint above the components when some chosen at the installation are not installed
+/// yet: their cards carry the accent badge, the app page installs each with its rights shown.
+fn chosen_hint(ui: &mut Ui, body: NodeId, store: &Store) -> Result<(), UiError> {
+    let missing = store.chosen_missing().len();
+    if missing == 0 {
+        return Ok(());
+    }
+    let count = missing.to_string();
+    let bar = InfoBar::new(
+        Tone::Info,
+        Label::key_with("store.chosen.title", &[("count", count.as_str())]),
+    )
+    .message(Label::key("store.chosen.message"));
+    ui.add(body, bar).map(|_| ())
 }
 
 /// A section heading: title + one-line description (board order and sizes).

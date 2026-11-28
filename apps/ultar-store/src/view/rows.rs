@@ -12,7 +12,8 @@ use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{Badge, Button, ButtonVariant, Label, ListItem, Text, Tone};
 
 /// The status pill of an app (board: green check `Installed`, grey `Not
-/// installed`; an available update the accent pill).
+/// installed`; an available update the accent pill; chosen at the installation and not
+/// installed yet the accent pill `Chosen at installation`).
 pub(crate) fn badge_for(store: &Store, id: &str) -> Badge {
     if store.is_installed(id) {
         if store.update_available(id) {
@@ -22,6 +23,8 @@ pub(crate) fn badge_for(store: &Store, id: &str) -> Badge {
                 .tone(Tone::Success)
                 .with_icon()
         }
+    } else if store.is_chosen_missing(id) {
+        Badge::new(Label::key("store.badge.chosen")).tone(Tone::Accent)
     } else {
         Badge::new(Label::key("store.badge.not-installed")).tone(Tone::Neutral)
     }
