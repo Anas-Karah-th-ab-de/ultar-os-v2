@@ -98,7 +98,9 @@ members = [
     "platform/ultar-desktop",
 ]
 # own workspaces: kernel (no std), server (x86 only), legacy window manager
-exclude = ["kernel", "server", "platform/ultar-wm"]
+# external/servo-host: the browser's Servo engine host, its own workspace and lock file (Servo
+# pins its own dependency tree; built by scripts/build-servo-engine.sh on a builder)
+exclude = ["kernel", "server", "platform/ultar-wm", "external/servo-host"]
 
 [workspace.package]
 version = "0.8.0"

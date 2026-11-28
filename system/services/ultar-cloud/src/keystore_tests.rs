@@ -268,3 +268,25 @@ fn leftovers_of_an_interrupted_creation_are_removed_when_they_are_old() {
     assert!(!second_name.exists() && !unused.exists());
     assert!(young.exists(), "a young temporary file may be in use");
 }
+
+/// The Ultar kernel has no hard links (`link`/`linkat` answer `EPERM`): the key is renamed into
+/// place instead, and an existing key is still never replaced.
+#[test]
+fn without_hard_links_the_key_is_renamed_into_place_but_never_over_a_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let no_links = |_: &Path, _: &Path| Err(std::io::Error::from_raw_os_error(1));
+    let tmp = dir.path().join("device.key.new.1");
+    let key = dir.path().join("device.key");
+    std::fs::write(&tmp, "first").unwrap();
+    publish(&tmp, &key, no_links).unwrap();
+    assert_eq!(std::fs::read_to_string(&key).unwrap(), "first");
+    assert!(!tmp.exists());
+    std::fs::write(&tmp, "second").unwrap();
+    let err = publish(&tmp, &key, no_links).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read_to_string(&key).unwrap(), "first");
+    // Any other failure of the link is passed on unchanged.
+    let busy = |_: &Path, _: &Path| Err(std::io::Error::from_raw_os_error(28));
+    let err = publish(&tmp, &dir.path().join("other.key"), busy).unwrap_err();
+    assert_eq!(err.raw_os_error(), Some(28));
+}
