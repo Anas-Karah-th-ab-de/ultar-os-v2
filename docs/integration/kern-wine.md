@@ -64,6 +64,10 @@ programs run on the Linux kernel; 64-bit ones are the target here. The same limi
   `drive_c/windows/system32`, the wineserver runs) and stops at the first 32-bit process: it executes
   `int $0x80` (`set_thread_area` for the 32-bit `%fs`, Wine's `alloc_fs_sel`) – `#GP`, error code `0x402` –
   the delimited WoW64 part above. Before this stage Wine stopped at `c0000018` (no address wishes).
+* With the prefix half made, every further step runs on its own (foreigntest prints each): `wine cmd /c echo`
+  ends in an unhandled exception (Wine wants `winedbg`), `msiexec` of 7-Zip (`foreign-e2e.sh WIN_MSI=…`) stops
+  at „The explorer process failed to start“ (no display server in this test), and one later start of the
+  loader failed with `libc.so.6: file too short` – open points below.
 * What was found on the way and is built: `creat`, `getrusage`, `get_mempolicy`, passing Unix sockets.
   Expected and harmless in the trace: `EEXIST` of Wine's `MAP_FIXED_NOREPLACE` probes below 2 GiB,
   `ENOTTY` of FAT/ext2 ioctls, `EOPNOTSUPP` of `fgetxattr`, `ENOSYS` of `rseq`.
@@ -71,3 +75,18 @@ programs run on the Linux kernel; 64-bit ones are the target here. The same limi
   `pthread_getattr_np`, `MAP_32BIT`, `abort()` in threads, `statfs`/`ENOSPC`); `android-art` itself was not
   run on the Ultar kernel in this stage – no finished Android area (`out/…/linux` with the component) was on
   the servers.
+
+## Open points
+
+* WoW64 (above): `int $0x80` with `set_thread_area`, selector `0x23`, room below 4 GiB.
+* `wine cmd` on the kernel: find the exception of the 64-bit `cmd.exe` (`WINEDEBUG=+seh` in the cell).
+* `libc.so.6: file too short` once after several Wine processes (MEM 1536): a file read short under memory
+  pressure? To reproduce with `spur fehler` and more memory.
+* Indexed (HTree) directories of an ext4: the writer adds no entry to them (mke2fs `-d` and e2fsck `-D`
+  index large directories – the Linux area has many). `mkdir`, new files and symbolic links there now fail
+  with `EIO` before anything is allocated (before, `mkdir` silently made the directory in memory and files in it
+  failed later with `ENOSPC` – the `COMPONENT` check). Next: insert into the HTree (hash `half_md4`/`tea`,
+  leaf split, `dx_tail` checksums).
+* ART: run `android-art` (stage P5) on this kernel once an Android area is on a server.
+* QEMU with 2 GiB or more keeps the second window closed (firmware tables lie there); tests that need it
+  use `MEM=1536`.
