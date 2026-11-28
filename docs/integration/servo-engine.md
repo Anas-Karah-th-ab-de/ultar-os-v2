@@ -10,10 +10,17 @@ das vorhandene Protokoll (`apps/ultar-web/src/ipc`, Version 1) steuert. Bilder k
 Speicher (memfd + `SCM_RIGHTS`), nur geänderte Zeilen. Servo kommt unverändert von crates.io
 (`servo` 0.8.0, MPL-2.0).
 
-**Belegt (28.11.2026, Builder 192.168.100.12, Linux, ohne Bildschirm):** `examples/shot` als Browser-Seite
-→ Host → Tor-Port → Internet: `https://example.org/` geladen und gezeichnet in 11 s (davon Tor-Aufbau),
-Titel, Adresse, sichere Verbindung und Fortschritt kommen als Ereignisse; Arabisch richtig geformt und
-von rechts nach links (Bild `shot1.png` im Build-Ordner). Host bereit nach 35–80 ms.
+**Belegt (28.11.2026, Builder 192.168.100.12, Linux, ohne Bildschirm):**
+- `examples/shot` als Browser-Seite → Host → Tor-Port → Internet: `https://example.org/` in 11 s (davon
+  Tor-Aufbau), `https://ar.wikipedia.org/wiki/سوريا` in 14 s – Arabisch richtig geformt und von rechts nach
+  links, Bilder (SVG, PNG), Tabellen. Titel, Adresse, sichere Verbindung und Fortschritt kommen als
+  Ereignisse. Host bereit nach 35–80 ms.
+- `examples/window`: das **ganze Browser-Fenster** (Tabs, Adressfeld, Schutz-Knopf, Seite) über Servo, ohne
+  Bildschirm gezeichnet – Arabisch dunkel und Englisch hell (`win-ar-dark.png`, `win-en-light.png`).
+  Dabei gefunden und behoben: das Adressfeld zeigte `%D8%AF…` statt der arabischen Buchstaben
+  (`url::readable`, Richtungszeichen bleiben maskiert).
+- Mit `--media` (GStreamer): `flower.mp4` (H.264) von MDN über Tor geladen und das Videobild gezeichnet.
+  Ton auf dem Builder ohne Soundkarte nicht hörbar (ALSA/PipeWire fehlen dort).
 
 ## Aufbau
 
@@ -76,8 +83,17 @@ bringt seine eigenen Bibliotheken, siehe offen). Ziel-Ordner `TARGET` (Standard 
    schlagen sie dann fehl, statt am Tor vorbei zu gehen).
 2. **Ultar-Kern:** nur unter Linux belegt. Bündel für `/usr/lib/ultar/web`: glibc, libstdc++, zlib,
    fontconfig, freetype, expat und Mesa mit EGL + llvmpipe/iris aus eigenen Paketen (`tools/ultar-paketbau`).
-3. **Ton und Video:** Merkmal `media` (GStreamer) – Bau und Prüfung laufen; auf dem Ultar-Kern braucht es
-   eine GStreamer-Tonausgabe nach `/dev/ultar/pcm`. YouTube & Co. brauchen MSE, das Servo nicht hat.
+3. **Ton und Video:** Merkmal `media` (GStreamer) gebaut, Video-Dekodierung belegt; auf dem Ultar-Kern braucht
+   es eine GStreamer-Tonausgabe nach `/dev/ultar/pcm` (Anfang im Branch `wip/servobundle`: `src/pcm.rs`,
+   `src/media.rs`) und GStreamer als eigene Pakete. YouTube & Co. brauchen MSE, das Servo nicht hat.
+   Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).
 4. Auswahllisten (`<select>`), Datei-Auswahl, Dialoge (`alert`), Kontextmenüs der Seite: der Host
    beantwortet sie noch mit dem Standard; der Browser braucht dafür eigene Protokoll-Nachrichten.
 5. Downloads, Zähler des Tracking-Schutzes, Zwischenablage, Schriften für CJK im Bündel.
+6. Wikipedia-Symbole (CSS `mask-image`) zeichnet Servo als schwarze Flächen – Grenze von Servo 0.8.
+
+Plan für 1 (Paket `servocell`, angefangen, Branch `wip/servocell`): `ultar-tor` bekommt den CONNECT-Port
+zusätzlich als Unix-Socket; der Host baut seine Zelle mit eigenem Netz-Namensraum (nur privates Loopback)
+und leitet darin einen Loopback-Port an den Socket weiter. Befund dabei: der Ultar-Kern lehnt
+`unshare(CLONE_NEWNET)` mit `EINVAL` ab – er braucht dafür erst Netz-Namensräume (oder das Recht „kein
+Netz außer Loopback“).

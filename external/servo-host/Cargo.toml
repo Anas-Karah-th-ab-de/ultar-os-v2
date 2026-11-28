@@ -30,6 +30,8 @@ rustix = { version = "1", default-features = false, features = ["std", "net", "f
 # examples/shot.rs: a PNG of the frame. The Tor port comes from a separate process
 # (platform/ultar-tor's `ultar-tor-port`): Arti must never be linked next to Servo.
 png = "0.17"
+# examples/window.rs: the browser window drawn headless
+ultar-ui = { path = "../../platform/ultar-ui" }
 
 [features]
 default = []
