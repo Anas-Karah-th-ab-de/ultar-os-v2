@@ -385,6 +385,10 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
 pub fn rndis_dbg() -> [u64; 4] {
     rndis::dbg()
 }
+/// USB-Netz: (gesehene dci-Bitmaske, erwartet=in_dci|slot<<8|out_dci<<16) – vorübergehend.
+pub fn rndis_dbg2() -> (u64, u64) {
+    rndis::dbg2()
+}
 
 pub fn poll_key() -> Option<char> {
     let mut g = HC.try_lock()?;

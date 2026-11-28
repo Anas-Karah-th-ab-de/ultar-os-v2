@@ -74,8 +74,13 @@ const RX_MAX: usize = 256;
 // mit gutem Abschluss, davon als RNDIS-Paket erkannt, davon in die Warteschlange gelegt.
 use core::sync::atomic::{AtomicU64, Ordering};
 static DBG: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
+static SEEN: AtomicU64 = AtomicU64::new(0); // Bitmaske der dcis (<64), die report überhaupt sieht
+static WANT: AtomicU64 = AtomicU64::new(0); // in_ep.dci | (slot<<8) der angemeldeten Karte
 pub fn dbg() -> [u64; 4] {
     core::array::from_fn(|i| DBG[i].load(Ordering::Relaxed))
+}
+pub fn dbg2() -> (u64, u64) {
+    (SEEN.load(Ordering::Relaxed), WANT.load(Ordering::Relaxed))
 }
 
 fn rd32(p: u64, off: usize) -> u32 {
@@ -89,6 +94,9 @@ fn wr32(p: u64, off: usize, v: u32) {
 /// Warteschlange legen, Übertragung neu armieren. Aus der Ereignisschleife (`pump`).
 pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, left: u32) -> bool {
     DBG[0].fetch_add(1, Ordering::Relaxed); // jeder report-Aufruf (auch für fremde Endpunkte)
+    if dci < 64 {
+        SEEN.fetch_or(1u64 << dci, Ordering::Relaxed);
+    }
     let mut list = NICS.lock();
     let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
         return false;
@@ -270,6 +278,7 @@ pub(super) fn attach(
     let tx = alloc_pages(1).ok_or("kein Speicher")?;
     let mut in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
     in_ep.arm_all(hc, slot);
+    WANT.store(in_dci as u64 | (slot as u64) << 8 | (out_dci as u64) << 16, Ordering::Relaxed);
     NICS.lock().push(Nic { hc_index: hc.index, slot, in_ep, rx: VecDeque::new() });
 
     let mut nl = NET.lock();
