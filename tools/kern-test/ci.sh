@@ -27,6 +27,9 @@
 #       to the host, renew, static address, cable out and in (netz-e2e.sh, NETZ: ALLES OK), and the VMware machine's
 #       disk driven only through emulated USB/PS/2 input: locked at start, unlock, start menu, five apps open
 #       (tools/vm/vmware-input-e2e.sh, VMWARE-INPUT-E2E: ALLES OK; VMWARE_INPUT=0 skips it),
+#   5h. SSH into the Ultar kernel end to end (ssh-e2e.sh, SSH: ALLES OK): ultar-sshd on the Ultar kernel,
+#       key only – command + uname, exit code, scp 1 MiB up/down (sha256 equal), sftp ls, a foreign key and
+#       password auth rejected, sequential and parallel sessions,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -125,6 +128,19 @@ else
     grep -E "^(ok|skip)" "$NLOG"; echo "ok    NETZ: ALLES OK"
   else
     echo "FAIL  NETZ"; tail -40 "$NLOG"; exit 1
+  fi
+fi
+# SSH into the Ultar kernel end to end (ssh-e2e.sh): the pure-Rust ultar-sshd on the Ultar kernel with a
+# fresh test key only – command + uname, exit code, scp 1 MiB up/down (sha256 equal), sftp ls, a foreign key
+# and password auth rejected, sequential and parallel sessions; it builds its own static server and disk.
+if [ "${SSH:-1}" = 0 ]; then
+  echo "skip  SSH (SSH=0)"
+else
+  SLOG="${SSH_E2E_LOG:-$(mktemp)}"
+  if SMP="${SMP:-2}" bash tools/kern-test/ssh-e2e.sh > "$SLOG" 2>&1 && grep -q "^SSH: ALLES OK" "$SLOG"; then
+    grep -E "^(ok|skip|info)" "$SLOG"; echo "ok    SSH: ALLES OK"
+  else
+    echo "FAIL  SSH"; tail -50 "$SLOG"; exit 1
   fi
 fi
 HLOG="${HLOG:-$(mktemp)}"

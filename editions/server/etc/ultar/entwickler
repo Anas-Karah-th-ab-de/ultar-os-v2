@@ -1,0 +1,6 @@
+# Entwickler-Zugang an (SSH, Port 2222, nur Schlüssel). Der Dienst `entwickler` startet ultar-sshd,
+# das den Zugang nur mit eingetragenem Schlüssel annimmt: /data/ultar/entwickler/authorized_keys
+# (Web-Verwaltung → SSH-Schlüssel bzw. `ultar-sshd schluessel`). Ohne Schlüssel endet der Dienst sauber.
+#
+# Der Server startet diesen Zugang standardmäßig, damit ein PC ihn über SSH erreicht; `ultar-sshd aus`
+# (bzw. /data/ultar/entwickler/aus) schaltet ihn dauerhaft ab – „aus“ gewinnt auch gegen diese Datei.
