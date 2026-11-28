@@ -11,6 +11,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -58,6 +60,32 @@ static void shootdown(void *unused) {
     _exit(0);
 }
 
+/* sendmsg with SCM_CREDENTIALS (pid, uid, gid); the result or -errno */
+static int send_creds(int fd, pid_t pid, uid_t uid, gid_t gid) {
+    char byte = 'x';
+    struct iovec io = {&byte, 1};
+    union { struct cmsghdr h; char b[CMSG_SPACE(sizeof(struct ucred))]; } c;
+    memset(&c, 0, sizeof c);
+    struct msghdr m = {0};
+    m.msg_iov = &io, m.msg_iovlen = 1, m.msg_control = c.b, m.msg_controllen = sizeof c.b;
+    struct cmsghdr *h = CMSG_FIRSTHDR(&m);
+    h->cmsg_level = SOL_SOCKET, h->cmsg_type = SCM_CREDENTIALS, h->cmsg_len = CMSG_LEN(sizeof(struct ucred));
+    struct ucred u = {pid, uid, gid};
+    memcpy(CMSG_DATA(h), &u, sizeof u);
+    return sendmsg(fd, &m, 0) == 1 ? 0 : -errno;
+}
+
+/* without the right SET_ID only the own credentials may be claimed */
+static void claim_creds(void *unused) {
+    (void)unused;
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0 || prctl(0x554c5201, 0x100UL, 0, 0, 0) != 0) _exit(2);
+    int own = send_creds(sv[0], getpid(), getuid(), getgid());
+    int other_uid = send_creds(sv[0], getpid(), getuid() + 1234, getgid());
+    int other_pid = send_creds(sv[0], getpid() + 1, getuid(), getgid());
+    _exit(own == 0 && other_uid == -EPERM && other_pid == -EPERM ? 0 : 1);
+}
+
 int main(void) {
     printf("SCHUTZTEST: mprotect\n");
     long pg = 4096;
@@ -98,6 +126,12 @@ int main(void) {
     }
     if (fd >= 0) close(fd);
     check("Faden auf anderem Kern schreibt -> mprotect trifft ihn sofort (SIGSEGV)", in_child(shootdown, NULL) == SIGSEGV);
+    {
+        pid_t c = fork();
+        if (c == 0) claim_creds(NULL);
+        int st = -1;
+        check("SCM_CREDENTIALS: nur die eigenen ohne SET_ID (sonst EPERM)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 0);
+    }
     errno = 0;
     check("clone(CLONE_THREAD) ohne CLONE_VM -> EINVAL", syscall(SYS_clone, 0x10000 | 0x800 | SIGCHLD, 0, 0, 0, 0) == -1 && errno == EINVAL);
     printf("SCHUTZTEST: %d Fehler\n", fails);
