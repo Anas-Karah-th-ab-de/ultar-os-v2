@@ -366,6 +366,13 @@ fn windows_programs_install_themselves_in_their_own_cells_and_leave_without_trac
             case.name, app.uid
         );
 
+        // the fake group tree has no controller that makes the app's group files
+        let group = tree.join("apps").join(&id);
+        std::fs::create_dir_all(&group).unwrap();
+        for file in ["cgroup.procs", "memory.max", "pids.max"] {
+            std::fs::write(group.join(file), b"").unwrap();
+        }
+
         // 4. first start: installs itself in its own cell, its window shows
         launcher.start(&id, Role::Ui, None).unwrap();
         let probe = wait_file(

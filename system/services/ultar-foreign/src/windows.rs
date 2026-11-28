@@ -126,6 +126,44 @@ fn non_empty(text: String, fallback: &str) -> String {
     }
 }
 
+/// The app id's own part from the product's name, without its version or remarks in
+/// parentheses (an update keeps the id): `Notepad++` → `notepad`, `7-Zip 24.09 (x64 edition)`
+/// → `7-zip`. Lowercase letters, digits and single `-`, at most 40.
+pub fn id_base(name: &str) -> Option<String> {
+    let mut words = Vec::new();
+    let mut depth = 0usize;
+    for w in name.split_whitespace() {
+        if w.starts_with('(') {
+            depth += 1;
+        }
+        let digits = w.trim_start_matches(['v', 'V']);
+        let version = !digits.is_empty()
+            && digits.chars().all(|c| c.is_ascii_digit() || c == '.')
+            && digits.chars().any(|c| c.is_ascii_digit());
+        if depth == 0 && !version {
+            words.push(w);
+        }
+        if w.ends_with(')') {
+            depth = depth.saturating_sub(1);
+        }
+    }
+    let mut out = String::new();
+    for ch in words.join(" ").chars().flat_map(char::to_lowercase) {
+        let c = if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
+            ch
+        } else {
+            '-'
+        };
+        if c == '-' && (out.is_empty() || out.ends_with('-')) {
+            continue;
+        }
+        out.push(c);
+    }
+    let out: String = out.chars().take(40).collect();
+    let out = out.trim_matches('-');
+    (!out.is_empty()).then(|| out.to_owned())
+}
+
 /// The installer's name in its directory: the original's letters, digits and `._+-`, the
 /// right ending, at most 64 bytes (the wrapper finds it at `/.setup/<name>`).
 pub fn setup_file_name(path: &Path, source: Source) -> String {
@@ -236,7 +274,9 @@ pub fn install(
     if !confirm(client, &req.caller, text)? {
         return Ok(None);
     }
-    let stem = slug(&detect::stem(&path), 40).unwrap_or_else(|| "program".into());
+    let stem = id_base(&described.name)
+        .or_else(|| slug(&detect::stem(&path).replace('.', "-"), 40))
+        .unwrap_or_else(|| "program".into());
     let id = state
         .id_for(described.source, &described.name, &stem)
         .ok_or(Failure::Internal)?;
@@ -306,6 +346,16 @@ mod tests {
         dll[0x84 + 19] = 0x20;
         let (o, p) = opened(&dll, "library.exe");
         assert_eq!(describe(&o, &p), Err(Failure::Damaged));
+    }
+
+    #[test]
+    fn ids_come_from_the_product_name_without_its_version() {
+        assert_eq!(id_base("Notepad++").as_deref(), Some("notepad"));
+        assert_eq!(id_base("7-Zip 24.09 (x64 edition)").as_deref(), Some("7-zip"));
+        assert_eq!(id_base("GIMP v2.10.38").as_deref(), Some("gimp"));
+        assert_eq!(id_base("Paint.NET").as_deref(), Some("paint-net"));
+        assert_eq!(id_base("ملف"), None);
+        assert_eq!(id_base("1.0 (beta)"), None);
     }
 
     #[test]
