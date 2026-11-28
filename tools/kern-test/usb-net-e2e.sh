@@ -37,7 +37,7 @@ skipped=()
 # ein QEMU-Lauf: nettest, ping, dann die angegebenen Zusatzbefehle (Monitor mit "!", Shell-Kommandos)
 run() {
   local log="$1"; shift
-  QARGS="-device qemu-xhci,id=xhci -monitor unix:$WORK/mon,server,nowait" MONITOR="$WORK/mon" \
+  PREARGS="-device qemu-xhci,id=xhci" QARGS="-monitor unix:$WORK/mon,server,nowait" MONITOR="$WORK/mon" \
     NETDEV="user,id=n" NIC="usb-net,bus=xhci.0,id=unet" SMP="${SMP:-2}" WAIT="${WAIT:-160}" \
     timeout 700 python3 tools/kern-test/qtest.py "$IMG" "$@" > "$log" 2>&1 || true
 }
@@ -48,10 +48,10 @@ run "$LOG" \
   "/bin/nettest usb-rndis $PORT" \
   "ping 10.0.2.2" \
   "!device_del unet" \
-  "!device_add usb-net,bus=xhci.0,id=unet,netdev=n" \
+  "!device_add usb-net,bus=xhci.0,id=unet,netdev=n" "ping 10.0.2.2" "ping 10.0.2.2" \
   "/bin/nettest usb-rndis $PORT"
 echo "---- RNDIS ----"
-grep -aE "usb0:|usb1:|entfernt|NETTEST|Antwort von|keine Antwort|PANIK|panik" "$LOG"
+grep -aE "usb0:|usb1:|entfernt|NETTEST|Antwort von|keine Antwort|PANIK|panik" "$LOG" || true
 if [ "$(grep -ac '^NETTEST: ALLES OK' "$LOG" || true)" = 2 ] \
    && grep -aq "Antwort von 10.0.2.2" "$LOG" \
    && grep -aq "usb0: RNDIS" "$LOG" \
