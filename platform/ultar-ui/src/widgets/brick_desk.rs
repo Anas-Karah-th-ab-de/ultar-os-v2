@@ -1,14 +1,15 @@
-//! The desktop shortcut (`BrickKind::DeskIcon`): the app's tile above its name, the whole
-//! cell operated – hover fills it quietly, the selected shortcut keeps the fill and gets the
-//! accent edge (like a selected file on the desktop).
+//! The bricks of the desktop background: the shortcut (`BrickKind::DeskIcon`) – the app's
+//! tile above its name, the whole cell operated, hover fills it quietly, the selected one
+//! keeps the fill and gets the accent edge – and the history chart of the system display
+//! (`BrickKind::Meter`).
 
 use super::style::{self, Visual};
 use super::{Label, MeasureCx, PaintCx};
-use crate::geom::{Rect, Size};
+use crate::geom::{Point, Rect, Size};
 use crate::icon::{IconId, QuarterTurns};
 use crate::paint::{Painter, TextSpec};
 use crate::text::TextAlign;
-use crate::tokens::{ColorRole, Radius, Space, TypeSize};
+use crate::tokens::{size, ColorRole, Radius, Space, TypeSize};
 
 const NAME: TextSpec = TextSpec::new(TypeSize::S12);
 
@@ -66,4 +67,40 @@ pub(super) fn paint(
         (rect.bottom() - below_top - Space::S4.points()).max(0.0),
     );
     style::draw_label(p, cx, name, NAME, below, TextAlign::Center, fg);
+}
+
+/// Paints a history chart: a base line, one bar per sample (the newest in full strength,
+/// the older ones lighter) and the second series as a line over them.
+pub(super) fn meter(p: &mut Painter<'_>, rect: Rect, values: &[u8], second: &[u8]) {
+    let base = p.color(ColorRole::Line);
+    p.fill(
+        Rect::new(rect.x, rect.bottom() - size::BORDER, rect.w, size::BORDER),
+        None,
+        base,
+    );
+    let n = values.len().max(second.len());
+    if n == 0 || rect.w <= 0.0 {
+        return;
+    }
+    let step = rect.w / n as f32;
+    let gap = if step > 3.0 * size::BORDER {
+        size::BORDER
+    } else {
+        0.0
+    };
+    let accent = p.color(ColorRole::Accent);
+    let height = |v: u8| rect.h * f32::from(v.min(100)) / 100.0;
+    for (i, v) in values.iter().enumerate() {
+        let h = height(*v);
+        let x = rect.x + i as f32 * step;
+        let strength = if i + 1 == values.len() { 1.0 } else { 0.45 };
+        let bar = Rect::new(x, rect.bottom() - h, (step - gap).max(size::BORDER), h);
+        p.fill(bar, None, accent.with_alpha(strength));
+    }
+    let line = p.color(ColorRole::Info);
+    let point =
+        |i: usize, v: u8| Point::new(rect.x + (i as f32 + 0.5) * step, rect.bottom() - height(v));
+    for (i, pair) in second.windows(2).enumerate() {
+        p.line(point(i, pair[0]), point(i + 1, pair[1]), size::STROKE, line);
+    }
 }

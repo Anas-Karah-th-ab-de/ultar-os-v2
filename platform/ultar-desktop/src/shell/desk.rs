@@ -33,6 +33,8 @@ pub mod item {
     pub const SHOW: u32 = 13;
     /// Sort by name.
     pub const SORT: u32 = 14;
+    /// Show the system display (processor, memory, GPU, network).
+    pub const METRICS: u32 = 15;
     /// Change the background (Settings › Appearance).
     pub const WALLPAPER: u32 = 20;
     /// Display settings.
@@ -88,6 +90,7 @@ pub(super) fn desk_menu(s: &Shell) -> Menu {
         items.push(if i == 0 { entry.separated() } else { entry });
     }
     items.push(MenuItem::new(item::SHOW, Label::key("desk.desk.show")).checked(desk.shown));
+    items.push(MenuItem::new(item::METRICS, Label::key("desk.desk.metrics")).checked(desk.metrics));
     let sort = MenuItem::new(item::SORT, Label::key("desk.desk.sort"));
     items.push(if s.d.places.shortcuts.len() > 1 && desk.shown {
         sort
@@ -239,6 +242,11 @@ pub(super) fn desk_chosen(s: &mut Shell, id: u32) -> Outcome {
             let shown = !s.d.prefs.desk.shown;
             s.d.prefs.desk.shown = shown;
             setting("desktop.icons.enabled", SettingValue::Flag(shown))
+        }
+        item::METRICS => {
+            let on = !s.d.prefs.desk.metrics;
+            s.d.prefs.desk.metrics = on;
+            setting("desktop.metrics.enabled", SettingValue::Flag(on))
         }
         item::SORT => {
             let (catalog, tr) = (&s.d.catalog, &s.tr);

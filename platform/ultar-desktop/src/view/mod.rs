@@ -13,6 +13,7 @@ pub mod dock;
 pub mod geometry;
 pub mod helper;
 pub mod menu;
+pub mod metrics;
 pub mod note;
 pub mod overview;
 pub mod projection;
@@ -195,6 +196,10 @@ pub enum Target {
     Media(u8),
     /// Desktop background: an icon (home folder, drive, app shortcut, desktop folder item).
     Desk(crate::model::places::DeskItem),
+    /// Desktop background, system display: the value of a gauge (changed in place).
+    MetricValue(crate::model::metrics::Gauge),
+    /// Desktop background, system display: the history chart of a gauge (changed in place).
+    MetricGraph(crate::model::metrics::Gauge),
     /// Rename dialog of a shortcut: the name field.
     RenameField,
     /// Rename dialog: rename.

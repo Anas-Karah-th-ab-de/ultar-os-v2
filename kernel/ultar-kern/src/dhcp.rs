@@ -112,6 +112,7 @@ fn parse_dhcp(frame: &[u8], xid: u32) -> Option<Reply> {
 
 fn bcast_dhcp(n: usize, mac: [u8; 6], src: [u8; 4], msg: &[u8]) -> bool {
     let f = eth([0xff; 6], mac, 0x0800, &ipv4(src, [255; 4], 17, &udp(68, 67, msg)));
+    crate::net::count_tx(f.len());
     NET.lock().get_mut(n).map(|d| d.send(&f).is_ok()).unwrap_or(false)
 }
 
@@ -429,6 +430,7 @@ pub fn tick() {
                     let got = NET.lock().get_mut(n).and_then(|d| d.recv(&mut buf));
                     match got {
                         Some(len) => {
+                            crate::net::count_rx(len);
                             input(n, &buf[..len]);
                         }
                         None => break,
@@ -468,6 +470,7 @@ pub fn dhcp(n: usize) -> Option<Config> {
         let got = NET.lock().get_mut(n).and_then(|d| d.recv(&mut buf));
         match got {
             Some(len) => {
+                crate::net::count_rx(len);
                 input(n, &buf[..len]);
             }
             None => crate::arch::pause(),

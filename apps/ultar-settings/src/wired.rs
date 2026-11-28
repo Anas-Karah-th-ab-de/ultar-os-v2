@@ -80,6 +80,8 @@ pub const WIRED: &[(&str, &str)] = &[
     ("desktop.icons.enabled", "shell"),
     ("desktop.icons.size", "shell"),
     ("desktop.icons.start_corner", "shell"),
+    // The system display on the desktop background (processor, memory, GPU, network).
+    ("desktop.metrics.enabled", "shell"),
     // The power mode (quick settings), followed by displayd and the updater as well.
     ("power.mode", "shell + displayd + updated"),
     // Do not disturb: the shell shows no banners.
@@ -380,6 +382,7 @@ mod tests {
             "desktop.icons.enabled",
             "desktop.icons.size",
             "desktop.icons.start_corner",
+            "desktop.metrics.enabled",
         ] {
             assert!(takes_effect(panel(key), key), "{key}");
         }

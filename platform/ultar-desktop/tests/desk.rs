@@ -8,6 +8,7 @@ mod common;
 
 use common::*;
 use ultar_bus::messages::settings::SettingValue;
+use ultar_desktop::model::metrics::Gauge;
 use ultar_desktop::model::places::DeskItem;
 use ultar_desktop::model::prefs::{Corner, IconSize};
 use ultar_desktop::model::Open;
@@ -262,7 +263,14 @@ fn the_menu_sets_size_visibility_and_order() {
         "desktop.icons.enabled".into(),
         SettingValue::Flag(false)
     )));
-    assert!(h.background().targets.is_empty());
+    let icons = |h: &Harness| {
+        let v = h.background();
+        v.targets
+            .iter()
+            .filter(|(_, t)| matches!(t, Target::Desk(_)))
+            .count()
+    };
+    assert_eq!(icons(&h), 0);
     menu(&mut h, desk_item::SHOW);
     assert!(h.shell.d.prefs.desk.shown);
     // Sorted by the shown names (Browser, Files, Firefox, Terminal).
@@ -271,6 +279,30 @@ fn the_menu_sets_size_visibility_and_order() {
         shortcuts(&h),
         vec![BROWSER, FILES, "org.mozilla.firefox", TERMINAL]
     );
+}
+
+#[test]
+fn the_menu_hides_and_shows_the_system_display() {
+    let mut h = with_shortcuts(Lang::En, ThemeKind::Dark);
+    let menu = |h: &mut Harness, id: u32| {
+        h.right_background(None, (300, 200));
+        choose(h, id);
+        h.take()
+    };
+    let off = menu(&mut h, desk_item::METRICS);
+    assert!(off.contains(&Effect::Setting(
+        "desktop.metrics.enabled".into(),
+        SettingValue::Flag(false)
+    )));
+    assert!(h
+        .background()
+        .node(&Target::MetricValue(Gauge::Cpu))
+        .is_none());
+    menu(&mut h, desk_item::METRICS);
+    assert!(h
+        .background()
+        .node(&Target::MetricValue(Gauge::Cpu))
+        .is_some());
 }
 
 #[test]

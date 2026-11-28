@@ -485,6 +485,16 @@ desk.desk.show_in_files = In Dateien zeigen
 desk.desk.trash = In den Papierkorb
 desk.desk.no_app = Keine App öffnet diese Datei
 desk.desk.no_app.body = Installiere im Store eine App für diese Art Datei.
+desk.desk.metrics = Systemauslastung anzeigen
+desk.metrics.title = Systemauslastung
+desk.metrics.cpu = Prozessor
+desk.metrics.ram = Arbeitsspeicher
+desk.metrics.gpu = Grafik
+desk.metrics.net = Datenverkehr
+desk.metrics.memory = {used} von {total}
+desk.metrics.rate = {value}/s
+desk.metrics.rates = ↓ {down}  ↑ {up}
+desk.metrics.none = –
 
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert

@@ -20,7 +20,7 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 35] = [
+pub const FOLLOWED: [&str; 36] = [
     "region.language",
     "appearance.theme",
     "appearance.accent_color",
@@ -56,6 +56,7 @@ pub const FOLLOWED: [&str; 35] = [
     "desktop.icons.enabled",
     "desktop.icons.size",
     "desktop.icons.start_corner",
+    "desktop.metrics.enabled",
 ];
 
 /// Ports and subscriptions.
@@ -224,7 +225,7 @@ fn apply_pref(d: &mut Desktop, key: &str, value: &SettingValue) -> bool {
         ("bar.show_trash", SettingValue::Flag(on)) => p.show_trash = *on,
         ("bar.show_volumes", SettingValue::Flag(on)) => p.show_volumes = *on,
         ("power.show_battery_percent", SettingValue::Flag(on)) => p.battery_percent = *on,
-        (k, v) if k.starts_with("desktop.icons.") => return p.desk.apply(k, v),
+        (k, v) if k.starts_with("desktop.") => return p.desk.apply(k, v),
         _ => return false,
     }
     true

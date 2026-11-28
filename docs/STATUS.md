@@ -2,6 +2,16 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Systemauslastung auf dem Schreibtisch, Logo ohne Platte (28.11.2026)
+
+| Baustein | Stand |
+|---|---|
+| Systemanzeige | Karte oben in der Ecke gegenüber den Symbolen: Prozessor, Arbeitsspeicher (belegt von gesamt), Grafik, Datenverkehr (↓/↑), je mit einer Minute Verlauf als Balken (Upload als Linie); alle 2 s neu gelesen und an Ort und Stelle geändert (kein Neuaufbau, Doppelklick bleibt sicher); nicht Messbares zeigt „–“ |
+| Einstellung | `desktop.metrics.enabled` (Standard an, Einstellungen › Arbeitsfläche & Leiste) und „Systemauslastung anzeigen“ im Rechtsklick-Menü des Schreibtischs |
+| Ultar-Kern | `/proc/stat` zählt Arbeits- und Leerlaufzeit aller Kerne (vorher stand dort nur die Zeit seit dem Start – die Last wäre immer 100 %), `/proc/net/dev` mit dem Datenverkehr der Netzwerkkarten, `/proc/ultar/gpu_busy_ns` aus den Auftragszeiten der Intel-GT; QEMU: `kerntest` ALLES OK, Zähler steigen |
+| Logo | das Firmenlogo (transparenter Hintergrund) steht in beiden Themen ohne dunkle Platte; auf dem Schreibtisch ruhig (dunkel halbe, hell drei Viertel Stärke) |
+| Geprüft | `tests/metrics.rs` (Werte in der Sprache, Ecke, Bilder), Bildvergleiche aller Flächen neu |
+
 ## Rechtsklick auf den Schreibtisch, App-Verknüpfungen und Schreibtisch-Ordner (28.11.2026)
 
 | Baustein | Stand |

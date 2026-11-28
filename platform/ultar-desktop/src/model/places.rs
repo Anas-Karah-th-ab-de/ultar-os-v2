@@ -55,6 +55,8 @@ pub struct Places {
     pub dragging: Option<String>,
     /// The text of the rename dialog while it is typed.
     pub draft: String,
+    /// The system display's values as last read.
+    pub metrics: super::metrics::Metrics,
 }
 
 impl Places {
