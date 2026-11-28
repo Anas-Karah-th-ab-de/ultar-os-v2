@@ -14,6 +14,7 @@
 
 mod acting;
 pub mod clipboard;
+mod codec;
 pub mod compute;
 pub mod device;
 pub mod handoff;
@@ -31,6 +32,7 @@ pub mod secure;
 pub mod service;
 pub mod transfer;
 pub mod trust;
+pub mod view;
 pub mod wire;
 
 pub use service::MeshService;
