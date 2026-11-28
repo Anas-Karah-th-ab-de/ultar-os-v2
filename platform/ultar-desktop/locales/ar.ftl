@@ -455,6 +455,34 @@ desk.call.hangup = إنهاء المكالمة
 desk.note.mirror.title = {arg0}: {arg1}
 desk.note.mirror.locked = إشعار جديد على {arg0}
 
+# The desktop background: its menu, the app shortcuts, the rename dialog
+desk.desk.new_shortcut = اختصار جديد…
+desk.desk.new_folder = مجلد جديد
+desk.desk.paste = لصق
+desk.desk.size.large = أيقونات كبيرة
+desk.desk.size.medium = أيقونات متوسطة
+desk.desk.size.small = أيقونات صغيرة
+desk.desk.show = إظهار أيقونات سطح المكتب
+desk.desk.sort = ترتيب حسب الاسم
+desk.desk.wallpaper = تغيير الخلفية
+desk.desk.display = إعدادات الشاشة
+desk.desk.settings = تخصيص سطح المكتب
+desk.desk.terminal = فتح في الطرفية
+desk.desk.pick = اختر تطبيقًا لإضافة اختصاره إلى سطح المكتب
+desk.desk.add_shortcut = إضافة إلى سطح المكتب
+desk.desk.remove_shortcut = إزالة من سطح المكتب
+desk.desk.rename = إعادة التسمية
+desk.desk.properties = الخصائص
+desk.desk.rename.title = إعادة تسمية الاختصار
+desk.desk.rename.name = الاسم
+desk.desk.rename.save = إعادة التسمية
+desk.desk.rename.cancel = إلغاء
+desk.desk.home = المجلد الرئيسي
+desk.desk.show_in_files = إظهار في الملفات
+desk.desk.trash = نقل إلى سلة المهملات
+desk.desk.no_app = لا يوجد تطبيق لفتح هذا الملف
+desk.desk.no_app.body = ثبّت من المتجر تطبيقًا يفتح هذا النوع من الملفات.
+
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}
 mesh.clip.body = للصق اضغط Ctrl+V

@@ -90,10 +90,28 @@ fn plain(user: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
 }
 
+/// The file `name` of the person beside the shell (`None` when there is no folder or the
+/// person's name is unsafe).
+pub(crate) fn person_file(dir: Option<&Path>, user: &str, name: &str) -> Option<PathBuf> {
+    let dir = dir.filter(|_| plain(user))?;
+    Some(dir.join(user).join(name))
+}
+
+/// Writes `text` to `file` atomically (a part file, then renamed), making its folder.
+pub(crate) fn write_atomic(file: &Path, text: &str) -> bool {
+    let Some(parent) = file.parent() else {
+        return false;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
+        return false;
+    }
+    let part = file.with_extension("part");
+    std::fs::write(&part, text).is_ok() && std::fs::rename(&part, file).is_ok()
+}
+
 /// Where the person's history is kept (`None` when there is no folder or the name is unsafe).
 fn file(dir: Option<&Path>, user: &str) -> Option<PathBuf> {
-    let dir = dir.filter(|_| plain(user))?;
-    Some(dir.join(user).join("history.json"))
+    person_file(dir, user, "history.json")
 }
 
 /// Reads the person's kept entries (an unreadable or damaged file leaves nothing). The
@@ -117,15 +135,8 @@ pub fn save(history: &History, dir: Option<&Path>, user: &str) -> bool {
     let Some(file) = file(dir, user) else {
         return false;
     };
-    let Some(parent) = file.parent() else {
-        return false;
-    };
-    if std::fs::create_dir_all(parent).is_err() {
-        return false;
-    }
-    let part = file.with_extension("part");
     let text = serde_json::to_string(&history.entries).unwrap_or_default();
-    std::fs::write(&part, text).is_ok() && std::fs::rename(&part, &file).is_ok()
+    write_atomic(&file, &text)
 }
 
 /// Deletes the person's kept history (the setting switched off). A missing file is fine.

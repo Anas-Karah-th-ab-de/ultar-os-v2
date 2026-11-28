@@ -70,8 +70,8 @@ pub struct DesktopApp {
     slow: slow::SlowCalls,
     /// Which layout announcements are the user's switches (stored in the settings).
     layouts: keyboard::LayoutSync,
-    /// The shell's own folder for the per-person search history (`None`: nothing kept
-    /// across restarts).
+    /// The shell's own folder for the per-person search history and desktop shortcuts
+    /// (`None`: nothing kept across restarts).
     history_dir: Option<std::path::PathBuf>,
 }
 
@@ -110,12 +110,18 @@ fn read_services(link: &Link, d: &mut Desktop) {
     d.overview.store = crate::model::store::load_from_env();
 }
 
-/// The person's remembered searches, read beside the shell (only shown when
-/// `search.history` is on; off keeps nothing).
-fn read_history(d: &mut Desktop, state: Option<&std::path::Path>, user: &str) {
+/// What is kept beside the shell and in the desktop folder: the person's remembered
+/// searches (only shown when `search.history` is on; off keeps nothing), their desktop
+/// shortcuts and the desktop folder's items.
+fn read_kept(d: &mut Desktop, options: &Options, user: &str) {
+    let state = options.state.as_deref();
     d.overview.history = crate::model::history::load(state, user);
     if !d.overview.sources.history {
         d.overview.history.clear();
+    }
+    d.places.shortcuts = crate::model::places::load(state, user);
+    if let Some(dir) = &options.desk_folder {
+        d.places.files = crate::model::desk_files::list(dir);
     }
 }
 
@@ -140,7 +146,7 @@ impl DesktopApp {
         if let Some(link) = &link {
             read_services(link, &mut d);
         }
-        read_history(&mut d, options.state.as_deref(), user);
+        read_kept(&mut d, options, user);
         let size = screen(&host);
         let place = options
             .bar
@@ -161,7 +167,7 @@ impl DesktopApp {
             shell,
             look,
             bar,
-            side: panels::SidePanels::default(),
+            side: panels::SidePanels::new(options.desk_folder.clone()),
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
@@ -217,6 +223,7 @@ impl DesktopApp {
             self.event(event)?;
         }
         self.poll_bus()?;
+        self.scan_desk_folder()?;
         self.finish_slow()?;
         self.launch_due(None)?;
         self.tick_banners()?;
@@ -354,11 +361,17 @@ impl DesktopApp {
                     self.release()
                 }
             }
-            HostEvent::Menu(id, node) if id == self.bar || self.is_panel(id) => {
+            HostEvent::Menu(id, node, _) if id == self.bar || self.is_panel(id) => {
                 match self.target(id, node) {
                     Some(t) => self.shell.on_bar_menu(&t),
                     None => Outcome::none(),
                 }
+            }
+            HostEvent::Menu(id, node, at) if self.is_background(id) => {
+                // The background lies at the screen's corner: its points are the screen's.
+                let target = self.target(id, node);
+                let at = (at.x.round() as i32, at.y.round() as i32);
+                self.shell.on_desk_menu(target.as_ref(), at)
             }
             HostEvent::Resized(id, _) if id == self.bar => self.resized()?,
             HostEvent::Compositor(e) => self.compositor(e)?,
@@ -381,6 +394,9 @@ impl DesktopApp {
         if self.is_panel(id) {
             return self.shell.on_surface(&target, kind);
         }
+        if self.is_background(id) {
+            return self.shell.on_desk(&target, kind);
+        }
         if self.banners.surface.is_some_and(|(b, _)| b == id) {
             return self.on_banner(&target, kind);
         }
@@ -395,14 +411,18 @@ impl DesktopApp {
                 let secret = self.take_password(id);
                 self.shell.join_with(secret)
             }
-            (ActionKind::TextChanged, Target::SearchField) => {
+            (ActionKind::TextChanged, Target::SearchField | Target::RenameField) => {
                 let text = self
                     .host
                     .view(id)
                     .and_then(|v| v.ui.text(node).ok())
                     .unwrap_or_default()
                     .to_owned();
-                self.shell.on_query(&text)
+                if target == Target::RenameField {
+                    self.shell.on_rename_text(&text)
+                } else {
+                    self.shell.on_query(&text)
+                }
             }
             _ => self.shell.on_popup(&target, kind),
         }

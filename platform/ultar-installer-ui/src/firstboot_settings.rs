@@ -57,6 +57,8 @@ pub struct SettingsReport {
     pub damaged: Vec<String>,
     /// Whether the selection record was written.
     pub selection: bool,
+    /// What happened to the installer's SSH key ([`crate::firstboot_ssh`]).
+    pub ssh_key: crate::firstboot_ssh::SshKey,
 }
 
 /// The settings the answers ask for, in a fixed order (keys of the seed schema).

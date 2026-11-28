@@ -65,7 +65,7 @@ them (website, downloads, store). Flow: build on a builder → copy the files to
 | App packages for the store | `tools/release/build-apps.sh`, `apps.list`, `catalog/*.toml` |
 | Builder gate | `tools/release/ci-release.sh` (+ `shots.sh`, `bundle.sh`, `b2-run.sh`) |
 | Release server scripts | `tools/release/vps/` (`setup.sh`, `publish-store.sh`, `store-rollback.sh`, `publish-release.sh`, `deploy-web.sh`, `rollback-web.sh`, `install-signd.sh`, unit, nginx snippet) |
-| Website sources | `tools/release/site/` (deployed to `/opt/ultar/web`) |
+| Website sources | `tools/release/site-src/` (generator `sitegen.py`, texts ar/en/de in `pages.py`, `style.css`, `app.js`) → `python3 tools/release/site-src/sitegen.py` writes `tools/release/site/` (deployed unchanged to `/opt/ultar/web` with `deploy-web.sh`) |
 
 ## 2. Store server
 

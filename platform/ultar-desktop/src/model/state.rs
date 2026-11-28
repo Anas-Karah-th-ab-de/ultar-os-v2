@@ -87,6 +87,12 @@ pub enum Open {
     TileMenu(usize),
     /// The menu of the active app (top bar, CLICKS `shell.appmenu`).
     AppMenu,
+    /// The menu of the desktop background, at this screen point (logical).
+    DeskMenu(i32, i32),
+    /// The menu of an icon on the desktop at this screen point.
+    ItemMenu(super::places::DeskItem, i32, i32),
+    /// The rename dialog of a desktop shortcut.
+    Rename(usize),
 }
 
 /// Pages of the quick settings sheet.
@@ -174,8 +180,8 @@ pub struct Desktop {
     pub theme: ThemeKind,
     /// App catalog.
     pub catalog: Vec<AppInfo>,
-    /// Pinned app ids.
-    pub pinned: Vec<String>,
+    /// The pinned apps of the bar and the shortcuts of the desktop.
+    pub places: super::places::Places,
     /// Toplevel windows from the compositor.
     pub windows: Vec<ShellWindow>,
     /// Outputs from the compositor.
@@ -207,7 +213,7 @@ impl Desktop {
             lang,
             theme: ThemeKind::Dark,
             catalog: apps::base_apps(),
-            pinned: apps::default_pinned(),
+            places: super::places::Places::new(apps::default_pinned()),
             windows: Vec::new(),
             outputs: Vec::new(),
             layouts: Layouts::default(),
@@ -227,7 +233,7 @@ impl Desktop {
 
     /// The tiles of the bar.
     pub fn bar_apps(&self) -> Vec<apps::BarApp> {
-        apps::bar_apps(&self.pinned, &self.catalog, &self.windows)
+        apps::bar_apps(&self.places.pinned, &self.catalog, &self.windows)
     }
 
     /// The keyboard button is shown only with more than one input language.
