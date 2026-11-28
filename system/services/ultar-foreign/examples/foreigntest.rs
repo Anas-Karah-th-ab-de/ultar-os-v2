@@ -213,10 +213,18 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
     std::fs::create_dir_all("/tmp/ultar-art/dalvik-cache").map_err(|e| format!("mkdir {e}"))?;
     std::fs::write("/tmp/ultar-art/hello.dex", &code).map_err(|e| format!("write {e}"))?;
     let proc_mounted = ok(run("/usr/bin/mount", &["-t", "proc", "proc", "/proc"]));
-    let out = run(
-        "/usr/bin/dalvikvm",
-        &["-cp", "/tmp/ultar-art/hello.dex", "Hello"],
-    );
+    let hello = ["-cp", "/tmp/ultar-art/hello.dex", "Hello"];
+    let out = run("/usr/bin/dalvikvm", &hello);
+    // Where the kernel says the program lies (glibc's `$ORIGIN`, which ART's run path uses) and
+    // whether ART runs when the loader is told the path directly.
+    let said = |o: std::io::Result<std::process::Output>| match o {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_owned(),
+        Err(e) => e.to_string(),
+    };
+    let exe = said(run("/usr/bin/readlink", &["/proc/self/exe"]));
+    let mut through_loader = vec!["/usr/bin/dalvikvm"];
+    through_loader.extend(hello);
+    let loader = said(run("/lib64/ld-linux-x86-64.so.2", &through_loader));
     if proc_mounted {
         let _ = run("/usr/bin/umount", &["/proc"]);
     }
@@ -231,8 +239,10 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
     }
     let err = String::from_utf8_lossy(&out.stderr);
     let last: Vec<&str> = err.lines().rev().take(4).collect();
+    let loader_ok = loader.lines().any(|l| l == "ultar-art-ok 42");
     Err(format!(
-        "(ART runs a program: dalvikvm {:?}, /proc {}, data {}) {}",
+        "(ART runs a program: dalvikvm {:?}, /proc {}, data {}, /proc/self/exe of readlink = {exe:?}, \
+         through ld.so {}) {}",
         out.status.code(),
         if proc_mounted {
             "mounted"
@@ -240,6 +250,7 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
             "NOT mounted"
         },
         if tmpfs { "tmpfs" } else { "on the area's disk" },
+        if loader_ok { "ok" } else { "fails too" },
         last.into_iter().rev().collect::<Vec<_>>().join(" | ")
     ))
 }
