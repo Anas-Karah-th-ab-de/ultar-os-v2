@@ -59,6 +59,9 @@ areas_root = "/data/ultar/areas"
 publish_root = "/data/ultar/publish"
 # Apps from other systems (profile app.foreign, docs/integration/ultar-foreign.md): the Linux
 # area written by ultar-foreign is bound read-only (nosuid, nodev) as the root of their cells;
-# the Wayland bridge's directory (ultar-wayland, docs/FREMD-APPS.md P1) read-only at /.ultar.
+# the Wayland bridge's directory (ultar-wayland, docs/FREMD-APPS.md P1) read-only at /.ultar;
+# a Windows program's own installer (ultar-foreign keeps it under setup/<app id>) read-only at
+# /.setup – the program installs itself in its own cell on its first start.
 foreign_runtime = "/data/ultar/foreign/linux"
 foreign_bridge = "/usr/lib/ultar/foreign"
+foreign_setup = "/data/ultar/foreign/setup"

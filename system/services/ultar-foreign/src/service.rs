@@ -83,11 +83,12 @@ impl ForeignService {
                 return self.fail_now(&name, Failure::Network, bus);
             }
         };
-        match crate::detect::open_source(&self.ctx.sources, &path).map(|o| o.source) {
-            Ok(Source::Deb) => {}
+        let windows = match crate::detect::open_source(&self.ctx.sources, &path).map(|o| o.source) {
+            Ok(Source::Deb) => false,
+            Ok(Source::Exe | Source::Msi) if self.ctx.layout.windows_installed() => true,
             Ok(Source::Unknown) | Err(_) => return InstallOutcome::Invalid,
             Ok(_) => return InstallOutcome::NotAvailable,
-        }
+        };
         let job = self.job_id();
         let (ctx, state) = (self.ctx.clone(), self.state.clone());
         let request = Request {
@@ -97,7 +98,11 @@ impl ForeignService {
             choices: install.choices,
         };
         self.busy = bus.later(move |client| {
-            let result = jobs::install_file(&ctx, client, &state, &request);
+            let result = if windows {
+                crate::windows::install(&ctx, client, &state, &request)
+            } else {
+                jobs::install_file(&ctx, client, &state, &request)
+            };
             Box::new(move |s: &mut ForeignService, bus| s.finished(job, result, bus))
         });
         if self.busy {
@@ -213,7 +218,13 @@ impl ForeignService {
             let _ = std::fs::remove_file(&record.icon);
         }
         self.save(bus);
-        if !self.state.package_used(&record.package, &record.id) {
+        let deb = record.source == Source::Deb.word();
+        if !deb {
+            // a Windows program lives in its own data (gone with the launcher's uninstall)
+            // and its installer here: nothing of it is in the Linux area
+            crate::windows::forget(&self.ctx, &record);
+        }
+        if deb && !self.state.package_used(&record.package, &record.id) {
             let ctx = self.ctx.clone();
             self.busy = bus.later(move |_client: &Client| {
                 let purged = jobs::purge(&ctx, &record.package);

@@ -159,7 +159,11 @@ impl AppRecord {
             "version".into(),
             text(&crate::desktop::launcher_version(&self.version)),
         );
-        root.insert("kind".into(), text("compat-deb"));
+        let kind = match Source::from_word(&self.source) {
+            Some(Source::Exe | Source::Msi) => "compat-exe",
+            _ => "compat-deb",
+        };
+        root.insert("kind".into(), text(kind));
         root.insert("exec".into(), text(&self.exec));
         root.insert(
             "args".into(),

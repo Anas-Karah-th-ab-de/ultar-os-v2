@@ -169,6 +169,8 @@ pub struct CellPlan {
     pub runtime: Option<PathBuf>,
     /// The directory of the Wayland bridge, bound read-only at `/.ultar`.
     pub bridge: Option<PathBuf>,
+    /// The app's own installer directory (Windows programs), bound read-only at `/.setup`.
+    pub setup: Option<PathBuf>,
     /// The program.
     pub program: Program,
 }
@@ -293,6 +295,9 @@ impl CellPlan {
         if let Some(dir) = &self.bridge {
             args.extend(["--bridge".into(), text(dir)]);
         }
+        if let Some(dir) = &self.setup {
+            args.extend(["--setup".into(), text(dir)]);
+        }
         args.push("--".into());
         args.push(self.program.exec.clone());
         args.extend(self.program.args.iter().cloned());
@@ -319,6 +324,7 @@ impl CellPlan {
             nproc: None,
             runtime: None,
             bridge: None,
+            setup: None,
             program: Program {
                 exec: String::new(),
                 args: Vec::new(),
@@ -352,6 +358,7 @@ impl CellPlan {
                 "--nproc" => plan.nproc = Some(value.parse().ok()?),
                 "--runtime" => plan.runtime = Some(path()?),
                 "--bridge" => plan.bridge = Some(path()?),
+                "--setup" => plan.setup = Some(path()?),
                 _ => return None,
             }
         }

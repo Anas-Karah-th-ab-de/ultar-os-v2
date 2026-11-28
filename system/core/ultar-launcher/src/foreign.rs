@@ -27,8 +27,9 @@ use serde::Deserialize;
 
 /// Prefix of the ids of apps from other systems (no store key may be named so).
 pub const PREFIX: &str = "foreign";
-/// The kinds this version starts (`compat-exe`, `compat-apk` follow in later stages).
-pub const KINDS: [&str; 1] = ["compat-deb"];
+/// The kinds this version starts: Linux programs, Windows programs (Wine in the Linux area);
+/// `compat-apk` follows in a later stage.
+pub const KINDS: [&str; 2] = ["compat-deb", "compat-exe"];
 /// What the cell sees of the Linux area: these entries of its root, read-only;
 /// a top-level link (merged `/usr`: `bin -> usr/bin`) is made again as a link.
 pub const RUNTIME_ENTRIES: [&str; 10] = [
@@ -36,6 +37,8 @@ pub const RUNTIME_ENTRIES: [&str; 10] = [
 ];
 /// Where the bridge directory appears in the cell.
 pub const BRIDGE_IN_CELL: &str = "/.ultar";
+/// Where a Windows program's own installer directory appears in its cell (read-only).
+pub const SETUP_IN_CELL: &str = "/.setup";
 /// The Wayland bridge's program name in the bridge directory.
 pub const BRIDGE_PROGRAM: &str = "ultar-wayland";
 /// `XDG_RUNTIME_DIR` of the app (in its private `/tmp`; the bridge makes it `0700`).
@@ -88,6 +91,17 @@ struct RawForeign {
     lan: bool,
 }
 
+/// The installer directory of the foreign app `id` below `root` (`ultar-foreign --root`/setup):
+/// a plain directory named exactly like the app – never a link, never another app's.
+pub fn setup_dir(root: &std::path::Path, id: &AppId) -> Option<std::path::PathBuf> {
+    if !is_foreign_id(id) {
+        return None;
+    }
+    let dir = root.join(id.as_str());
+    let meta = std::fs::symlink_metadata(&dir).ok()?;
+    (meta.file_type().is_dir()).then_some(dir)
+}
+
 /// Whether `id` is one of an app from another system: `foreign.<rest>`.
 pub fn is_foreign_id(id: &AppId) -> bool {
     id.as_str()
@@ -129,7 +143,10 @@ fn requested(raw: &RawLimits) -> Result<Requested, ManifestError> {
 
 fn program(exec: String, args: Vec<String>) -> Result<Program, ManifestError> {
     let arg_ok = |a: &String| a.len() <= MAX_TEXT && !a.contains('\0');
-    let below_bridge = exec == BRIDGE_IN_CELL || exec.starts_with("/.ultar/");
+    let below_bridge = exec == BRIDGE_IN_CELL
+        || exec.starts_with("/.ultar/")
+        || exec == SETUP_IN_CELL
+        || exec.starts_with("/.setup/");
     if !normalised_absolute(&exec) || below_bridge || args.len() > 32 || !args.iter().all(arg_ok) {
         return Err(ManifestError::Program);
     }
@@ -245,6 +262,36 @@ mod tests {
         [foreign]\nlan = false\n";
 
     #[test]
+    fn the_installer_directory_is_the_apps_own_and_never_a_link() {
+        let root = std::env::temp_dir().join(format!("ulf-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("foreign.exe-notepad")).unwrap();
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(root.join("elsewhere"), root.join("foreign.exe-linked"))
+            .unwrap();
+        let id = |s: &str| AppId::new(s).unwrap();
+        assert_eq!(
+            setup_dir(&root, &id("foreign.exe-notepad")),
+            Some(root.join("foreign.exe-notepad"))
+        );
+        assert_eq!(setup_dir(&root, &id("foreign.exe-linked")), None);
+        assert_eq!(setup_dir(&root, &id("foreign.exe-missing")), None);
+        assert_eq!(setup_dir(&root, &id("files")), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_windows_program_is_a_kind_and_cannot_start_its_installer_directly() {
+        let exe = GOOD.replace("compat-deb", "compat-exe");
+        assert!(parse(exe.as_bytes()).is_ok());
+        let direct = exe.replace("/usr/bin/mousepad", "/.setup/setup.exe");
+        assert!(matches!(
+            parse(direct.as_bytes()),
+            Err(ManifestError::Program)
+        ));
+    }
+
+    #[test]
     fn a_foreign_manifest_is_read() {
         let m = parse(GOOD.as_bytes()).unwrap();
         assert_eq!(m.id.as_str(), "foreign.deb-mousepad");
@@ -268,7 +315,7 @@ mod tests {
             ("foreign.deb-mousepad", "acme.mousepad"),
             ("foreign.deb-mousepad", "mousepad"),
             ("compat-deb", "native"),
-            ("compat-deb", "compat-exe"),
+            ("compat-deb", "compat-apk"),
             ("/usr/bin/mousepad", "mousepad"),
             ("/usr/bin/mousepad", "/.ultar/ultar-wayland"),
             ("/usr/bin/mousepad", "/usr/../bin/sh"),

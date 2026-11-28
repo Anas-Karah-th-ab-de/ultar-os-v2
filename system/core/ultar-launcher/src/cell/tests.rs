@@ -33,6 +33,7 @@ fn plan() -> CellPlan {
         nproc: Some(64),
         runtime: Some("/data/ultar/foreign/linux".into()),
         bridge: Some("/usr/lib/ultar/foreign".into()),
+        setup: Some("/data/ultar/foreign/setup/foreign.exe-x".into()),
         program: Program {
             exec: "/usr/bin/camera".into(),
             args: vec!["--".into(), "".into(), "--uid".into()],
@@ -59,6 +60,7 @@ fn a_plan_survives_its_command_line() {
         nproc: None,
         runtime: None,
         bridge: None,
+        setup: None,
         ..p
     };
     let args = bare.to_args();
