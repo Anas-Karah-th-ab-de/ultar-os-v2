@@ -94,6 +94,18 @@ pub(super) fn control(
     if app.ui.is_disabled(node) {
         return Err(format!("{key}: the control is disabled"));
     }
+    // A row below the fold is scrolled to first, as a person would; a click outside the
+    // window reaches nothing.
+    app.ui
+        .scroll_into_view(node)
+        .map_err(|e| format!("{key}: {e:?}"))?;
+    let size = app.ui.size();
+    let at = app.ui.rect(node).ok_or(format!("{key}: no rect"))?.center();
+    if at.x < 0.0 || at.y < 0.0 || at.x > size.w || at.y > size.h {
+        return Err(format!(
+            "{key}: the control is outside the window at {at:?}"
+        ));
+    }
     Ok(node)
 }
 

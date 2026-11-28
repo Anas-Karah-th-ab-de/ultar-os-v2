@@ -38,6 +38,10 @@ pub struct App {
     built_width: f32,
     /// The value of `appearance.theme` the window last followed.
     seen_theme: Option<String>,
+    /// The value of `region.language` the window last followed (at start the one stored then:
+    /// the window keeps the language it was started in, `--lang` or the session's, until the
+    /// setting changes - not at the first click or key, which rebuilt it and lost the focus).
+    seen_lang: Option<String>,
     /// `appearance.font_size` as a factor (with `large_text` it sets the text size).
     font: f32,
     /// `accessibility.large_text` as last read.
@@ -64,6 +68,7 @@ impl App {
             toasts: 0,
             built_width: 0.0,
             seen_theme: None,
+            seen_lang: None,
             font,
             large: false,
         };
@@ -74,12 +79,18 @@ impl App {
         app.follow_access();
         view::build(&mut app.ui, &app.state, &mut app.view)?;
         app.seen_theme = app.stored_theme();
+        app.seen_lang = app.stored_text(LANG_KEY);
         Ok(app)
     }
 
     /// The stored value of the setting `appearance.theme`, if settingsd was read.
     fn stored_theme(&self) -> Option<String> {
-        match self.stored(THEME_KEY) {
+        self.stored_text(THEME_KEY)
+    }
+
+    /// The stored text of a setting, if settingsd was read.
+    fn stored_text(&self, key: &str) -> Option<String> {
+        match self.stored(key) {
             Some(SettingValue::Text(t)) => Some(t.clone()),
             _ => None,
         }
@@ -102,10 +113,12 @@ impl App {
         if let Some(SettingValue::Integer(v)) = self.stored(FONT_KEY) {
             self.font = (*v).clamp(80, 200) as f32 / 100.0;
         }
-        let lang = match self.stored(LANG_KEY) {
-            Some(SettingValue::Text(t)) => ultar_i18n::Lang::parse(t),
-            _ => None,
-        };
+        let stored = self.stored_text(LANG_KEY);
+        if stored == self.seen_lang {
+            return false;
+        }
+        let lang = stored.as_deref().and_then(ultar_i18n::Lang::parse);
+        self.seen_lang = stored;
         match lang {
             Some(lang) if lang != self.ui.env().lang => {
                 self.ui.set_lang(lang);

@@ -206,7 +206,8 @@ fn sidebar(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     }
     let sharing = index_of("sharing").ok_or("sharing")?;
     if app.view.nav_areas != [sharing] {
-        return Err(format!("search ssh: {:?}", app.view.nav_areas));
+        let found: Vec<&str> = app.view.nav_areas.iter().map(|&i| AREAS[i].id).collect();
+        return Err(format!("search {:?}: {found:?}", app.state.query));
     }
     press(&mut app, Key::Enter)?;
     let panel = app.state.panel("sharing").ok_or("sharing panel")?.clone();
