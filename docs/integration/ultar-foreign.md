@@ -25,7 +25,8 @@ package runs outside a cell, and there is no unsafe mode.
 2. **Confirm**: the system dialog asks for an administrator's password (`sysdialog.authenticate`), naming the
    file's own (unverified) name, that it comes from another system and was not checked by KM Code Craft,
    and what the app will get (network, folders). Cancelled or no answer: nothing is installed.
-3. **Install**: `apt-get install` of the copy in the **installation cell** (no network until stage P0, see
+3. **Install**: `apt-get -o APT::Sandbox::User=root install` of the copy in the **installation cell**
+   (no network; the cell is apt's sandbox, see
    below). A failed step leaves nothing: the package is purged again, registered apps are removed, the copy
    is deleted.
 4. **Register**: the package's visible desktop entries (`Type=Application`, not hidden, not terminal-only)
@@ -42,15 +43,19 @@ the app (and its data unless kept), the icon goes, the package is purged when no
 
 Both: new mount, pid and network namespaces; the area as root (`pivot_root`, the old root detached);
 `tmpfs` on `/run` and `/tmp`; own `/proc` with `sys`, `sysrq-trigger`, `irq`, `bus`, `fs` bound read-only;
-in `/dev` only `null zero full random urandom` (single binds; the Ultar kernel falls back to its gated
-device tree); the inbox read-only at `/run/inbox`; no new privileges; every Ultar right dropped (and
-checked); stage 2 is pid 1 and ends with the parent. A cell that cannot be built does not start; its exit
+in `/dev` only `null zero full random urandom`, each bound on its own (nodes the kernel lacks are left
+out; never the kernel's device tree – a kernel that cannot bind a node builds no cell); the inbox
+read-only at `/run/inbox`; no new privileges; stage 2 is pid 1 and ends with the parent. **Rights:** on
+Linux the capability bounding set is cut before the identity switch; on the Ultar kernel it is not
+(`PR_CAPBSET_DROP` takes the matching Ultar rights at once – `CAP_SETUID` would take `set_id` before the
+switch): there every Ultar right is dropped after the switch, but `cell_chown` in the installation cell,
+and the rest is checked. A cell that cannot be built does not start; its exit
 code `140 + n` names the failed step (`cellrun::SetupStep`).
 
 | Cell | Area | Identity | Capabilities (Linux) | Runs |
 |---|---|---|---|---|
 | inspection | read-only | nobody | none | `dpkg-deb --field` |
-| installation | writable, nosuid, nodev | root of the cell | bounding set CHOWN, DAC_OVERRIDE, FOWNER, FSETID, SETUID, SETGID | `apt-get install/remove`, `dpkg --purge` |
+| installation | writable, nosuid, nodev | root of the cell; Ultar: right `cell_chown` only | bounding set CHOWN, DAC_OVERRIDE, FOWNER, FSETID (no set-id: apt does not switch to `_apt`) | `apt-get install/remove`, `dpkg --purge` |
 
 ## Who may do what (bus policy, `rootfs/etc/ultar/bus-policy.toml`)
 
@@ -61,16 +66,30 @@ code `140 + n` names the failed step (`cellrun::SetupStep`).
 | `app.settings` | `foreign.list`, `set_choices`, `remove`, `runtime_state`, `runtime_update`; subscribe `foreign.changed`, `foreign.progress` |
 | everyone else | nothing (checked by `ultar-busd` `the_foreign_service_and_its_callers_get_exactly_their_part`) |
 
-Rights of the service (`foreign.toml`): `mount` (the cells' views) and `set_id` (nobody, root of the cell),
-group `userfiles` (836) to read the chosen file. The launcher checks independently: a foreign manifest gets
+Rights of the service (`foreign.toml`, user 844): `mount` (the cells' views), `set_id` (nobody, root of
+the cell) and `cell_chown` (handed to the installation cell alone: the kernel lets it give owners only on
+the cell's own writable mounts, `docs/integration/zell-chown.md`), group `userfiles` (836) to read the
+chosen file. The launcher checks independently: a foreign manifest gets
 an id `foreign.*`, the fixed signer `sha256("ultar.launcher.install_foreign.v1")`, never replaces an app of
 another profile, and store keys may not be named "foreign".
 
 ## The app's cell (launcher, profile `app.foreign`)
 
-Strictly required (no `accept_missing`): own user ids, the cell, memory groups, single device binds. Without
-the network permission the cell has its own empty network namespace; **with** it the kernel's barrier
-"internet only" (stage P0) is required – until it exists such an app does not start. Limits: memory
+Strictly required (no `accept_missing`): own user ids, the cell, memory groups, the network namespace and
+single device binds (`device-binds`: the probe bit that gives every cell its single-bind `/dev`, stage
+P0). Without the network permission the cell has its own empty network namespace; **with** it the cell
+gets its own namespace behind the kernel's barrier "internet only" (`Feature::NetGuard`,
+`ultar_sys::ultar_net_guard`, `docs/integration/zell-netz.md`) – a kernel without the barrier (Linux)
+refuses the start, there is no unsafe mode. The barrier has no mode for the local network yet: an app the
+person allowed the local network gets the internet only (never more than granted).
+
+**Title bars.** Every `app.foreign` app gets the compositor right `ui.client-header` (declared by
+`foreign::parse`, granted with the profile): programs that draw their own title bar (GTK 3 and 4 never
+negotiate `xdg-decoration`) appear with one bar instead of two; a program that asks for server-side
+decoration through `xdg-decoration` gets the compositor's (ultar-wayland passes the mode on; a decoration
+object without a mode gets its first `configure` at the initial commit). This is safe because the system
+dialogs carry the compositor's own mark, drawn outside any app surface – an app's title bar cannot
+imitate it. Limits: memory
 1024/4096 MiB, 256/1024 processes, `/tmp` 256 MiB, no kernel rights. Environment: `PATH`,
 `XDG_RUNTIME_DIR=/tmp/.run`, `WAYLAND_DISPLAY=wayland-0`, `GDK_BACKEND`/`QT_QPA_PLATFORM`/
 `SDL_VIDEODRIVER=wayland`, `MOZ_ENABLE_WAYLAND=1`, `LIBGL_ALWAYS_SOFTWARE=1`, `NO_AT_BRIDGE=1`, `LANG`/`LC_ALL`
@@ -93,18 +112,32 @@ the app, private `/tmp`), more permissions ask again and network without the bar
 hostile package (set-id file, `/proc/sys` write, write outside, mount, icon link out, entry pointing out)
 stays in the installation cell, and removal leaves the area's package set as before.
 
-## The Ultar kernel (QEMU, 28.11.2026)
+## The Ultar kernel (QEMU, 28.11.2026, branch `integ/fa-linux`)
 
-Ubuntu 26.04's own programs (`dpkg-deb`, `apt-get`, glibc and ld.so of the area) run unchanged; mount and
-pid namespaces, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`, `PR_SET_PDEATHSIG`,
-`PR_SET_NO_NEW_PRIVS`, switching to nobody and root writing the area's files work. Missing:
+With stage P0 every cell feature is there: mount, pid and network namespaces, the barrier, single-file
+binds, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`, `PR_SET_PDEATHSIG`,
+`PR_SET_NO_NEW_PRIVS`, nobody, `cell_chown` in the installation cell (EPERM outside), and Ubuntu 26.04's
+own programs (`dpkg-deb`, `apt-get`, glibc, ld.so). Both service cells run; the package fields are read.
+For dpkg the integration added to the kernel: rename of an empty directory, `link`/`linkat` as a copy of a
+regular file, symbolic links and their rename on a disk by a cell holding `CELL_CHOWN` (only on its own
+writable mounts), ext4 `unlink` that removes a link as a link, fast links never freed as block pointers,
+`ENOTEMPTY` for `rmdir` of a directory with entries.
 
-| Missing | Errno | Consequence |
+Still missing for `apt-get install` of a `.deb` on the Ultar kernel (`foreign-e2e.sh` stops at
+`package-install`):
+
+| Missing | Seen as | Consequence |
 |---|---|---|
-| network namespace (`CLONE_NEWNET`) | `EINVAL` | neither cell of the service nor an app without network can be built (both refuse) |
-| single-file bind (device node into the cell) | `ENOTDIR` | the launcher refuses foreign apps (`device-binds` strictly required); the service's cells fall back to the gated device tree |
-| `chown` by root of a cell without rights | `EPERM` | dpkg/apt cannot give files to other owners (packages with non-root files, apt's `_apt` sandbox) – needs a right scoped to the area, not `file_admin` |
-| network barrier "internet only" | – | stage P0: apps with network do not start; the installation cell cannot reach the sources (archive installs and area updates answer `Failure::Network`) |
+| listing of a directory opened with a trailing slash (`opendir("dir/")`) | `ls dir/` lists nothing; dpkg: "package metadata contained directory '…/tmp.ci/control'" | dpkg stops after unpacking |
+| `dpkg-deb --control` (tar/zstd path) | `Illegal instruction` (exit 132) | the control area is extracted, the call fails |
+| perl (debconf's `dpkg-preconfigure` hook of apt) | page fault at its own code address, ended | the hook may fail by its configuration; maintainer scripts in perl would fail |
+| syscalls 436 (`close_range`), 277 (`sync_file_range`), 26 (`msync`), 81 (`fchdir`) | "noch nicht umgesetzt" | dpkg/apt fall back or fail |
+| `/dev/ptmx` (pseudo terminals) | apt: "Can not write log (Is /dev/pts mounted?)" | warning only |
+
+GTK on the Ultar kernel (`tools/kern-test/foreign-gtk-kern.sh`, mousepad with the area as its root behind
+ultar-wayland): the window process starts and talks Wayland; it ends at the first image because GTK's
+image loader glycin starts its loaders in a `bwrap` sandbox (user namespaces, capabilities: ENOSYS on the
+Ultar kernel); the screenshot stays empty.
 
 ## Stage P3: the surfaces (branch `feat/fa-p3-ui`, not in main)
 
@@ -147,8 +180,10 @@ data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pi
 
 ## Open points
 
-* Stage P0: the barrier (`ultar_launcher::foreign::set_net_barrier` is a placeholder returning `ENOSYS`;
-  `Platform.net_barrier` is false); then archive installs (`InstallFrom::Archive`) and `runtime_update`.
+* The installation cell has no network: archive installs (`InstallFrom::Archive`) and `runtime_update`
+  answer `Failure::Network` – with stage P0 the cell can get its own namespace behind the barrier.
+* The kernel gaps of the table above (dpkg on the Ultar kernel) and glycin's sandbox (GTK images).
+* A mode of the barrier for the local network (printers, NAS); until then LAN means internet only.
 * Installing the signed component on a device (verify against `/etc/ultar/trusted-keys`, unpack into
   `/data/ultar/foreign/linux`) is not implemented; the images do not ship the service yet
   (`tools/vm/make-vmware.sh` `SERVICES_UP`).
