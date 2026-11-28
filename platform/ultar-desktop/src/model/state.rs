@@ -87,6 +87,8 @@ pub enum Open {
     TileMenu(usize),
     /// The menu of the active app (top bar, CLICKS `shell.appmenu`).
     AppMenu,
+    /// The choice of devices to continue on (board MeshSend, `shell.mesh.send`).
+    MeshSend,
     /// The menu of the desktop background, at this screen point (logical).
     DeskMenu(i32, i32),
     /// The menu of an icon on the desktop at this screen point.
@@ -111,6 +113,8 @@ pub enum QuickPage {
     WifiJoin,
     /// The VPN connections (qs.vpn.list).
     Vpn,
+    /// The paired devices (qs.mesh.list).
+    Mesh,
 }
 
 /// The keyboard layouts of the compositor.

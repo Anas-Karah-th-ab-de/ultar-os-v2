@@ -18,7 +18,7 @@ const POLICY: &str = r#"
 [[rule]]
 identity = "system.mesh"
 register = ["mesh"]
-publish = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
+publish = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.received"]
 call = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete"]
 subscribe = ["llm.state"]
 

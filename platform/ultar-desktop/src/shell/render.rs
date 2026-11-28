@@ -117,6 +117,7 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
     let preferred = match s.d.open {
         Open::Overview | Open::Apps(_) | Open::Helper => Some(Target::SearchField),
         Open::Projection(mode) => Some(Target::Mode(mode)),
+        Open::MeshSend => Some(Target::MeshSendCancel),
         Open::Rename(_) => Some(Target::RenameField),
         _ => None,
     };
@@ -174,6 +175,10 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
         }
         Open::Helper => {
             let (v, p) = view::helper::build(&s.d, look, screen, &s.tr)?;
+            sheet(v, p)
+        }
+        Open::MeshSend => {
+            let (v, p) = view::mesh_send::build(&s.d, look, screen, &s.tr)?;
             sheet(v, p)
         }
         Open::Overview => {

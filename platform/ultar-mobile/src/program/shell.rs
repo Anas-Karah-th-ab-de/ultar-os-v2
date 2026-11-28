@@ -265,6 +265,10 @@ impl ShellProgram {
                 self.model.power_menu = false;
                 true
             }
+            // A device of the choice (the radio group of the sheet).
+            ActionKind::Selected(i) if Some(node) == built.targets => {
+                self.click(Click::MeshChoose(i))
+            }
             ActionKind::Activated | ActionKind::Toggled(_) => {
                 let Some(click) = built.click(node).cloned() else {
                     return false;
@@ -277,7 +281,27 @@ impl ShellProgram {
 
     /// Where the node of `click` is on the screen (points): the sheet first, then the bars,
     /// then the home screen (tests drive the touch screen with it).
-    pub fn locate(&self, click: &Click) -> Option<ultar_ui::geom::Rect> {
+    pub fn locate(&mut self, click: &Click) -> Option<ultar_ui::geom::Rect> {
+        // A device of the choice is a card of the radio group, not a node of its own.
+        if let Click::MeshChoose(i) = click {
+            let sheet = self.s.sheet?;
+            self.built.get(&sheet)?.targets?;
+            let mut cards: Vec<_> = self
+                .host
+                .view_mut(sheet)?
+                .a11y_tree()
+                .into_iter()
+                .filter(|n| n.role == ultar_ui::ui::Role::Radio && n.part.is_some())
+                .collect();
+            cards.sort_by(|a, b| a.rect.y.total_cmp(&b.rect.y));
+            let r = cards.get(*i)?.rect;
+            return Some(ultar_ui::geom::Rect::new(
+                r.x,
+                r.y + metrics::status(),
+                r.w,
+                r.h,
+            ));
+        }
         let order = [
             self.s.sheet,
             Some(self.s.status),

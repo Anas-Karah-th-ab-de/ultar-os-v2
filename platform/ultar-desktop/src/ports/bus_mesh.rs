@@ -6,7 +6,9 @@ use super::services::Answer;
 use super::PortError;
 use crate::model::services::Call;
 use std::time::Duration;
-use ultar_bus::messages::mesh::{Activity, HandoffSend, SendOutcome, SetActivity, SetEnabled};
+use ultar_bus::messages::mesh::{
+    Activity, HandoffSend, OfferCancel, SendOutcome, SetActivity, SetEnabled,
+};
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// The helper may think (also on another device) and act in several steps.
@@ -49,6 +51,11 @@ impl BusPorts {
                     self.mesh_ask(&set)?;
                 }
                 self.send(target).map(Answer::Sent)
+            }
+            Call::OfferCancel(offer) => {
+                let cancel = OfferCancel { offer: *offer };
+                let done = self.mesh_ask(&cancel)?.ok;
+                Ok(if done { Answer::Done } else { Answer::NotDone })
             }
             Call::AskHelper(text) => {
                 let ask = ultar_bus::messages::agent::Ask { text: text.clone() };

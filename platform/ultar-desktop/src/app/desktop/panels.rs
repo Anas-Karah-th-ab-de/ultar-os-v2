@@ -137,7 +137,9 @@ impl DesktopApp {
         self.shell.d.open = crate::model::Open::None;
         let popup = self.popup.take().map(|p| p.id);
         let banners = self.banners.surface.take().map(|b| b.0);
-        for id in [popup, banners, self.side.dock.take()]
+        let toasts = self.banners.toasts.surface.take().map(|b| b.0);
+        self.banners.toasts = Default::default();
+        for id in [popup, banners, toasts, self.side.dock.take()]
             .into_iter()
             .flatten()
         {
@@ -149,7 +151,8 @@ impl DesktopApp {
         self.bar = self.host.open(&bar_config(shape), view, None)?;
         self.open_side_panels()?;
         self.sync_background()?;
-        self.sync_banners()
+        self.sync_banners()?;
+        self.sync_mesh_toasts()
     }
 
     /// Opens the desktop background, or builds it again when what it shows changed (look,

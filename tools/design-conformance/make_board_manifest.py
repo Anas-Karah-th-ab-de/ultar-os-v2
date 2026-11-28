@@ -28,6 +28,21 @@ BOARDS = {
     "InstallerDrivers": ("dark", "ar", 0),
     "InstallerSummary": ("dark", "ar", 0),
     "SurfaceStates": ("dark", "ar", 0),
+    # The hand-over of an activity (mesh items A5, A6): desktop dialog and toasts, phone sheets.
+    "MeshSend": ("dark", "ar", 0),
+    "MeshIncoming": ("dark", "ar", 0),
+    "MeshStates": ("dark", "ar", 0),
+    "CompactMeshSend": ("dark", "ar", 0),
+    "CompactMeshIncoming": ("dark", "ar", 0),
+}
+# Boards that show the surface over a desktop or phone shell: only the elements of the surface
+# itself are listed (the window, bar and dock behind it belong to other manifests).
+ONLY_PREFIX = {
+    "MeshSend": ("mesh.",),
+    "MeshIncoming": ("mesh.",),
+    "MeshStates": ("mesh.", "toast."),
+    "CompactMeshSend": ("mesh.",),
+    "CompactMeshIncoming": ("mesh.",),
 }
 # Boards drawn with an open modal dialog: everything behind it lies under the scrim, so their
 # colours are not the colours of the surface (no colour sample is taken).
@@ -68,7 +83,10 @@ def same_row(a, b):
 def rows(board, data, img, meta):
     theme, lang, offset = meta
     out = [HEAD]
+    only = ONLY_PREFIX.get(board)
     for a in data["acts"]:
+        if only and not a["act"].startswith(only):
+            continue
         b = a["box"]
         name = a["name"].replace("\t", " ").replace("\n", " ")
         out.append("\t".join(str(v) for v in [

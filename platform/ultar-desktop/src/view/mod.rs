@@ -13,6 +13,9 @@ pub mod dock;
 pub mod geometry;
 pub mod helper;
 pub mod menu;
+pub mod mesh_list;
+pub mod mesh_send;
+pub mod mesh_toasts;
 pub mod metrics;
 pub mod note;
 pub mod overview;
@@ -99,6 +102,8 @@ pub enum Target {
     BtScan,
     /// Bluetooth page: a device (pair, connect or disconnect).
     BtDevice(String),
+    /// A paired device in the list of the Mesh tile (qs.mesh.list).
+    MeshDevice(String),
     /// Bluetooth page: forget a paired device.
     BtForget(String),
     /// Calendar: previous month.
@@ -194,6 +199,14 @@ pub enum Target {
     NoteAction(u64, u8),
     /// Lock screen: a control of the playing medium (0 previous, 1 play/pause, 2 next).
     Media(u8),
+    /// Continue on another device: the radio group of devices (board MeshSend).
+    MeshTargets,
+    /// Continue on another device: send to the chosen device.
+    MeshSend,
+    /// Continue on another device: cancel.
+    MeshSendCancel,
+    /// The mesh's toasts (the toolkit's toast reports its button and closing here).
+    MeshToasts,
     /// Desktop background: an icon (home folder, drive, app shortcut, desktop folder item).
     Desk(crate::model::places::DeskItem),
     /// Desktop background, system display: the value of a gauge (changed in place).

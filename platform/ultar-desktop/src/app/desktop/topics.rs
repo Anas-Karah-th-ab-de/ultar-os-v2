@@ -9,6 +9,7 @@ use ultar_bus::messages::calendar::Changed as CalendarChanged;
 use ultar_bus::messages::media::MediaState;
 use ultar_bus::messages::mesh::{HandoffProgress, MeshState};
 use ultar_bus::messages::mesh_calls::{CallIncoming, CallProgress, MeshCallState};
+use ultar_bus::messages::mesh_received::FileReceived;
 use ultar_bus::messages::net::{NetState, WifiLink};
 use ultar_bus::messages::notify::Dismissed;
 use ultar_bus::messages::power::PowerActions;
@@ -16,6 +17,12 @@ use ultar_bus::messages::session::SessionState;
 use ultar_bus::messages::volumes::VolumesState;
 use ultar_bus::messages::vpn::VpnState;
 use ultar_bus::{Client, Topic, TypedSubscription};
+
+/// What the mesh reports besides its state: how offers go and what arrived.
+struct MeshFlow {
+    progress: Option<TypedSubscription<HandoffProgress>>,
+    arrived: Option<TypedSubscription<FileReceived>>,
+}
 
 /// Subscriptions of the service topics (each `None` when the bus refused it).
 pub struct ServiceTopics {
@@ -31,7 +38,7 @@ pub struct ServiceTopics {
     wifi: Option<TypedSubscription<WifiLink>>,
     vpn: Option<TypedSubscription<VpnState>>,
     mesh: Option<TypedSubscription<MeshState>>,
-    handoff: Option<TypedSubscription<HandoffProgress>>,
+    handoff: MeshFlow,
     agent: AgentTopics,
     phone: CallTopics,
 }
@@ -75,7 +82,10 @@ impl ServiceTopics {
             wifi: client.subscribe().ok(),
             vpn: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
-            handoff: client.subscribe().ok(),
+            handoff: MeshFlow {
+                progress: client.subscribe().ok(),
+                arrived: client.subscribe().ok(),
+            },
             agent: AgentTopics {
                 helper: client.subscribe().ok(),
                 progress: client.subscribe().ok(),
@@ -107,8 +117,15 @@ impl ServiceTopics {
         any |= drain(&self.vpn, |m| svc.vpn = Some(m));
         any |= drain(&self.mesh, |m| svc.mesh.state = Some(m));
         let mut progress = Vec::new();
-        any |= drain(&self.handoff, |m| progress.push(m));
-        crate::model::mesh::report(d, &progress, now);
+        any |= drain(&self.handoff.progress, |m| progress.push(m));
+        crate::model::mesh::report(d, &progress);
+        let mut files = Vec::new();
+        any |= drain(&self.handoff.arrived, |m| files.push(m));
+        for file in files {
+            d.svc
+                .mesh
+                .received(&file.from_name, &file.title, Some(file.uri));
+        }
         let overview = &mut d.overview;
         let (sources, helper) = (&mut overview.sources, &mut overview.helper);
         any |= drain(&self.agent.helper, |m| {

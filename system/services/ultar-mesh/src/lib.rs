@@ -13,6 +13,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod acting;
+pub mod arrived;
 pub mod audio_link;
 pub mod calls;
 pub mod clip_bridge;

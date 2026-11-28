@@ -4,6 +4,7 @@
 //! the effects to the services, so that everything here is tested without them.
 
 use crate::click::Click;
+use crate::model::mesh::Act;
 use crate::model::quick::Toggle;
 use crate::model::time::LocalTime;
 use crate::model::{Mobile, Screen, WinAction};
@@ -83,6 +84,10 @@ pub enum Effect {
         /// The chosen device.
         device: Option<String>,
     },
+    /// Take a waiting offer back (`mesh.offer_cancel`).
+    MeshCancel(u64),
+    /// Open a file that arrived from another device (in the files app).
+    Open(String),
 }
 
 /// Errors of the shell.
@@ -201,6 +206,9 @@ impl MobileApp {
                     self.model.power_menu = false;
                     changed = true;
                 }
+                ActionKind::Selected(i) if Some(node) == self.built.targets => {
+                    changed |= self.click(Click::MeshChoose(i), &mut effects);
+                }
                 ActionKind::Activated | ActionKind::Toggled(_) => {
                     if let Some(click) = self.built.click(node).cloned() {
                         changed |= self.click(click, &mut effects);
@@ -310,7 +318,12 @@ pub fn apply_click(
         | Click::MeshSend(_)
         | Click::MeshChoose(_)
         | Click::MeshConfirm
-        | Click::MeshCancel) => mesh_click(m, c, effects),
+        | Click::MeshCancel
+        | Click::MeshBack
+        | Click::MeshOfferCancel
+        | Click::MeshRetry
+        | Click::MeshOpen
+        | Click::MeshNoticeClose) => mesh_click(m, c, effects),
         Click::PowerCancel => m.power_menu = false,
         other => navigate(m, other, per_page, effects),
     }
@@ -345,7 +358,25 @@ fn mesh_click(m: &mut Mobile, click: Click, effects: &mut Vec<Effect>) {
             }
             m.go(Screen::Home);
         }
-        Click::MeshCancel => m.go(Screen::Home),
+        Click::MeshCancel | Click::MeshBack => m.go(Screen::Home),
+        Click::MeshOfferCancel => {
+            if let Some(Act::Cancel(offer)) = m.mesh.take_act() {
+                effects.push(Effect::MeshCancel(offer));
+            }
+        }
+        Click::MeshRetry => {
+            if let (Some(Act::Retry), Some((app, device))) =
+                (m.mesh.take_act(), m.mesh.last.clone())
+            {
+                effects.push(Effect::MeshSend { app, device });
+            }
+        }
+        Click::MeshOpen => {
+            if let Some(Act::Open(uri)) = m.mesh.take_act() {
+                effects.push(Effect::Open(uri));
+            }
+        }
+        Click::MeshNoticeClose => m.mesh.notice = None,
         _ => {}
     }
 }
