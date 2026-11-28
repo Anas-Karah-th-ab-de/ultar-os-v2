@@ -248,7 +248,10 @@ case " $COMPONENTS " in
     need usr/lib/ultar/wine/ultar-wine-app
     need "usr/lib/$TRIPLET/wine/x86_64-unix/winewayland.so"
     need "usr/lib/$TRIPLET/wine/i386-windows/kernel32.dll"
-    chroot "$TREE" wine --version >/dev/null 2>&1 || fail "wine does not start in the area"
+    # Wine finds its libraries through /proc/self/exe (the cells bring their own /proc)
+    in_chroot chroot "$TREE" wine --version >"$OUT/wine-version.txt" 2>&1 \
+      || { cat "$OUT/wine-version.txt"; fail "wine does not start in the area"; }
+    echo "make-linux-runtime: $(cat "$OUT/wine-version.txt")"
     ;;
 esac
 
