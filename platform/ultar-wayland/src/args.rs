@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 /// Default socket of the compositor (overridden by `ULTAR_COMPOSITOR_SOCKET`).
-pub const DEFAULT_COMPOSITOR: &str = "/run/ultar/ui/compositor";
+pub const DEFAULT_COMPOSITOR: &str = "/run/ultar/ui/compositor.sock";
 /// Name of the Wayland socket in the runtime directory.
 pub const SOCKET_NAME: &str = "wayland-0";
 

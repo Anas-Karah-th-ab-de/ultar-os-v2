@@ -223,7 +223,7 @@ impl World {
         let (stop_dialog, asked) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicUsize::new(0)));
         dialog(Arc::clone(&stop_dialog), Arc::clone(&asked))?;
         let rights = format!("{WORK}/share/compositor-apps.toml");
-        let socket_path = format!("{UI_DIR}/compositor");
+        let socket_path = format!("{UI_DIR}/compositor.sock");
         let compositor = spawn(
             &args.bin.join("ultar-compositor"),
             &[
