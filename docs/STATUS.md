@@ -111,19 +111,19 @@ neue Oberfläche: Compositor, Desktop-Hülle und Apps sind nicht gebaut; nichts 
   Bildschirmübertragung im Verbund (Überlauf im Testmuster); dazu liefen Tests der Oberfläche, die gemeinsame Umgebungsvariablen ändern, gegeneinander (fiel erst auf GitHub auf) – jetzt nacheinander.
 - Die alte Geräteart-Erkennung (`ultar-edition`) ist durch `ultar-profile` + `ultar-hal-system` ersetzt.
 
-## Noch nicht gemacht (ehrlich)
+## Noch nicht gemacht (ehrlich, Stand 28.11.2026)
 
-| Phase | Offen |
+| Phase | Stand |
 |---|---|
-| P2 | Die rund 1 400 Texte der alten Oberfläche und die Werkzeug-Texte sind noch nicht auf `ultar-i18n` umgestellt; `ultar-sprache` existiert noch |
-| P2b | Installer, Startseite und Bedien-Konsole liegen noch im Kern |
-| P3 | Noch kein echtes HAL-Backend; die Oberfläche greift weiter direkt auf Hardware zu (393 Stellen) |
-| P4 | `ultar-devd` ist Logik + Tests; der Dienst selbst und die Anbindung an Kern und Bus fehlen |
-| P5/P6 | Oberfläche ist weiter ein Block (`platform/ultar-shell`); Compositor und Apps als eigene Prozesse fehlen |
-| P7 | Pakete tragen heute nur den Aktivierungs-Eintrag der im Kern eingebauten Treiber; ladbare Kern-Module fehlen |
-| P8–P11 | Installer auf Ubuntu-Niveau, dynamische Einstellungen, Barrierefreiheit, A/B-Updates, ARM-Port |
-| Treiber | Für die Testrechner fehlen: Intel-Grafik, WLAN, Bluetooth, Touchpad, Akku/Thermik (ACPI-Interpreter), Kamera, TPM und Stufe 4 |
-| Umbenennung | Deutsche Bezeichner im übernommenen Code (z. B. `ultar-zellen`, `ultar-verbund`) sind noch nicht englisch |
+| P2 | TEILWEISE: `ultar-i18n` mit Katalog (ar/en/de) ist da; `ultar-sprache` existiert noch und wird in wenigen CLI-/Legacy-Stellen aufgerufen; nicht alle alten Oberflächentexte umgestellt |
+| P2b | OFFEN: Kern enthält weiter `install.rs`, `startseite.rs`, `shell.rs` (`kernel/ultar-kern/src/main.rs`); daneben existiert `apps/ultar-installer-ui`, der Kern-Installer läuft aber weiter |
+| P3 | TEILWEISE: `ultar-hal` + Backends (gfx, linux, netlink, system) vorhanden; die alte Hülle `platform/ultar-shell` greift weiter direkt auf `/sys`/`/dev` zu |
+| P4 | ERLEDIGT: `ultar-devd` läuft als Dienst (user 804), Bus-Dienst `devices`, Treiberwahl/Gesundheitsprüfung/Rückfall/Quarantäne (`system/core/ultar-devd/daemon.rs`) |
+| P5/P6 | ERLEDIGT (Desktop): `ultar-compositor` (user 811), Hülle `ultar-desktop` (user 816, Leiste/Menüs/Schnelleinstellungen), Sperre `ultar-lock`, Systemdialoge `ultar-sysdialog`, Apps als eigene Prozesse über `ultar-launcher` |
+| P7 | TEILWEISE: signiertes Treiber-Depot + Index vorhanden; ladbare Kern-Module (`.uko`) fehlen, Treiber weiter einkompiliert |
+| P8–P11 | P8 Installation A–Z ERLEDIGT (QEMU); Verschlüsselung gesperrt; P9/P10 TEILWEISE; P11 ARM-Port OFFEN |
+| Treiber | siehe „Treiber-Welle A“ oben; fehlen u. a. WLAN (kein Treiber im Kern), ACPI-AML/Thermik, TPM, Kamera, Touch (I2C-HID), Stufe 4 |
+| Umbenennung | OFFEN: deutsche Bezeichner weiter vorhanden (`ultar-verbund`, `ultar-zellen`, …) |
 
 ## Nicht geprüft
 
