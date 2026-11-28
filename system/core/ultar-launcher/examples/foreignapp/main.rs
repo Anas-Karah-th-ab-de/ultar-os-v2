@@ -1,0 +1,141 @@
+//! A program from another system the way a person gets it, on the Ultar kernel
+//! (`tools/kern-test/foreign-app-kern.sh`): the bus with the shipped policy, the
+//! launcher, the system dialog (answers "authorized"), the compositor on the screen and
+//! the real service `ultar-foreign`. Files installs `mousepad.deb` through
+//! `foreign.install`; the app is started through the launcher as from the app grid – in
+//! its cell (`app.foreign`, own user, the Linux area read-only, behind `ultar-wayland`,
+//! its own title bar through `ui.client-header`); the QEMU driver takes the screenshot at
+//! `FOREIGN-APP: SHOT`; the stop ends the cell; removal leaves nothing behind.
+//! Last line: `FOREIGN-APP-KERN: ALLES OK` or `FOREIGN-APP-KERN: FEHLER <what>`.
+//!
+//! ```text
+//! foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]
+//! ```
+//!
+//! Runs as root. `DIR` holds the static `ultar-launcher`, `ultar-foreign`,
+//! `ultar-compositor` and `ultar-wayland`; the data disk holds the Linux area at
+//! `/data/foreign/linux`.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod world;
+
+use std::path::Path;
+use std::time::Duration;
+use ultar_bus::messages::foreign::{
+    Choices, Install, InstallFrom, InstallOutcome, List, Outcome, Remove, RuntimeState, Step,
+};
+use ultar_bus::messages::launcher::Role;
+use world::{Args, World, APP};
+
+/// Patience for the package manager (QEMU without KVM is slow).
+const APT_WAIT: Duration = Duration::from_secs(1500);
+
+fn fail(what: &str) -> ! {
+    println!("FOREIGN-APP-KERN: FEHLER {what}");
+    std::process::exit(1);
+}
+
+fn check(ok: bool, what: &str) {
+    if !ok {
+        fail(what);
+    }
+}
+
+fn main() {
+    let args = Args::parse().unwrap_or_else(|| {
+        println!("foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]");
+        std::process::exit(2)
+    });
+    let world = World::start(&args).unwrap_or_else(|e| fail(&format!("setup: {e}")));
+    let files = world.client("app.files");
+    let settings = world.client("app.settings");
+    let progress = files
+        .subscribe::<ultar_bus::messages::foreign::Progress>()
+        .unwrap();
+    check(
+        world::poll(Duration::from_secs(120), || {
+            settings
+                .call(&RuntimeState {}, Duration::from_secs(2))
+                .is_ok_and(|r| r.installed)
+        }),
+        "the service does not see the Linux area",
+    );
+    println!("FOREIGN-APP: service ok");
+
+    // 1. Files installs the package of the person (the dialog answers "authorized")
+    let install = Install {
+        from: InstallFrom::File(world.deb.display().to_string()),
+        choices: Choices::default(),
+    };
+    let InstallOutcome::Started(job) = world.call(&files, &install).outcome else {
+        fail("install did not start");
+    };
+    let done = world::end_of(&progress, job, APT_WAIT).unwrap_or_else(|| fail("install did not end"));
+    check(done.step == Step::Done, &format!("install: {done:?}"));
+    check(done.apps == [APP.to_owned()], &format!("apps: {:?}", done.apps));
+    check(world.asked() >= 1, "the administrator was not asked");
+    let status = world.app().unwrap_or_else(|| fail("no launcher entry"));
+    check(status.profile == "app.foreign", &status.profile);
+    check(status.uid >= 20000, "the app has no own user");
+    let uid = status.uid;
+    println!("FOREIGN-APP: installed uid {uid}");
+    let rights = std::fs::read_to_string(world.compositor_rights()).unwrap_or_default();
+    check(
+        rights
+            .lines()
+            .any(|l| l.starts_with(&format!("{uid} ")) && l.contains("ui.client-header")),
+        "no ui.client-header for the app",
+    );
+    println!("FOREIGN-APP: rights ok");
+
+    // 2. started as from the app grid: its cell, behind the bridge, on the screen
+    world
+        .launcher
+        .start(APP, Role::Ui, None)
+        .unwrap_or_else(|e| fail(&format!("start: {e:?}")));
+    check(
+        world::poll(Duration::from_secs(600), || !world.cell_pids().is_empty()),
+        "the cell has no process",
+    );
+    check(
+        world::poll(Duration::from_secs(600), || world.window_drawn()),
+        "no window of the app",
+    );
+    println!("FOREIGN-APP: running in apps/{APP} ({} processes)", world.cell_pids().len());
+    println!("FOREIGN-APP: SHOT");
+    std::thread::sleep(Duration::from_secs(args.draw));
+    let owned = world.data_owned_by(uid);
+    println!("FOREIGN-APP: files in its data owned by {uid}: {owned}");
+
+    // 3. the stop ends the cell
+    let _ = world.launcher.stop(APP, Role::Ui);
+    check(
+        world::poll(Duration::from_secs(120), || world.cell_pids().is_empty()),
+        "the cell outlived the stop",
+    );
+    println!("FOREIGN-APP: stopped");
+
+    // 4. removal leaves nothing behind
+    let removed = world.call(
+        &settings,
+        &Remove {
+            id: APP.into(),
+            keep_data: false,
+        },
+    );
+    check(removed.outcome == Outcome::Done, &format!("remove: {:?}", removed.outcome));
+    check(
+        world::poll(APT_WAIT, || {
+            !world.call(&settings, &RuntimeState {}).busy && !world.installed("mousepad")
+        }),
+        "mousepad stayed in the area",
+    );
+    check(world.app().is_none(), "the launcher entry stayed");
+    check(world.call(&settings, &List {}).apps.is_empty(), "the service lists it");
+    check(!world.app_data().exists(), "its data stayed");
+    check(!Path::new("/data/foreign/linux/usr/bin/mousepad").exists(), "the program stayed");
+    println!("FOREIGN-APP: removed");
+    world.stop();
+    println!("FOREIGN-APP-KERN: ALLES OK");
+}
