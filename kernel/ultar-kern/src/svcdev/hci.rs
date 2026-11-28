@@ -5,7 +5,9 @@
 //!   `dup`/`fork` like any descriptor; the last close frees the controller for the next opener;
 //! * `write`: exactly one H4 record per call – `0x01` + an HCI command (3 + length octets) or
 //!   `0x02` + ACL data (4 + length octets, at most 1021 data octets); anything else `EINVAL`, a
-//!   controller that does not take it `EIO`;
+//!   controller that does not take it `EIO`; vendor commands (OGF `0x3F`: firmware patch RAM,
+//!   reset to the boot loader, …) `EPERM` – the Bluetooth service needs none, and a compromised
+//!   service must not reprogram or brick the controller (review S-11);
 //! * `read`: exactly one record per call – `0x04` + an event or `0x02` + ACL data; a buffer
 //!   smaller than the record: `EINVAL` (the record stays); nothing there: waits, or `EAGAIN` with
 //!   `O_NONBLOCK`; `poll` reports `POLLIN`;
@@ -19,6 +21,16 @@ use alloc::sync::Arc;
 
 /// Longest record accepted by `write`: type, ACL header, data.
 const MAX_WRITE: usize = 1 + 4 + bt::MAX_ACL_DATA;
+/// H4 type of an HCI command.
+const H4_COMMAND: u8 = 0x01;
+/// Opcode group of the vendor commands.
+const OGF_VENDOR: u16 = 0x3f;
+const EPERM: i64 = 1;
+
+/// Whether the H4 record is a vendor command.
+fn is_vendor_command(rec: &[u8]) -> bool {
+    rec.len() >= 3 && rec[0] == H4_COMMAND && u16::from_le_bytes([rec[1], rec[2]]) >> 10 == OGF_VENDOR
+}
 
 /// An open controller node.
 pub struct HciFd {
@@ -95,6 +107,9 @@ pub fn sys_write(fd: u64, buf: u64, n: u64) -> Option<i64> {
         return Some(-EINVAL);
     }
     let Some(rec) = with(|p| proc::read_user(p.space(), buf, n as usize)).flatten() else { return Some(-EFAULT) };
+    if is_vendor_command(&rec) {
+        return Some(-EPERM);
+    }
     Some(match bt::send(h.id, &rec) {
         Ok(()) => n as i64,
         Err(e) => errno(e),

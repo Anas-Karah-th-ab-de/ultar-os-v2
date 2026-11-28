@@ -92,6 +92,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--seat-state" => args.seat_state = Some(PathBuf::from(it.next()?)),
             "--app-rights" => args.app_rights = Some(PathBuf::from(it.next()?)),
             "--app-uids" => args.app_uids = Some(uid_range(&it.next()?)?),
+            // test builds only: the count would tell how long a typed password is (S-13)
+            #[cfg(feature = "test-hooks")]
             "--input-ack" => args.input_ack = Some(PathBuf::from(it.next()?)),
             "--app-rights-owner" => args.app_rights_owner = Some(it.next()?.parse().ok()?),
             "--start-locked-in" => {
@@ -256,13 +258,31 @@ fn serve(rt: &Runtime, args: &Args, lang: Lang) -> i32 {
     }
 }
 
+/// `O_NOFOLLOW` (the generic Linux value on x86_64; aarch64 has its own).
+#[cfg(target_arch = "aarch64")]
+const O_NOFOLLOW: i32 = 0o100_000;
+#[cfg(not(target_arch = "aarch64"))]
+const O_NOFOLLOW: i32 = 0o400_000;
+
 /// `--input-ack`: the number of key events taken so far into the file (only the count –
 /// never which key; the end-to-end test waits for it instead of pressing keys blindly).
 fn input_ack(path: Option<&std::path::Path>, compositor: &Compositor, acked: &mut u64) {
     let seen = compositor.state.keyboard.events;
     if let Some(path) = path.filter(|_| seen != *acked) {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
         *acked = seen;
-        let _ = std::fs::write(path, format!("{seen}\n"));
+        // a link in place of the file is never followed (O_NOFOLLOW), the file is the owner's only
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .custom_flags(O_NOFOLLOW)
+            .open(path);
+        if let Ok(mut file) = file {
+            let _ = writeln!(file, "{seen}");
+        }
     }
 }
 
@@ -290,6 +310,13 @@ mod tests {
         assert!(args(&["--socket", "s", "--start-locked-in", ""]).is_none());
     }
 
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn input_ack_is_refused_outside_test_builds() {
+        assert!(args(&["--socket", "s", "--input-ack", "/tmp/ack"]).is_none());
+    }
+
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn input_ack_is_an_option_and_counts_key_events() {
         let a = args(&["--socket", "s", "--input-ack", "/tmp/ack"]).unwrap();

@@ -29,6 +29,10 @@ ultar-hal-gfx = { path = "../../system/hal/ultar-hal-gfx" }
 ultar-service = { path = "../../system/core/ultar-service" }
 rustix = { version = "1", default-features = false, features = ["std", "event"] }
 
+[features]
+# Hooks for the end-to-end tests only (`--input-ack`, review S-13): never in a shipped build.
+test-hooks = []
+
 [dev-dependencies]
 # Snapshot comparison (PNG) in the tests.
 ultar-ui = { path = "../ultar-ui" }

@@ -5,7 +5,6 @@
 mod common;
 
 use common::{Scene, LANGS};
-use ultar_bus::messages::settings::SettingValue;
 use ultar_store::settings::{AppUpdateSettings, CHOSEN, MAX_CHOSEN};
 
 /// Whether a read-out text contains `want` (the bidi isolates around arguments removed).
@@ -52,13 +51,13 @@ fn missing_chosen_components_are_named_and_marked() {
 #[test]
 fn the_setting_is_taken_only_when_valid() {
     let mut settings = AppUpdateSettings::default();
-    let list = |items: &[&str]| SettingValue::List(items.iter().map(|s| s.to_string()).collect());
-    assert!(settings.take(CHOSEN, &list(&["km-office", "coder"])));
+    let list = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(settings.set_list(CHOSEN, &list(&["km-office", "coder"])));
     assert_eq!(settings.chosen, ["km-office", "coder"]);
-    assert!(!settings.take(CHOSEN, &list(&["Bad Id"])));
-    assert!(!settings.take("apps.autostart", &list(&["coder"])));
+    assert!(!settings.set_list(CHOSEN, &list(&["Bad Id"])));
+    assert!(!settings.set_list("apps.autostart", &list(&["coder"])));
     let many: Vec<String> = (0..=MAX_CHOSEN).map(|i| format!("a{i}")).collect();
-    assert!(!settings.take(CHOSEN, &SettingValue::List(many)));
+    assert!(!settings.set_list(CHOSEN, &many));
     assert_eq!(
         settings.chosen,
         ["km-office", "coder"],
