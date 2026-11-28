@@ -142,8 +142,12 @@ fn a_missing_host_program_is_a_start_error() {
         downloads: "/tmp".into(),
         user_agent: "UltarWeb/0.7.0".into(),
         filter: None,
+        proxy: Some("http://u:p@127.0.0.1:9".into()),
     };
     assert!(config.args().iter().any(|a| a == "--no-cell"));
+    let args = config.args();
+    let at = args.iter().position(|a| a == "--proxy").unwrap();
+    assert_eq!(args[at + 1], "http://u:p@127.0.0.1:9");
     assert!(matches!(
         RemoteEngine::start(&config),
         Err(EngineError::Start(_))

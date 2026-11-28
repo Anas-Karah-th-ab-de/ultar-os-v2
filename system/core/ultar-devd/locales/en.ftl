@@ -9,7 +9,7 @@ devd.phase.failed = not working
 devd.phase.removed = removed
 
 devd.reason.no-package = The depot has no driver that fits this device.
-devd.reason.kernel-only = The kernel runs this device with its driver "{a}", but the depot has no driver package for it.
+devd.reason.kernel-only = Runs with the kernel's built-in driver "{a}"; no driver package is needed.
 devd.reason.not-loadable = The driver package needs a loadable kernel module, which this kernel does not support yet.
 devd.reason.not-bound = The kernel did not bind its driver "{a}" to this device at boot, and it cannot be activated while running.
 devd.reason.package-missing = The driver package file is not on this system.

@@ -130,7 +130,7 @@ async fn reply<C: AsyncWrite + Unpin>(c: &mut C, code: u8) -> Result<(), &'stati
 }
 
 /// This device or the local network, by name or address.
-fn local(host: &str) -> bool {
+pub(crate) fn local(host: &str) -> bool {
     let h = host.trim_end_matches('.').to_ascii_lowercase();
     if h == "localhost"
         || h.ends_with(".localhost")

@@ -9248,6 +9248,9 @@ version = "0.8.0"
 dependencies = [
  "arti-client",
  "getrandom 0.4.3",
+ "rustls",
+ "rustls-graviola",
+ "rustls-rustcrypto",
  "tokio",
  "tor-rtcompat",
  "ureq 3.5.2",

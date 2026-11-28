@@ -18,11 +18,10 @@
 
 use crate::access::{AdminAccess, AllowAll};
 use crate::builtin::Builtin;
-use crate::bus::convert::{device_info, reason, refusal, refuse, unserved_phase};
+use crate::bus::convert::{device_info, reason, refusal, refuse, served, unserved_phase};
 use crate::bus::{BusSink, Publisher, UnservedDevice};
 use crate::caps::hardware_hint;
 use crate::depot;
-use crate::fsm::Phase;
 use crate::manager::{Config, DeviceManager};
 use crate::ops::QuarantineFilter;
 use crate::store::file::{FileStore, StoreEvent};
@@ -227,7 +226,7 @@ impl Daemon {
             .manager
             .devices()
             .iter()
-            .filter(|view| view.phase != Phase::Active)
+            .filter(|view| !served(view, &self.builtin))
             .map(|view| UnservedDevice {
                 address: view.device.address.clone(),
                 hint: hardware_hint(&view.device.primary),
