@@ -189,18 +189,23 @@ pub(super) fn attach(
         return Err("RNDIS: INIT fehlgeschlagen".into());
     }
 
-    // Paketfilter setzen → Datenpfad an
-    let mut set = [0u8; 28];
+    // Paketfilter setzen → Datenpfad an. Der Puffer folgt dem 28-Byte-Kopf; `InformationBufferOffset`
+    // zählt nach QEMU/RNDIS ab der RequestID (+8), also liegt der Filter bei Byte 28 = Offset 20+8.
+    let mut set = [0u8; 32];
     wr32(set.as_mut_ptr() as u64, 0, SET_MSG);
-    wr32(set.as_mut_ptr() as u64, 4, 28);
+    wr32(set.as_mut_ptr() as u64, 4, 32);
     wr32(set.as_mut_ptr() as u64, 8, 2);
     wr32(set.as_mut_ptr() as u64, 12, OID_PACKET_FILTER);
     wr32(set.as_mut_ptr() as u64, 16, 4);
     wr32(set.as_mut_ptr() as u64, 20, 20);
-    wr32(set.as_mut_ptr() as u64, 24, 0x2F);
+    wr32(set.as_mut_ptr() as u64, 24, 0);
+    wr32(set.as_mut_ptr() as u64, 28, 0x2F);
     if send_cmd(hc, slot, ctrl_iface, buf, &set) {
-        let _ = get_resp(hc, slot, ctrl_iface, buf, 1025);
-        let _ = SET_CMPLT; // Status wird nicht erzwungen (manche Geräte brauchen den Filter nicht)
+        if let Some(rl) = get_resp(hc, slot, ctrl_iface, buf, 1025) {
+            if rl < 16 || rd32(buf, 0) != SET_CMPLT || rd32(buf, 12) != 0 {
+                crate::kprintln!("[usb-net] slot {slot}: Paketfilter nicht gesetzt (rl={rl}, Status={})", rd32(buf, 12));
+            }
+        }
     }
 
     // MAC abfragen
