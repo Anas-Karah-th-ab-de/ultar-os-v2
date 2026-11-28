@@ -127,8 +127,8 @@ fn enable_unit(base: u64) -> Result<(), &'static str> {
     if !warte(base, RTPS) {
         return Err("Wurzeltabelle nicht übernommen");
     }
-    // Kontext-Zwischenspeicher global leeren (CCMD: ICC=Bit63, global=01b in Bit 61:60)
-    wr64(base, CCMD, 1u64 << 63 | 1u64 << 60);
+    // Kontext-Zwischenspeicher global leeren (CCMD: ICC=Bit63, CIRG global=01b in Bit 62:61)
+    wr64(base, CCMD, 1u64 << 63 | 1u64 << 61);
     for _ in 0..100_000 {
         if rd64(base, CCMD) & (1 << 63) == 0 {
             break;
