@@ -167,3 +167,26 @@ fn the_store_persists_state_and_manifests() {
         .starts_with("launcher.state."));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// R2-2: a file of format 2 (short signer ids) is read and written as format 3; full
+/// signer identities round-trip.
+#[test]
+fn format_2_is_read_and_full_signers_round_trip() {
+    let range = UidRange {
+        first: 20000,
+        last: 20009,
+    };
+    let old = format!(
+        "ultar-launcher-state 2\nrange 20000 20009\nnext 20001\napp a 20000 app.system 1 1 {} - 0123456789abcdef\n",
+        digest(b"m")
+    );
+    let state = State::parse(&old, range).unwrap();
+    let text = state.render();
+    assert!(text.starts_with("ultar-launcher-state 3\n"));
+    assert_eq!(State::parse(&text, range).unwrap(), state);
+    let full = "0123456789abcdef".repeat(4);
+    let new = text.replace(" 0123456789abcdef\n", &format!(" {full}\n"));
+    assert_eq!(State::parse(&new, range).unwrap().render(), new);
+    let bad = text.replace(" 0123456789abcdef\n", " 0123456789abcdef0\n");
+    assert!(State::parse(&bad, range).is_err());
+}

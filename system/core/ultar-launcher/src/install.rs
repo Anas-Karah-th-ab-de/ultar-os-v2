@@ -62,9 +62,17 @@ pub fn id_fits_signer(
     }
 }
 
-/// Whether a package of `signer` in `version` may take over `previous`.
-pub fn may_replace(previous: &Entry, signer: &str, version: &str) -> Result<(), PackageError> {
-    if previous.signer != signer {
+/// Whether `previous` (a stored signer) names the key of `fingerprint`: the
+/// same full identity, or – an entry of state format 2 – its 16-digit short id.
+fn same_signer(previous: &str, fingerprint: &str) -> bool {
+    fingerprint.len() == 64
+        && (previous == fingerprint || (previous.len() == 16 && fingerprint.starts_with(previous)))
+}
+
+/// Whether a package signed by the key `fingerprint` (full SHA-256) in
+/// `version` may take over `previous`.
+pub fn may_replace(previous: &Entry, fingerprint: &str, version: &str) -> Result<(), PackageError> {
+    if !same_signer(&previous.signer, fingerprint) {
         return Err(PackageError::Signer);
     }
     match version_order(version, &previous.version) {
@@ -113,7 +121,7 @@ impl Launcher {
         let id = manifest.id.clone();
         let previous = core.store.state.get(&id).cloned();
         if let Some(previous) = &previous {
-            may_replace(previous, &signed.key_id, &manifest.version)
+            may_replace(previous, &signed.key_fingerprint, &manifest.version)
                 .map_err(LaunchError::Package)?;
         }
         let uid = core.store.state.uid_for(&id)?;
@@ -140,7 +148,7 @@ impl Launcher {
             version: manifest.version.clone(),
             digest,
             granted,
-            signer: signed.key_id.clone(),
+            signer: signed.key_fingerprint.clone(),
         };
         core.store.state.put(id.clone(), entry);
         core.store.save()?;
@@ -193,28 +201,43 @@ mod tests {
 
     #[test]
     fn only_the_same_signer_replaces_and_never_downwards() {
-        let previous = Entry {
+        let full = "0123456789abcdef".repeat(4);
+        let mut previous = Entry {
             uid: 20000,
             profile: ProfileName::System,
             installed: false,
             version: "1.4.0".into(),
             digest: digest(b"m"),
             granted: PermissionSet::EMPTY,
-            signer: "0123456789abcdef".into(),
+            signer: full.clone(),
         };
-        assert_eq!(may_replace(&previous, "0123456789abcdef", "1.4.0"), Ok(()));
-        assert_eq!(may_replace(&previous, "0123456789abcdef", "1.10"), Ok(()));
+        assert_eq!(may_replace(&previous, &full, "1.4.0"), Ok(()));
+        assert_eq!(may_replace(&previous, &full, "1.10"), Ok(()));
+        // R2-2: a key whose short id is the same but whose full identity differs is another signer
+        let twin = format!("0123456789abcdef{}", "f".repeat(48));
         assert_eq!(
-            may_replace(&previous, "fedcba9876543210", "9.0"),
+            may_replace(&previous, &twin, "9.0"),
             Err(PackageError::Signer)
         );
         assert_eq!(
-            may_replace(&previous, "0123456789abcdef", "1.3.9"),
+            may_replace(&previous, &"fedcba9876543210".repeat(4), "9.0"),
+            Err(PackageError::Signer)
+        );
+        assert_eq!(
+            may_replace(&previous, &full, "1.3.9"),
             Err(PackageError::Downgrade)
         );
         assert_eq!(
-            may_replace(&previous, "0123456789abcdef", "1.4.x"),
+            may_replace(&previous, &full, "1.4.x"),
             Err(PackageError::Downgrade)
+        );
+        // an entry of state format 2 holds the short id: its own key still replaces it
+        previous.signer = "0123456789abcdef".into();
+        assert_eq!(may_replace(&previous, &full, "1.5"), Ok(()));
+        assert_eq!(
+            may_replace(&previous, "0123456789abcdef", "1.5"),
+            Err(PackageError::Signer),
+            "a short id is never the new signer"
         );
     }
 }
