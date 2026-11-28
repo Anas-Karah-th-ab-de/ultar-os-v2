@@ -880,8 +880,13 @@ pub fn connect(id: usize, ip: [u8; 4], port: u16) -> Result<bool, i64> {
     tcp_out(s, iss, SYN, &[]);
     drop(ss);
     poll();
-    let ss = SOCKS.lock();
-    Ok(ss.get(&id).map(|s| s.st == Tcp::Established).unwrap_or(false))
+    // a local peer may already have answered inside poll(): accepted, or refused (RST)
+    let mut ss = SOCKS.lock();
+    match ss.get_mut(&id) {
+        Some(s) if s.st == Tcp::Established => Ok(true),
+        Some(s) if s.st == Tcp::Closed && s.err != 0 => Err(core::mem::replace(&mut s.err, 0)),
+        _ => Ok(false),
+    }
 }
 
 pub fn accept(id: usize) -> Option<usize> {

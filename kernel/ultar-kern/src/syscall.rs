@@ -1725,6 +1725,8 @@ fn sys_ftruncate(fd: u64, len: u64) -> i64 {
 fn sys_mkdir(dirfd: i64, path: u64, mode: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
     match locate(dirfd, &p, false) {
+        // an existing entry first, as on Linux: `mkdir -p` of a directory on a read-only mount succeeds
+        Ok(loc) if fs::stat(&loc.host).is_some() => -EEXIST,
         Ok(loc) if loc.read_only => -EROFS,
         Ok(loc) if loc.confined && kernel_tree(&loc.host) => -EPERM,
         Ok(loc) if fs::stat(&loc.host).is_none() && crate::perm::may_create(&loc.host).is_err() => -EACCES,
@@ -2565,10 +2567,13 @@ fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
     let Some(id) = sock_id(fd) else { return Res::Val(-88) };
     let Some(b) = get(addr, (len as usize).min(128)) else { return Res::Val(-EFAULT) };
     let Some((ip, port)) = crate::socket::parse_addr(&b) else { return Res::Val(-97) };
+    // the generation before the attempt: an answer handled during it (a local RST or SYN-ACK comes
+    // back inside the call) must wake the wait, not happen before it starts – the call blocked for good
+    let gen = crate::socket::gen();
     match crate::socket::connect(id, ip, port) {
         Ok(true) => Res::Val(0),
         Ok(false) if crate::socket::is_nonblock(id) => Res::Val(-115),
-        Ok(false) => Res::Block(Wait::Net(crate::socket::gen())),
+        Ok(false) => Res::Block(Wait::Net(gen)),
         Err(e) => Res::Val(e),
     }
 }

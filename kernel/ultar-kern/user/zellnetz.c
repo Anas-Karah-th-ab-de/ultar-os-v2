@@ -375,7 +375,10 @@ static void parent_death_signal(void) {
     CHECK(read_line(p[0], line, sizeof line, 3000) > 0 && sscanf(line, "%d %d", &pid, &got) == 2 && got == SIGTERM, "PR_GET_PDEATHSIG reads SIGTERM back");
     // the grandchild held the only other write end: end of file = it ended
     char b[8];
-    CHECK(read_line(p[0], b, sizeof b, 5000) == -1 && kill(pid, 0) == -1, "the orphan ended with its parent (SIGTERM)");
+    int eof = read_line(p[0], b, sizeof b, 5000) == -1;
+    // its descriptors close before it leaves the process table: give the end a moment under load
+    for (int i = 0; i < 40 && kill(pid, 0) == 0; i++) usleep(50000);
+    CHECK(eof && kill(pid, 0) == -1, "the orphan ended with its parent (SIGTERM)");
     close(p[0]);
     CHECK(pipe(p) == 0, "pipe");
     orphan(p[1], 0);
