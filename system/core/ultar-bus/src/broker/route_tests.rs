@@ -336,3 +336,39 @@ fn slow_subscriber_is_dropped_while_others_keep_receiving() {
         assert_eq!(fast.next().unwrap().payload, vec![sequence]);
     }
 }
+
+/// One identity cannot take the whole retained table, and one connection registers a bounded
+/// number of services.
+#[test]
+fn per_identity_limits() {
+    let mut bench = Bench::open();
+    bench.config.max_retained = 10;
+    bench.config.max_retained_per_identity = 2;
+    bench.config.max_services_per_connection = 1;
+    let greedy = bench.join(1, "greedy");
+    let other = bench.join(2, "other");
+    for (id, topic) in [(1, "g.one"), (2, "g.two"), (3, "g.three")] {
+        bench
+            .feed(1, event(id, topic, FLAG_RETAIN | FLAG_ACK, &[]))
+            .unwrap();
+    }
+    expect_ack(&greedy, 1);
+    expect_ack(&greedy, 2);
+    expect_error(&greedy, 3, ErrorCode::LimitExceeded);
+    // its own topics may still change
+    bench
+        .feed(1, event(4, "g.one", FLAG_RETAIN | FLAG_ACK, &[1]))
+        .unwrap();
+    expect_ack(&greedy, 4);
+    // another identity still has room
+    bench
+        .feed(2, event(5, "o.state", FLAG_RETAIN | FLAG_ACK, &[]))
+        .unwrap();
+    expect_ack(&other, 5);
+    bench.feed(1, envelope(Kind::Register, 6, "first")).unwrap();
+    expect_ack(&greedy, 6);
+    bench
+        .feed(1, envelope(Kind::Register, 7, "second"))
+        .unwrap();
+    expect_error(&greedy, 7, ErrorCode::LimitExceeded);
+}

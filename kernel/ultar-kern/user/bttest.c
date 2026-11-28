@@ -149,6 +149,13 @@ static void keyboard_checks(void) {
     memset(line, 0, sizeof line);
     check("/sys/class/input/eventN/device/id/bustype: 0006 (virtuell)", f && fgets(line, sizeof line, f) && strcmp(line, "0006\n") == 0);
     if (f) fclose(f);
+    snprintf(sysname, sizeof sysname, "/sys/class/input/%s/device/ultar_creator", path + 11);
+    f = fopen(sysname, "r");
+    memset(line, 0, sizeof line);
+    char want[16];
+    snprintf(want, sizeof want, "%u\n", (unsigned)geteuid());
+    check("device/ultar_creator: der Erzeuger (vom Kern gesetzt)", f && fgets(line, sizeof line, f) && strcmp(line, want) == 0);
+    if (f) fclose(f);
     const int press[4][3] = {{EV_KEY, KEY_A, 1}, {EV_SYN, 0, 0}, {EV_KEY, KEY_A, 0}, {EV_SYN, 0, 0}};
     check("Ereignisse schreiben", ev_write(fd, press, 4) == 0);
     struct pollfd p = {ev, POLLIN, 0};

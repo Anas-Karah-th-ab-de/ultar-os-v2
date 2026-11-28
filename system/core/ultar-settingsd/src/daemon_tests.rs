@@ -201,3 +201,22 @@ fn unusable_policy_and_profile_files_stop_the_start() {
         Err(DaemonError::Profile(_))
     ));
 }
+
+/// Review: a second instance on the same settings directory is refused.
+#[test]
+fn a_second_instance_is_refused() {
+    let dir = std::env::temp_dir().join(format!("settingsd-lock-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let first = lock_instance(&dir).unwrap();
+    assert!(matches!(
+        lock_instance(&dir),
+        Err(DaemonError::AlreadyRunning(_))
+    ));
+    drop(first);
+    assert!(
+        lock_instance(&dir).is_ok(),
+        "free again once the first ended"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -20,7 +20,7 @@ const PCI_DEV_FILES: [&str; 13] = [
 const PCI_DRV_FILES: [&str; 6] = ["bind", "uevent", "ultar_enabled", "ultar_origin", "ultar_unbind", "unbind"];
 const USB_DEV_FILES: [&str; 9] = ["bDeviceClass", "bDeviceProtocol", "bDeviceSubClass", "bcdDevice", "busnum", "devnum", "idProduct", "idVendor", "uevent"];
 const USB_IF_FILES: [&str; 5] = ["bInterfaceClass", "bInterfaceNumber", "bInterfaceProtocol", "bInterfaceSubClass", "uevent"];
-const KERNEL_ULTAR: [&str; 4] = ["devices", "driver_abi", "drivers", "uevents"];
+const KERNEL_ULTAR: [&str; 5] = ["crypt", "devices", "driver_abi", "drivers", "uevents"];
 
 /// Whether the host path belongs to this tree.
 pub fn is_tree(path: &str) -> bool {
@@ -115,6 +115,7 @@ pub fn open(path: &str) -> Option<Node> {
         ])),
         ["kernel", "uevent_seqnum"] => file(format!("{}\n", super::events::seqnum())),
         ["kernel", "ultar"] => dir(names(&KERNEL_ULTAR), false),
+        ["kernel", "ultar", "crypt"] => file(format!("{}\n", crate::crypt::status())),
         ["kernel", "ultar", "driver_abi"] => file(format!("{}\n", super::DRIVER_ABI)),
         ["kernel", "ultar", "devices"] => file(device_table()),
         ["kernel", "ultar", "drivers"] => file(driver_table()),
@@ -172,6 +173,7 @@ fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
     let entry = |name: &str, dir: bool| DirEnt { name: String::from(name), dir, size: 0 };
     match rest {
         [] => Some(Node::Dir(alloc::vec![entry("dev", false), entry("device", true), entry("uevent", false)])),
+        ["device"] if crate::input::is_virtual(index) => Some(Node::Dir(alloc::vec![entry("id", true), entry("name", false), entry("uevent", false), entry("ultar_creator", false)])),
         ["device"] => Some(Node::Dir(alloc::vec![entry("id", true), entry("name", false), entry("uevent", false)])),
         ["device", "id"] => Some(Node::Dir(alloc::vec![entry("bustype", false), entry("product", false), entry("vendor", false), entry("version", false)])),
         _ => file(crate::input::sys_file(index, rest)?),
@@ -181,7 +183,9 @@ fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
 /// The right a write to control file `path` needs: announcing an input node again (`uevent`) is
 /// file administration (the seat service); everything else is driver work.
 pub fn right_for(path: &str) -> crate::isolation::rights::Rights {
-    if path.starts_with("/sys/class/net/") {
+    if path == crate::crypt::CONTROL {
+        crate::isolation::rights::Rights::RAW_DEVICE
+    } else if path.starts_with("/sys/class/net/") {
         crate::isolation::rights::Rights::NET_ADMIN
     } else if path.starts_with("/sys/class/") {
         crate::isolation::rights::Rights::FILE_ADMIN
@@ -412,6 +416,9 @@ fn driver_table() -> String {
 
 /// Whether the host path is a file of this tree that takes writes.
 pub fn is_control(path: &str) -> bool {
+    if path == crate::crypt::CONTROL {
+        return true;
+    }
     if let Some(rest) = path.strip_prefix("/sys/class/net/") {
         return matches!(rest.split_once('/'), Some((n, "ultar_ipv4")) if net_index(n).is_some());
     }
@@ -425,6 +432,9 @@ pub fn is_control(path: &str) -> bool {
 
 /// A write to a control file (the caller checked the right `LOAD_DRIVER`).
 pub fn write(path: &str, text: &str) -> Result<(), i64> {
+    if path == crate::crypt::CONTROL {
+        return crate::crypt::control(text);
+    }
     if let Some(rest) = path.strip_prefix("/sys/class/net/") {
         let n = rest.split('/').next().and_then(net_index).ok_or(-ENODEV)?;
         return crate::net::ipv4_write(n, text).map_err(|_| -EINVAL);

@@ -16,6 +16,10 @@ modes       = ["mobile", "desktop"]
 required    = []
 optional    = ["display", "external_display"]
 
+[open]
+# settings://<area>  open Settings on that page (e.g. settings://apps from the phone)
+schemes      = ["settings"]
+
 [permissions]
 # The services its pages use; the bus policy (rule app.settings) grants exactly the methods
 # and topics of each page, administrator actions are confirmed in the system dialog.
