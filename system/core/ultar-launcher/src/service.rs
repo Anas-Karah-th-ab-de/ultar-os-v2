@@ -24,6 +24,59 @@ use ultar_service::{BusSession, Lifecycle, SessionOptions};
 
 /// Pause before the bus is tried again.
 const RETRY: Duration = Duration::from_secs(1);
+/// Threads that answer `start` (a start waits up to `START_DEADLINE` for the
+/// cell's handshake).
+const START_THREADS: usize = 4;
+/// Starts that may wait for a free start thread.
+const START_QUEUE: usize = 16;
+
+/// Answers `launcher.start` on threads of their own, so a slow cell start
+/// never holds up `stop`, `list` or `revoke` on the bus thread (review
+/// R2-5). The threads live as long as the launcher: stage 1 of a cell ends
+/// with the thread that started it (`PR_SET_PDEATHSIG`), so a start never
+/// runs on a short-lived thread.
+pub struct StartPool {
+    jobs: Option<std::sync::mpsc::SyncSender<IncomingRequest>>,
+}
+
+impl StartPool {
+    /// `threads` start threads for `launcher` (none: every start is answered
+    /// where it arrives).
+    pub fn new(launcher: &Arc<Launcher>, threads: usize) -> Self {
+        let (jobs, queue) = std::sync::mpsc::sync_channel::<IncomingRequest>(START_QUEUE);
+        let queue = Arc::new(Mutex::new(queue));
+        let mut started = 0;
+        for n in 0..threads {
+            let (launcher, queue) = (Arc::clone(launcher), Arc::clone(&queue));
+            let spawned = std::thread::Builder::new()
+                .name(format!("ultar-launcher-start-{n}"))
+                .spawn(move || loop {
+                    let next = lock(&queue).recv();
+                    let Ok(request) = next else { return };
+                    let _ = start(request, &launcher);
+                });
+            started += usize::from(spawned.is_ok());
+        }
+        Self {
+            jobs: (started > 0).then_some(jobs),
+        }
+    }
+
+    /// Hands `request` to a start thread; `Some(request)` back when none can
+    /// take it now (the caller answers it itself).
+    pub fn submit(&self, request: IncomingRequest) -> Option<IncomingRequest> {
+        let Some(jobs) = &self.jobs else {
+            return Some(request);
+        };
+        match jobs.try_send(request) {
+            Ok(()) => None,
+            Err(
+                std::sync::mpsc::TrySendError::Full(r)
+                | std::sync::mpsc::TrySendError::Disconnected(r),
+            ) => Some(r),
+        }
+    }
+}
 
 /// Who may install and uninstall.
 #[derive(Default)]
@@ -135,13 +188,14 @@ pub fn answer(request: IncomingRequest, launcher: &Arc<Launcher>, admins: &Mutex
 /// Keeps the launcher on the bus at `socket` (again whenever the broker
 /// comes back) until `lifecycle` stops: the stop closes the connection,
 /// which ends the wait for requests. Requests are answered one at a time
-/// on this thread.
+/// on this thread, except `start`, which goes to the [`StartPool`].
 pub fn serve(
     socket: PathBuf,
     launcher: Arc<Launcher>,
     admins: Arc<Mutex<Admins>>,
     lifecycle: Lifecycle,
 ) {
+    let starts = StartPool::new(&launcher, START_THREADS);
     let slot: Arc<Mutex<Option<Client>>> = Arc::default();
     let closer = Arc::clone(&slot);
     lifecycle.on_stop(move || {
@@ -161,7 +215,17 @@ pub fn serve(
             session.close();
         }
         match session.register(SERVICE) {
-            Ok(endpoint) => endpoint.run(|request| answer(request, &launcher, &admins)),
+            Ok(endpoint) => endpoint.run(|request| {
+                let request = if request.method() == "start" {
+                    match starts.submit(request) {
+                        Some(back) => back,
+                        None => return,
+                    }
+                } else {
+                    request
+                };
+                answer(request, &launcher, &admins)
+            }),
             Err(_) => {
                 lifecycle.wait_for_timeout(ultar_service::State::Stopping, RETRY);
             }
