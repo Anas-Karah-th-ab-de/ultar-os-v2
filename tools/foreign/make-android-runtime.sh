@@ -142,7 +142,7 @@ make install >/dev/null
 for p in bionic_translation libopensles-standalone; do
   cd /src/$p
   rm -rf builddir
-  meson setup builddir --prefix=/usr --libdir=$LIB --buildtype=release >/dev/null
+  meson setup builddir --prefix=/usr --libdir=$LIB --buildtype=release
   meson compile -C builddir -j "$J" >/dev/null
   meson install -C builddir >/dev/null
 done
@@ -154,7 +154,7 @@ cd /src/android_translation_layer
 rm -rf builddir
 meson setup builddir --prefix=/usr --libdir=$LIB --buildtype=release \
   -Dasm_jar_path=/usr/share/java/asm.jar -Dasm_tree_jar_path=/usr/share/java/asm-tree.jar \
-  -Dgetopt_jar_path=/usr/share/java/gnu-getopt.jar >/dev/null
+  -Dgetopt_jar_path=/usr/share/java/gnu-getopt.jar
 meson compile -C builddir -j "$J" >/tmp/atl-build.log 2>&1 || { tail -40 /tmp/atl-build.log; exit 1; }
 meson install -C builddir >/dev/null
 ldconfig
