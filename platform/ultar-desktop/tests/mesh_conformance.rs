@@ -103,7 +103,12 @@ fn found(view: &mut View, node: &A11yNode, at: (f32, f32)) -> Found {
         .unwrap_or_default();
     Found {
         name,
-        rect: Rect::new(node.rect.x + at.0, node.rect.y + at.1, node.rect.w, node.rect.h),
+        rect: Rect::new(
+            node.rect.x + at.0,
+            node.rect.y + at.1,
+            node.rect.w,
+            node.rect.h,
+        ),
         disabled: node.state.disabled,
         checked: node.state.checked,
     }
@@ -122,7 +127,10 @@ fn compare(row: &Row, got: &Found, canvas: &ultar_ui::canvas::Canvas, at: (f32, 
     let want = norm(&row.name);
     let name = norm(&got.name);
     let name_ok = !name.is_empty()
-        && (want == name || want.starts_with(&name) || name.starts_with(&want) || want.contains(&name));
+        && (want == name
+            || want.starts_with(&name)
+            || name.starts_with(&want)
+            || want.contains(&name));
     if !name_ok {
         diff.push(format!("name '{}' (board '{}')", got.name, row.name));
     }
@@ -135,7 +143,11 @@ fn compare(row: &Row, got: &Found, canvas: &ultar_ui::canvas::Canvas, at: (f32, 
         ));
     }
     if let Some(want) = row.rgb {
-        let px = if b.w < 16.0 { r.x + r.w / 2.0 } else { r.x + 6.0 };
+        let px = if b.w < 16.0 {
+            r.x + r.w / 2.0
+        } else {
+            r.x + 6.0
+        };
         let (x, y) = ((px - at.0) as i64, (r.y + r.h / 2.0 - at.1) as i64);
         if x >= 0 && y >= 0 && x < i64::from(canvas.width()) && y < i64::from(canvas.height()) {
             let rgba = canvas.to_rgba();
@@ -282,7 +294,10 @@ fn the_choice_of_devices_matches_board_mesh_send() {
     assert_eq!(results.len(), 5, "the board's five clickable elements");
     // The deviation is exactly these five boxes: if the toolkit gets a device-card layout
     // this count drops to 0 and this allowance has to go (docs/ui/mesh.md §4).
-    assert_eq!(known, 5, "the known card-height deviation covers exactly five boxes");
+    assert_eq!(
+        known, 5,
+        "the known card-height deviation covers exactly five boxes"
+    );
 }
 
 /// KNOWN DEVIATION (docs/ui/mesh.md §4): `ultar-ui` has no device-card radio layout, so the
@@ -378,8 +393,18 @@ fn board_toasts() -> [(Kind, &'static str, &'static str, Option<Act>); 6] {
         (Kind::Waiting, "KM One", "notes.txt", Some(Act::Cancel(1))),
         (Kind::Opened, "KM One", "notes.txt", None),
         (Kind::Declined, "KM One", "notes.txt", None),
-        (Kind::Expired, "KM One", "notes.txt", Some(Act::Retry("km-one".into()))),
-        (Kind::Failed, "KM One", "notes.txt", Some(Act::Retry("km-one".into()))),
+        (
+            Kind::Expired,
+            "KM One",
+            "notes.txt",
+            Some(Act::Retry("km-one".into())),
+        ),
+        (
+            Kind::Failed,
+            "KM One",
+            "notes.txt",
+            Some(Act::Retry("km-one".into())),
+        ),
         (
             Kind::Received,
             "beelink",
@@ -406,17 +431,12 @@ fn toast_surface(lang: Lang, theme: ThemeKind, n: usize) -> (View, Vec<(String, 
         match (node.role, node.part) {
             (Role::Status, Some(_)) => whole = node.rect,
             (Role::Button, Some(p)) => {
-                let is_close = view
-                    .ui
-                    .translator()
-                    .t("ui.toast.close")
+                let is_close = view.ui.translator().t("ui.toast.close").as_ref().eq(node
+                    .name
                     .as_ref()
-                    .eq(node
-                        .name
-                        .as_ref()
-                        .map(|l| l.resolve(view.ui.translator()).into_owned())
-                        .unwrap_or_default()
-                        .as_str());
+                    .map(|l| l.resolve(view.ui.translator()).into_owned())
+                    .unwrap_or_default()
+                    .as_str());
                 let act = match (&act, is_close) {
                     (_, true) => "toast.close".to_owned(),
                     (Some(Act::Cancel(_)), _) => "mesh.offer.cancel".to_owned(),
@@ -482,19 +502,28 @@ fn every_element_exists_with_a_translated_name_in_both_languages_and_themes() {
     for lang in [Lang::Ar, Lang::En] {
         for theme in [ThemeKind::Dark, ThemeKind::Light] {
             let (_, pool) = send_surface(lang, theme);
-            assert_eq!(pool.len(), 5, "{lang:?} {theme:?}: three devices, Send, Cancel");
+            assert_eq!(
+                pool.len(),
+                5,
+                "{lang:?} {theme:?}: three devices, Send, Cancel"
+            );
             let (_, _, incoming) = incoming_surface(lang, theme);
             assert_eq!(incoming.len(), 2);
             for n in 0..6 {
                 let (_, toast, whole) = toast_surface(lang, theme, n);
                 assert!(whole.w > 0.0, "the toast is in the tree");
-                pool.iter().chain(&incoming).chain(&toast).for_each(|(act, f)| {
-                    assert!(
-                        !f.name.is_empty() && !f.name.contains("desk.") && !f.name.contains("dialog."),
-                        "{lang:?} {theme:?} {act}: untranslated name '{}'",
-                        f.name
-                    );
-                });
+                pool.iter()
+                    .chain(&incoming)
+                    .chain(&toast)
+                    .for_each(|(act, f)| {
+                        assert!(
+                            !f.name.is_empty()
+                                && !f.name.contains("desk.")
+                                && !f.name.contains("dialog."),
+                            "{lang:?} {theme:?} {act}: untranslated name '{}'",
+                            f.name
+                        );
+                    });
             }
         }
     }

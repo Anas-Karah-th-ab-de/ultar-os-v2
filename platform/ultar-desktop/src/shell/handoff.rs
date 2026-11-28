@@ -36,14 +36,13 @@ pub(super) fn send(s: &mut Shell, device: Option<String>) -> Outcome {
 /// gets what is in front (a notice says when there is nothing to hand over), one that is not
 /// connected opens the Mesh area of Settings.
 pub(super) fn list_device(s: &mut Shell, id: &str) -> Outcome {
-    let here = s
-        .d
-        .svc
-        .mesh
-        .state
-        .iter()
-        .flat_map(|m| &m.peers)
-        .any(|p| p.id == id && p.reachable);
+    let here =
+        s.d.svc
+            .mesh
+            .state
+            .iter()
+            .flat_map(|m| &m.peers)
+            .any(|p| p.id == id && p.reachable);
     if here && mesh::can_send(&s.d.svc) {
         return send(s, Some(id.to_owned()));
     }

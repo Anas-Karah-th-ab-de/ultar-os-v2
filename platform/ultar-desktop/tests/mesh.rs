@@ -38,13 +38,22 @@ fn calls(effects: &[Effect]) -> Vec<Call> {
 fn super_shift_m_offers_what_is_in_front_when_a_paired_device_is_connected() {
     let mut h = Harness::new(ultar_i18n::Lang::En, ultar_ui::tokens::ThemeKind::Dark);
     let s = &mut h.shell;
-    assert!(s.on_shell_key_with(50, true).effects.is_empty(), "no mesh service");
+    assert!(
+        s.on_shell_key_with(50, true).effects.is_empty(),
+        "no mesh service"
+    );
     s.d.svc.mesh.state = Some(mesh(true, false));
-    assert!(s.on_shell_key_with(50, true).effects.is_empty(), "nobody connected");
+    assert!(
+        s.on_shell_key_with(50, true).effects.is_empty(),
+        "nobody connected"
+    );
     s.d.svc.mesh.state = Some(mesh(false, true));
     assert!(s.on_shell_key_with(50, true).effects.is_empty(), "mesh off");
     s.d.svc.mesh.state = Some(mesh(true, true));
-    assert!(s.on_shell_key(50).effects.is_empty(), "Super+M alone is not the shortcut");
+    assert!(
+        s.on_shell_key(50).effects.is_empty(),
+        "Super+M alone is not the shortcut"
+    );
     let sent = calls(&s.on_shell_key_with(50, true).effects);
     assert!(
         matches!(sent.as_slice(), [Call::MeshSend(None, _)]),

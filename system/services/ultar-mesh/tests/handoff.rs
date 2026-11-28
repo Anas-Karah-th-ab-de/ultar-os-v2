@@ -186,7 +186,9 @@ fn without_the_app_the_file_arrives_and_opens_with_the_default_app() {
     assert_eq!(note.uri, uri);
     assert!(!note.from_name.is_empty(), "the sender is named");
     // An activity that continues in an app is no received file.
-    assert!(ultar_mesh::arrived::file_received(&w.nodes[1], opened, "editor", Some(&uri)).is_none());
+    assert!(
+        ultar_mesh::arrived::file_received(&w.nodes[1], opened, "editor", Some(&uri)).is_none()
+    );
 }
 
 #[test]

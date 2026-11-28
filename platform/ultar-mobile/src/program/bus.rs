@@ -46,6 +46,7 @@ struct Topics {
     modem: Option<TypedSubscription<modem::ModemState>>,
     mesh: Option<TypedSubscription<mesh::MeshState>>,
     progress: Option<TypedSubscription<mesh::HandoffProgress>>,
+    received: Option<TypedSubscription<ultar_bus::messages::mesh_received::FileReceived>>,
 }
 
 /// The shell's bus connection.
@@ -80,6 +81,7 @@ impl Link {
             modem: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
             progress: client.subscribe().ok(),
+            received: client.subscribe().ok(),
         };
         Some(Link {
             client,
@@ -216,6 +218,10 @@ impl Link {
             m.mesh.progress(&p, m.now_ms);
             changed = true;
         }
+        while let Some(f) = next(&t.received) {
+            m.mesh.received(f.uri, m.now_ms);
+            changed = true;
+        }
         changed |= self.poll_notes(m, tr);
         changed |= self.poll_settings(m);
         if next(&self.topics.calendar).is_some() {
@@ -282,6 +288,10 @@ impl Link {
                 )
                 .map(|_| ()),
             Effect::Camera => self.start("org.ultar.camera", None),
+            Effect::MeshCancel(offer) => c
+                .call(&mesh::OfferCancel { offer: *offer }, MESH_CALL)
+                .map(|_| ()),
+            Effect::Open(uri) => self.start("org.ultar.files", Some(uri.clone())),
             Effect::Emergency => self.start("org.ultar.phone", Some("tel:".into())),
             Effect::Voice => self.start("org.ultar.assistant", None),
             Effect::Set(t, on) => self.switch(*t, *on),

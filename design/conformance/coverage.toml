@@ -879,10 +879,10 @@ note = "hidden while no mesh (Verbund) service is present (spec: shown only when
 
 [action."qs.mesh.list"]
 status = "different"
-impl = "platform/ultar-desktop/src/view/quick.rs + src/shell/sheets.rs"
-test = "platform/ultar-desktop/tests/clicks.rs"
+impl = "platform/ultar-desktop/src/view/mesh_list.rs + src/shell/handoff.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs"
 boards = "QuickSettings:1"
-note = "hidden while no mesh (Verbund) service is present (spec: shown only when available)"
+note = "the list of paired devices on the Mesh tile; a connected one gets what is in front, an absent one opens Settings"
 
 [action."qs.volume"]
 status = "ok"
@@ -1340,10 +1340,10 @@ note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no imple
 
 [action."mesh.accept"]
 status = "different"
-impl = "platform/ultar-desktop/src/dialog/handoff.rs"
-test = "platform/ultar-desktop/tests/screens.rs"
+impl = "platform/ultar-desktop/src/dialog/handoff.rs; platform/ultar-mobile/src/program/ (the sheet)"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/dialog_clicks.rs"
 boards = "CompactMeshIncoming:1, MeshIncoming:1"
-note = "desktop system dialog built; the phone sheet is missing"
+note = "phone sheet: buttons 44 px high (board 32 px), see docs/ui/mesh.md section 4"
 
 [action."mesh.back"]
 status = "ok"
@@ -1361,10 +1361,10 @@ note = ""
 
 [action."mesh.decline"]
 status = "different"
-impl = "platform/ultar-desktop/src/dialog/handoff.rs"
-test = "platform/ultar-desktop/tests/screens.rs"
+impl = "platform/ultar-desktop/src/dialog/handoff.rs; platform/ultar-mobile/src/program/ (the sheet)"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/dialog_clicks.rs"
 boards = "CompactMeshIncoming:1, MeshIncoming:1"
-note = "desktop system dialog built; the phone sheet is missing"
+note = "phone sheet: buttons 44 px high (board 32 px), see docs/ui/mesh.md section 4"
 
 [action."mesh.device"]
 status = "ok"
@@ -1386,9 +1386,11 @@ boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
 note = ""
 
 [action."mesh.offer.cancel"]
-status = "missing"
+status = "ok"
+impl = "platform/ultar-desktop/src/view/mesh_toasts.rs + src/shell/handoff.rs; platform/ultar-mobile/src/view/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs"
 boards = "MeshStates:1"
-note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
+note = "mesh.offer_cancel; toast on the desktop, notice on the phone"
 
 [action."mesh.pair"]
 status = "ok"
@@ -1419,14 +1421,18 @@ boards = "MeshPairJoin:1"
 note = "generic dialog action"
 
 [action."mesh.received.open"]
-status = "missing"
+status = "ok"
+impl = "platform/ultar-desktop/src/app/desktop/topics.rs + src/shell/handoff.rs; platform/ultar-mobile/src/program/bus.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs"
 boards = "MeshStates:1"
-note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
+note = "topic mesh.received (ultar-mesh arrived.rs), Open starts Files with the URI"
 
 [action."mesh.retry"]
-status = "missing"
+status = "ok"
+impl = "platform/ultar-desktop/src/shell/handoff.rs; platform/ultar-mobile/src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs"
 boards = "MeshStates:3"
-note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
+note = "expired or failed offers are sent again to the same device"
 
 [action."mesh.right"]
 status = "ok"
@@ -1437,24 +1443,24 @@ note = "eight switches: the eighth lends the language model"
 
 [action."mesh.send"]
 status = "different"
-impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
-test = "platform/ultar-desktop/tests/mesh.rs"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/view/mesh_send.rs + src/model/mesh.rs; platform/ultar-mobile/src/view/mesh.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs; conformance: platform/ultar-desktop/tests/mesh_conformance.rs, platform/ultar-mobile/tests/mesh_conformance.rs"
 boards = "CompactMeshSend:1, MeshSend:1"
-note = "the choice is a menu of the active app: choosing a device sends at once"
+note = "named deviation: toolkit radio cards 69 px high, board 61.6 px (docs/ui/mesh.md section 4); phone buttons 44 px, board 32 px"
 
 [action."mesh.send.cancel"]
 status = "different"
-impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
-test = "platform/ultar-desktop/tests/mesh.rs"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/view/mesh_send.rs + src/model/mesh.rs; platform/ultar-mobile/src/view/mesh.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs; conformance: platform/ultar-desktop/tests/mesh_conformance.rs, platform/ultar-mobile/tests/mesh_conformance.rs"
 boards = "CompactMeshSend:1, MeshSend:1"
-note = "closing the menu cancels"
+note = "named deviation: toolkit radio cards 69 px high, board 61.6 px (docs/ui/mesh.md section 4); phone buttons 44 px, board 32 px"
 
 [action."mesh.send.target"]
 status = "different"
-impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
-test = "platform/ultar-desktop/tests/mesh.rs"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/view/mesh_send.rs + src/model/mesh.rs; platform/ultar-mobile/src/view/mesh.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh_clicks.rs; platform/ultar-mobile/tests/clicks.rs; conformance: platform/ultar-desktop/tests/mesh_conformance.rs, platform/ultar-mobile/tests/mesh_conformance.rs"
 boards = "CompactMeshSend:2, MeshSend:3"
-note = "menu items instead of a radio group"
+note = "named deviation: toolkit radio cards 69 px high, board 61.6 px (docs/ui/mesh.md section 4); phone buttons 44 px, board 32 px"
 
 [action."mesh.toggle"]
 status = "ok"

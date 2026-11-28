@@ -382,7 +382,10 @@ mod tests {
         report(&mut d, &[progress(OfferState::Expired)]);
         assert_eq!(d.svc.mesh.toasts.len(), 1, "the waiting toast is gone");
         let expired = &d.svc.mesh.toasts[0];
-        assert_eq!((expired.kind, expired.act.clone()), (Kind::Expired, Some(Act::Retry("p".into()))));
+        assert_eq!(
+            (expired.kind, expired.act.clone()),
+            (Kind::Expired, Some(Act::Retry("p".into())))
+        );
         report(&mut d, &[progress(OfferState::Failed)]);
         assert_eq!(d.svc.mesh.toasts[1].act, Some(Act::Retry("p".into())));
         report(&mut d, &[progress(OfferState::Opened)]);
@@ -424,7 +427,11 @@ mod tests {
     #[test]
     fn a_received_file_offers_open_when_its_place_is_known() {
         let mut m = Mesh::default();
-        m.received("beelink", "report.pdf", Some("file:///data/inbox/report.pdf".into()));
+        m.received(
+            "beelink",
+            "report.pdf",
+            Some("file:///data/inbox/report.pdf".into()),
+        );
         m.received("beelink", "b.pdf", None);
         assert_eq!(
             m.toasts[0].act,

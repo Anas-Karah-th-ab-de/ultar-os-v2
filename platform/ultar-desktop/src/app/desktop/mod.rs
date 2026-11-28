@@ -426,7 +426,9 @@ impl DesktopApp {
     fn compositor(&mut self, event: Event) -> Result<Outcome, AppError> {
         let d = &mut self.shell.d;
         Ok(match event {
-            Event::ShellKey { code, modifiers, .. } => {
+            Event::ShellKey {
+                code, modifiers, ..
+            } => {
                 let shift = modifiers.has(ultar_surface::proto::Modifiers::SHIFT);
                 self.shell.on_shell_key_with(code, shift)
             }

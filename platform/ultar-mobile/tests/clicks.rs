@@ -389,7 +389,7 @@ fn mesh_from_recents_and_the_choice(a: &mut ultar_mobile::MobileApp) {
         .sent(&settings, SendOutcome::Choose(targets()), 0);
     a.model.go(Screen::Mesh);
     a.rebuild().unwrap();
-    tap(a, &Click::MeshChoose(1));
+    tap_card(a, 1);
     let sent = tap(a, &Click::MeshConfirm);
     assert_eq!(
         sent,
@@ -421,6 +421,85 @@ fn mesh_from_recents_and_the_choice(a: &mut ultar_mobile::MobileApp) {
         a.model.mesh.notice_at(a.model.now_ms),
         Some("mobile.mesh.waiting")
     );
+}
+
+/// The buttons of the notices (board MeshStates) and the arrow of the choice: Cancel takes a
+/// waiting offer back, Retry sends again, Open opens the file that arrived, Close closes.
+#[test]
+fn the_notices_cancel_retry_open_and_close() {
+    use ultar_bus::messages::mesh::{HandoffProgress, OfferState, SendOutcome};
+    use ultar_mobile::model::mesh::Act;
+    let mut a = home(Lang::Ar);
+    let files = "org.ultar.files".to_owned();
+    let now = a.model.now_ms;
+    let t = targets().remove(0);
+    a.model.mesh.sent(
+        &files,
+        SendOutcome::Offered {
+            offer: 7,
+            target: t,
+        },
+        now,
+    );
+    a.rebuild().unwrap();
+    // Waiting: Cancel takes the offer back.
+    assert_eq!(
+        tap(&mut a, &Click::MeshOfferCancel),
+        vec![Effect::MeshCancel(7)]
+    );
+    assert!(a.model.mesh.notice.is_none());
+    // Nobody answered: Retry sends to the same device again.
+    let gone = |state| HandoffProgress {
+        offer: 7,
+        device: "ultar-pc".into(),
+        outgoing: true,
+        state,
+    };
+    let t = targets().remove(0);
+    a.model.mesh.sent(
+        &files,
+        SendOutcome::Offered {
+            offer: 7,
+            target: t,
+        },
+        now,
+    );
+    a.model.mesh.progress(&gone(OfferState::Expired), now);
+    a.rebuild().unwrap();
+    assert_eq!(
+        tap(&mut a, &Click::MeshRetry),
+        vec![Effect::MeshSend {
+            app: files.clone(),
+            device: Some("ultar-pc".into())
+        }]
+    );
+    // Declined and opened have no button; the notice closes.
+    a.model.mesh.progress(&gone(OfferState::Declined), now);
+    a.rebuild().unwrap();
+    assert!(a.built().node(&Click::MeshRetry).is_none());
+    tap(&mut a, &Click::MeshNoticeClose);
+    assert!(a.model.mesh.notice.is_none());
+    // A file arrived: Open.
+    a.model
+        .mesh
+        .received("file:///data/inbox/report.pdf".into(), now);
+    a.rebuild().unwrap();
+    assert_eq!(
+        a.model.mesh.notice.as_ref().and_then(|n| n.act.clone()),
+        Some(Act::Open("file:///data/inbox/report.pdf".into()))
+    );
+    assert_eq!(
+        tap(&mut a, &Click::MeshOpen),
+        vec![Effect::Open("file:///data/inbox/report.pdf".into())]
+    );
+    // The arrow of the choice goes back and sends nothing.
+    a.model
+        .mesh
+        .sent(&files, SendOutcome::Choose(targets()), now);
+    a.model.go(Screen::Mesh);
+    a.rebuild().unwrap();
+    assert!(tap(&mut a, &Click::MeshBack).is_empty());
+    assert_eq!(a.model.screen, Screen::Home);
 }
 
 #[test]

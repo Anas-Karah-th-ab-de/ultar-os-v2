@@ -43,10 +43,7 @@ pub fn status(b: &mut Builder<'_>, root: NodeId, m: &Mobile, time: bool) -> Resu
     };
     let spec = TextSpec::new(TypeSize::S12).weight(Weight::Semibold);
     // A notice of the mesh takes the time's place for a few seconds (status, polite).
-    let text = match m.mesh.notice_at(m.now_ms) {
-        Some(key) => Label::key(key),
-        None => Label::data(&clock),
-    };
+    let text = Label::data(&clock);
     let spec = spec.overflow(ultar_ui::text::Overflow::Ellipsis);
     b.add(bar, Text::new(text).spec(spec), Sizing::grow(1))?;
     let level = m

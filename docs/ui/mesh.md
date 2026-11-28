@@ -92,24 +92,38 @@ question is an alert dialog; toasts are status (warnings: alert). Pointer target
 | `shell.mesh.incoming` (desktop) | built | `platform/ultar-desktop/src/dialog/handoff.rs`, question `sysdialog.handoff` (`messages/mesh.rs`), asked by `ultar-mesh` | reference pictures `tests/snapshots/dialog-handoff-{ar,en}-{dark,light}.png` (pixel compare), model test (accept, decline, unanswered = declined), two real mesh services with a dialog stand-in (accepted: opened; declined: nothing stored, nothing opened) |
 | `settings.mesh`, `settings.mesh.device`, both pairing dialogs | built (2026-11-25) | `apps/ultar-settings/src/{service,state,update,view}/mesh.rs`, dialogs in `view/dialog.rs` | `apps/ultar-settings/tests/mesh.rs` (5, driven by clicks) |
 | quick-settings tile `qs.mesh` | built | `platform/ultar-desktop/src/model/quick.rs`, `shell/sheets.rs` | `platform/ultar-desktop/tests/mesh.rs` |
-| `shell.mesh.send` | built differently | `platform/ultar-desktop/src/shell/handoff.rs`, `model/mesh.rs`, `ports/bus_mesh.rs` | `tests/mesh.rs`, unit tests in `model/mesh.rs` |
-| `shell.mesh.toasts` | partly | `model/mesh.rs` (notices: waiting, opened, declined, nobody answered, not sent, no device, nothing in front) | unit tests |
+| `shell.mesh.send` | built (2026-11-28) | `platform/ultar-desktop/src/shell/handoff.rs`, `view/mesh_send.rs`, `model/mesh.rs`, `ports/bus_mesh.rs` | `tests/mesh.rs`, `tests/mesh_conformance.rs` (board `MeshSend`: names, x, width, state; the card height is the named deviation below), unit tests in `model/mesh.rs` |
+| `shell.mesh.toasts` | built (2026-11-28) | `view/mesh_toasts.rs`, `app/desktop/mesh_toasts.rs`, `model/mesh.rs`; toolkit toasts with Cancel (`mesh.offer.cancel`), Retry (`mesh.retry`) and Open (`mesh.received.open`, from the bus topic `mesh.received`) | `tests/mesh_conformance.rs` (board `MeshStates`: all ten toast buttons, 0 missing, 0 different), `model/mesh.rs` unit tests |
+| quick-settings arrow `qs.mesh.list` | built (2026-11-28) | `view/mesh_list.rs`, `shell/sheets.rs`, `shell/handoff.rs` (`list_device`): the list of the paired devices inside the sheet; a connected device gets what is in front, one that is not connected opens its place in Settings | `tests/mesh.rs` |
 | phone sheet `CompactMeshIncoming` | built (2026-11-25) | `platform/ultar-mobile/src/dialog/handoff.rs` (+ `sheet.rs`), program `ultar-mobile-dialog` (`src/program/dialog.rs`, service `mobile-dialog.toml`, edition phone), shared state `platform/ultar-dialog-core` | `tests/dialog_render.rs` (ar/en, dark/light, 360 × 760), `tests/dialog_clicks.rs` (accept, decline, unanswered = declined), `tests/dialog_e2e.rs` (real compositor in phone mode + bus: a stand-in mesh asks `sysdialog.handoff`, a tap on Accept / Decline answers `accept: true` / `false`) |
-| phone `qs.mesh` tile + `CompactMeshSend` | built (2026-11-25) | `platform/ultar-mobile/src/model/mesh.rs`, `view/{quick,recents,mesh}.rs`, `program/{shell,bus}.rs` (same bus calls as the desktop: `mesh.send`, state and progress topics) | `tests/clicks.rs` (tile on/off, arrow sends the app in front, recents button, hold + swipe up, choice: choose/confirm/cancel, notices), `tests/mesh_e2e.rs` (real compositor + bus with a stand-in mesh: recents → send → two devices → choice sheet → the second device receives it), `tests/render.rs` |
+| phone `qs.mesh` tile + `CompactMeshSend` + notices | built (2026-11-28) | `platform/ultar-mobile/src/model/mesh.rs`, `view/{quick,recents,mesh}.rs` (sheet: back arrow, radio group, Send, Cancel; notice card with Cancel / Retry / Open / Close), `program/{shell,bus}.rs` (calls `mesh.handoff_send`, `mesh.offer_cancel`; topics `mesh.state`, `mesh.handoff_progress`, `mesh.received`) | `tests/clicks.rs` (tile, recents button, hold + swipe up, choice, back, every notice button), `tests/mesh_conformance.rs` (boards `CompactMeshSend`, `CompactMeshIncoming`; two named deviations below), `tests/mesh_e2e.rs` (real compositor + bus), `tests/render.rs` |
+| flow phone -> desktop | built (2026-11-28) | `system/services/ultar-mesh/tests/handoff_flow.rs` | two real `ultar-mesh` services, each on its own bus: the gesture on the phone's recents card sends, the desktop's dialog view asks and its Accept is pressed, the launcher opens the same app at `#line=3` from the received file, the phone's notice turns to "opened" |
 
 Deviations from the board, on purpose: the wait is said as "a minute" (the dialog service answers after
 55 s, the mesh gives up after 60 s); "nothing is stored or opened before you accept" moved from the system
 line into the text so the line fits one row in every language. The boards were regenerated with this
 wording and with the word the system already uses for pairing (`إقران`).
 
-Further deviations (2026-11-25), to be settled with the owner:
+Named deviations (2026-11-28), to be settled with the owner:
 
-- The choice on the sending device is a **menu** of the active app ("Continue on" + one line per device);
-  choosing a device sends at once. The board shows a dialog with a radio group and Send / Cancel.
-- Reached by the active app's menu and **Super+M** (the board says window menu and Super+Shift+M: the
-  shell has no window menu yet and its key handler does not see Shift).
-- The tile's arrow (`qs.mesh.list`) continues what is in front; the board opens the list of paired devices.
-- Toasts are the shell's notices without buttons: no Cancel, Retry or Open on them yet.
+- **Device cards (`MeshSend`, `CompactMeshSend`).** `ultar-ui` has no device-card layout of the radio group: its
+  cards have padding 12 and a radio dot, the boards' have padding 8, the device icon and a check mark at the
+  end. The cards are therefore 69 / 67 / 67 px high (board 61.6 / 59.6 / 59.6) and the dialog, which is
+  centred, sits higher by the difference. The conformance tests name exactly these boxes (five on the desktop,
+  four on the phone) and fail when anything else differs; the count must go to 0 when the toolkit gets the
+  layout. Fix: a small additive layout `RadioLayout::Devices` in `platform/ultar-ui/src/widgets/` (owner
+  decision pending, the toolkit is outside this package).
+- **Touch targets (phone).** The phone's buttons are at least 44 px high; the board draws 32 px buttons inside
+  44 px rows. Same top edge and width, 12 px taller (`CompactMeshSend`, `CompactMeshIncoming`).
+- **Settings page rows of `MeshStates`** (`mesh.toggle`, `mesh.pair`, the Retry for "port could not be
+  opened") belong to `apps/ultar-settings`; the conformance test of this package leaves them out.
+- **Skeleton lines** behind the phone's sheet (the board's grey bars standing for the page) are not drawn;
+  the page behind the scrim is the title and the back arrow only.
+- **Reached by**: the entry "Continue on another device" in the active app's menu and **Super+Shift+M**
+  (plain Super+M does nothing; the key handler sees Shift now). On the phone: the recents card held and
+  swiped up, the mesh button of the card, and the arrow of the tile (the app in front). The phone has no
+  app menu on the home screen yet (CLICKS `mobile.app`: long press).
+- **Phone notices** show above the navigation bar as a card with a button, not in the status bar.
 - Settings: the row "folder for received files" (`mesh.inbox`) is not there (the service has no call for
   it); the pairing dialog does not show the attempts left; the device page has no state badge.
 - Reference pictures of the settings page do not exist yet.

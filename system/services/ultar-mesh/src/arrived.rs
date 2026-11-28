@@ -10,7 +10,12 @@ const MAX_NAME: usize = 128;
 /// The notice for what [`crate::node::Effect::Open`] is about to open, when that is a file
 /// that came from another device (`app` empty: the default app opens it). `None` for an
 /// activity that continues in an app.
-pub fn file_received(node: &Node, offer: u64, app: &str, uri: Option<&str>) -> Option<FileReceived> {
+pub fn file_received(
+    node: &Node,
+    offer: u64,
+    app: &str,
+    uri: Option<&str>,
+) -> Option<FileReceived> {
     let uri = uri.filter(|_| app.is_empty())?;
     let from_name = node
         .offers

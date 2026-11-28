@@ -15,9 +15,7 @@ use ultar_ui::paint::TextSpec;
 use ultar_ui::text::{Overflow, Weight};
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{
-    Button, ButtonVariant, Card, Label, RadioGroup, RadioLayout, Text,
-};
+use ultar_ui::widgets::{Button, ButtonVariant, Card, Label, RadioGroup, RadioLayout, Text};
 
 /// Width of the dialog (board MeshSend).
 const WIDTH: f32 = 480.0;
@@ -40,7 +38,11 @@ pub fn build(
         .padding(Padding::all(Space::S24))
         .gap(Space::S16);
     let root = ui.root();
-    let card = ui.add_sized(root, Card::new().floating().flex(flex), Sizing::width(width))?;
+    let card = ui.add_sized(
+        root,
+        Card::new().floating().flex(flex),
+        Sizing::width(width),
+    )?;
     let mut view = View::new(ui);
     fill(&mut view, card, d, tr)?;
     let height = view.ui.content_size().h;
