@@ -6,7 +6,7 @@
 use crate::device::{self, Device};
 use crate::offers::Offers;
 use crate::trust::{Joiner, Shower, Shown, Trust};
-use crate::view::{Served, ViewEnd, Viewing};
+use crate::view::{ViewEnd, Views};
 use crate::wire::{Frame, VERSION};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -122,12 +122,16 @@ pub enum Effect {
         /// The session.
         id: u64,
     },
-    /// The person accepted; the source streams now (the host starts its screend).
+    /// The session runs: the source streams and the viewer shows width x height pixels.
     ViewStarted {
-        /// Who watches.
+        /// The other device.
         peer: String,
         /// The session.
         id: u64,
+        /// Picture width in pixels.
+        width: u32,
+        /// Picture height in pixels.
+        height: u32,
     },
     /// A damaged rectangle arrived (viewer; `data` are the raw RGBA bytes of `region`).
     ViewFrame {
@@ -185,9 +189,7 @@ pub struct Node {
     pub(crate) clip_remote: Option<String>,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
-    pub(crate) viewing: Option<Viewing>,
-    pub(crate) served: Option<Served>,
-    pub(crate) view_id: u64,
+    pub(crate) views: Views,
 }
 
 impl Node {
@@ -208,9 +210,7 @@ impl Node {
             clip_remote: None,
             thinking: 0,
             serving: 0,
-            viewing: None,
-            served: None,
-            view_id: 0,
+            views: Views::default(),
         }
     }
 
@@ -347,6 +347,7 @@ impl Node {
             return (false, Vec::new());
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.view_revoke(peer, true));
         effects.push(Effect::Changed);
         (true, effects)
     }
@@ -356,7 +357,14 @@ impl Node {
         if !self.trust.set_rights(peer, rights) {
             return (false, Vec::new());
         }
-        (true, vec![Effect::Changed])
+        // Taking the right back ends a running remote view at once.
+        let mut effects = if rights.contains(&Right::Control) {
+            Vec::new()
+        } else {
+            self.view_revoke(peer, false)
+        };
+        effects.push(Effect::Changed);
+        (true, effects)
     }
 
     fn on_hello(&mut self, peer: &str, frame: Frame) -> Vec<Effect> {

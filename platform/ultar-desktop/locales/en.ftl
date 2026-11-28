@@ -441,3 +441,6 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+desk.note.screend = {arg0} is looking at this screen
+desk.note.screend.body = Everything you do here is visible to that device, and it can type here.
+desk.note.screend.stop = Stop

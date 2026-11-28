@@ -441,3 +441,6 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+desk.note.screend = {arg0} يشاهد هذه الشاشة
+desk.note.screend.body = كل ما تفعله هنا ظاهر لذلك الجهاز، ويمكنه الكتابة هنا.
+desk.note.screend.stop = إيقاف

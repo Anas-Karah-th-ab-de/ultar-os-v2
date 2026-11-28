@@ -441,3 +441,6 @@ volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du n
 volumed.drive.title = Laufwerk „{arg0}“ verbunden
 volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
 volumed.drive.mount = Einhängen
+desk.note.screend = {arg0} sieht diesen Bildschirm
+desk.note.screend.body = Alles, was du hier tust, ist auf diesem Gerät sichtbar, und es kann hier tippen.
+desk.note.screend.stop = Beenden

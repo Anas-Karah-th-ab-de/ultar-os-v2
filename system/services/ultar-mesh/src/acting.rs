@@ -87,7 +87,7 @@ impl MeshService {
                 ok,
                 steps,
             } => self.remote_answered(id, peer, ok, steps),
-            _ => {}
+            other => self.view_effect(other, bus),
         }
     }
 }

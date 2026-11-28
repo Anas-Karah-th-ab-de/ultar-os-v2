@@ -10,6 +10,9 @@
 
 /// Bytes per pixel.
 pub const BYTES_PER_PIXEL: usize = 4;
+/// Most pixels one rectangle may hold (encoder and decoder both refuse more, so a hostile
+/// header cannot make the decoder allocate gigabytes).
+pub const MAX_PIXELS: usize = 128 * 128;
 
 const OP_INDEX: u8 = 0x00;
 const OP_DIFF: u8 = 0x40;
@@ -27,27 +30,75 @@ fn hash(r: u8, g: u8, b: u8, a: u8) -> u8 {
     (n & 63) as u8
 }
 
+/// The running state of encoder and decoder: the 64-colour index and the previous pixel.
+struct Colours {
+    seen: [[u8; 4]; 64],
+    prev: [u8; 4],
+}
+
+impl Colours {
+    fn new() -> Colours {
+        Colours {
+            seen: [[0; 4]; 64],
+            prev: [0, 0, 0, 255],
+        }
+    }
+
+    fn index_of(px: [u8; 4]) -> u8 {
+        hash(px[0], px[1], px[2], px[3])
+    }
+
+    /// `px` is the new previous pixel and enters the index.
+    fn take(&mut self, px: [u8; 4]) {
+        self.seen[Self::index_of(px) as usize] = px;
+        self.prev = px;
+    }
+}
+
+/// Writes one pixel that differs from the previous one (index, small delta, luma or raw).
+fn encode_pixel(out: &mut Vec<u8>, colours: &mut Colours, px: [u8; 4]) {
+    let prev = colours.prev;
+    let index = Colours::index_of(px);
+    let dr = i16::from(px[0]) - i16::from(prev[0]);
+    let dg = i16::from(px[1]) - i16::from(prev[1]);
+    let db = i16::from(px[2]) - i16::from(prev[2]);
+    let same_alpha = px[3] == prev[3];
+    if colours.seen[index as usize] == px {
+        out.push(OP_INDEX | index);
+    } else if same_alpha && [dr, dg, db].iter().all(|d| (-2..=1).contains(d)) {
+        out.push(OP_DIFF | (((dr + 2) as u8) << 4) | (((dg + 2) as u8) << 2) | ((db + 2) as u8));
+    } else if same_alpha
+        && (-32..=31).contains(&dg)
+        && (-8..=7).contains(&(dr - dg))
+        && (-8..=7).contains(&(db - dg))
+    {
+        out.push(OP_LUMA | ((dg + 32) as u8));
+        out.push((((dr - dg + 8) as u8) << 4) | ((db - dg + 8) as u8));
+    } else {
+        out.push(OP_RGBA);
+        out.extend_from_slice(&px);
+    }
+    colours.take(px);
+}
+
 /// Encodes `width * height` pixels (4 bytes each) losslessly as a QOI image; `None` when
 /// the size is zero or `pixels` has the wrong length.
 pub fn encode(width: u32, height: u32, pixels: &[u8]) -> Option<Vec<u8>> {
-    let w = width as usize;
-    let h = height as usize;
+    let (w, h) = (width as usize, height as usize);
     let count = w.checked_mul(h)?.checked_mul(BYTES_PER_PIXEL)?;
-    if w == 0 || h == 0 || pixels.len() != count {
+    if w == 0 || h == 0 || w * h > MAX_PIXELS || pixels.len() != count {
         return None;
     }
     let mut out = Vec::with_capacity(count / 2 + 32);
     out.extend_from_slice(b"qoif");
     out.extend_from_slice(&width.to_be_bytes());
     out.extend_from_slice(&height.to_be_bytes());
-    out.push(4); // four channels
-    out.push(0); // sRGB, linear alpha
-    let mut seen = [[0u8; 4]; 64];
-    let mut prev = [0u8, 0u8, 0u8, 255u8];
+    out.extend_from_slice(&[4, 0]); // four channels, sRGB with linear alpha
+    let mut colours = Colours::new();
     let mut run = 0u8;
     for p in pixels.chunks_exact(4) {
         let px = [p[0], p[1], p[2], p[3]];
-        if px == prev {
+        if px == colours.prev {
             run += 1;
             if run == 62 {
                 out.push(OP_RUN | (run - 1));
@@ -59,31 +110,7 @@ pub fn encode(width: u32, height: u32, pixels: &[u8]) -> Option<Vec<u8>> {
             out.push(OP_RUN | (run - 1));
             run = 0;
         }
-        let index = hash(px[0], px[1], px[2], px[3]);
-        let dr = i16::from(px[0]) - i16::from(prev[0]);
-        let dg = i16::from(px[1]) - i16::from(prev[1]);
-        let db = i16::from(px[2]) - i16::from(prev[2]);
-        if seen[index as usize] == px {
-            out.push(OP_INDEX | index);
-        } else if (-2..=1).contains(&dr)
-            && (-2..=1).contains(&dg)
-            && (-2..=1).contains(&db)
-            && px[3] == prev[3]
-        {
-            out.push(OP_DIFF | (((dr + 2) as u8) << 4) | (((dg + 2) as u8) << 2) | ((db + 2) as u8));
-        } else if (-32..=31).contains(&dg)
-            && (-8..=7).contains(&(dr - dg))
-            && (-8..=7).contains(&(db - dg))
-            && px[3] == prev[3]
-        {
-            out.push(OP_LUMA | ((dg + 32) as u8));
-            out.push((((dr - dg + 8) as u8) << 4) | ((db - dg + 8) as u8));
-        } else {
-            out.push(OP_RGBA);
-            out.extend_from_slice(&px);
-        }
-        seen[index as usize] = px;
-        prev = px;
+        encode_pixel(&mut out, &mut colours, px);
     }
     if run > 0 {
         out.push(OP_RUN | (run - 1));
@@ -93,9 +120,9 @@ pub fn encode(width: u32, height: u32, pixels: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Decodes a QOI image into `(width, height, pixels)`; `None` when the bytes are no such
-/// image (bad magic, bad channels, bad size, truncated or malformed).
-pub fn decode(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+/// Size and byte count of the image whose header starts `data`; `None` for a bad or too
+/// large one.
+fn read_header(data: &[u8]) -> Option<(u32, u32, usize)> {
     if data.len() < 22 || &data[..4] != b"qoif" {
         return None;
     }
@@ -104,92 +131,78 @@ pub fn decode(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     if data[12] != 4 || width == 0 || height == 0 {
         return None;
     }
-    let count = (width as usize)
-        .checked_mul(height as usize)?
-        .checked_mul(BYTES_PER_PIXEL)?;
-    let mut out = Vec::with_capacity(count);
-    let mut seen = [[0u8; 4]; 64];
-    let mut prev = [0u8, 0u8, 0u8, 255u8];
+    let pixels = (width as usize).checked_mul(height as usize)?;
+    if pixels > MAX_PIXELS {
+        return None;
+    }
+    Some((width, height, pixels.checked_mul(BYTES_PER_PIXEL)?))
+}
 
-    // Read a byte, but never past the end of the data.
-    fn byte(data: &[u8], at: &mut usize) -> Option<u8> {
-        let b = *data.get(*at)?;
-        *at += 1;
-        Some(b)
-    }
-    // Unsigned 2/4-bit field to its signed value.
-    fn s2(b: u8) -> i16 {
-        i16::from(b & 0x03) - 2
-    }
-    fn s4(b: u8) -> i16 {
-        i16::from(b & 0x0f) - 8
-    }
-    fn add(b: u8, d: i16) -> u8 {
-        (i16::from(b) + d).rem_euclid(256) as u8
-    }
+/// Reads a byte, but never past the end of the data.
+fn byte(data: &[u8], at: &mut usize) -> Option<u8> {
+    let b = *data.get(*at)?;
+    *at += 1;
+    Some(b)
+}
 
-    let mut at = 14;
-    while out.len() < count {
-        let op = byte(data, &mut at)?;
-        if op == OP_RGB {
-            let r = byte(data, &mut at)?;
-            let g = byte(data, &mut at)?;
-            let b = byte(data, &mut at)?;
-            prev = [r, g, b, prev[3]];
-            let index = hash(prev[0], prev[1], prev[2], prev[3]);
-            seen[index as usize] = prev;
-            out.extend_from_slice(&prev);
-        } else if op == OP_RGBA {
-            let r = byte(data, &mut at)?;
-            let g = byte(data, &mut at)?;
-            let b = byte(data, &mut at)?;
-            let a = byte(data, &mut at)?;
-            prev = [r, g, b, a];
-            let index = hash(prev[0], prev[1], prev[2], prev[3]);
-            seen[index as usize] = prev;
-            out.extend_from_slice(&prev);
-        } else {
-            match op & 0xc0 {
-                OP_INDEX => {
-                    prev = seen[(op & 0x3f) as usize];
-                    out.extend_from_slice(&prev);
-                }
-                OP_DIFF => {
-                    let dr = s2(op >> 4);
-                    let dg = s2(op >> 2);
-                    let db = s2(op);
-                    prev = [add(prev[0], dr), add(prev[1], dg), add(prev[2], db), prev[3]];
-                    let index = hash(prev[0], prev[1], prev[2], prev[3]);
-                    seen[index as usize] = prev;
-                    out.extend_from_slice(&prev);
-                }
-                OP_LUMA => {
-                    let dg = i16::from(op & 0x3f) - 32;
-                    let mid = byte(data, &mut at)?;
-                    let dr_dg = s4(mid >> 4);
-                    let db_dg = s4(mid);
-                    prev = [
-                        add(prev[0], dr_dg + dg),
-                        add(prev[1], dg),
-                        add(prev[2], db_dg + dg),
-                        prev[3],
-                    ];
-                    let index = hash(prev[0], prev[1], prev[2], prev[3]);
-                    seen[index as usize] = prev;
-                    out.extend_from_slice(&prev);
-                }
-                OP_RUN => {
-                    let run = (op & 0x3f) + 1;
-                    for _ in 0..run {
-                        if out.len() >= count {
-                            break;
-                        }
+/// Unsigned `bits`-wide field to its signed value (bias `1 << (bits - 1)`).
+fn signed(b: u8, bits: u32) -> i16 {
+    i16::from(b & ((1 << bits) - 1)) - (1 << (bits - 1))
+}
+
+fn add(b: u8, d: i16) -> u8 {
+    (i16::from(b) + d).rem_euclid(256) as u8
+}
+
+/// One chunk of the stream: the pixels it stands for go to `out`; `None` for a bad chunk.
+fn decode_chunk(data: &[u8], at: &mut usize, colours: &mut Colours, out: &mut Vec<u8>, count: usize) -> Option<()> {
+    let op = byte(data, at)?;
+    let prev = colours.prev;
+    let px = match op {
+        OP_RGB => [byte(data, at)?, byte(data, at)?, byte(data, at)?, prev[3]],
+        OP_RGBA => [byte(data, at)?, byte(data, at)?, byte(data, at)?, byte(data, at)?],
+        _ => match op & 0xc0 {
+            OP_INDEX => colours.seen[(op & 0x3f) as usize],
+            OP_DIFF => [
+                add(prev[0], signed(op >> 4, 2)),
+                add(prev[1], signed(op >> 2, 2)),
+                add(prev[2], signed(op, 2)),
+                prev[3],
+            ],
+            OP_LUMA => {
+                let dg = i16::from(op & 0x3f) - 32;
+                let mid = byte(data, at)?;
+                [
+                    add(prev[0], signed(mid >> 4, 4) + dg),
+                    add(prev[1], dg),
+                    add(prev[2], signed(mid, 4) + dg),
+                    prev[3],
+                ]
+            }
+            _ => {
+                for _ in 0..(op & 0x3f) + 1 {
+                    if out.len() < count {
                         out.extend_from_slice(&prev);
                     }
                 }
-                _ => return None,
+                return Some(());
             }
-        }
+        },
+    };
+    colours.take(px);
+    out.extend_from_slice(&px);
+    Some(())
+}
+
+/// Decodes a QOI image into `(width, height, pixels)`; `None` when the bytes are no such
+/// image (bad magic, bad channels, bad size, truncated or malformed).
+pub fn decode(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let (width, height, count) = read_header(data)?;
+    let mut out = Vec::with_capacity(count);
+    let mut colours = Colours::new();
+    let mut at = 14;
+    while out.len() < count {
+        decode_chunk(data, &mut at, &mut colours, &mut out, count)?;
     }
     // The eight end-marker bytes must follow (seven zero bytes and one 0x01), so a
     // truncated picture is caught.
@@ -205,7 +218,11 @@ mod tests {
     use super::*;
 
     fn solid(w: u32, h: u32, px: [u8; 4]) -> Vec<u8> {
-        px.iter().cycle().take(w as usize * h as usize * 4).copied().collect()
+        px.iter()
+            .cycle()
+            .take(w as usize * h as usize * 4)
+            .copied()
+            .collect()
     }
 
     #[test]
@@ -213,7 +230,10 @@ mod tests {
         let px = solid(64, 48, [0x20, 0x40, 0x60, 0xff]);
         let enc = encode(64, 48, &px).unwrap();
         assert_eq!(decode(&enc), Some((64, 48, px.clone())));
-        assert!(enc.len() < px.len() / 10, "runs should collapse a flat image");
+        assert!(
+            enc.len() < px.len() / 10,
+            "runs should collapse a flat image"
+        );
     }
 
     #[test]
@@ -236,7 +256,7 @@ mod tests {
         let w = 16u32;
         let h = 16u32;
         let mut px = Vec::new();
-        for i in 0..(w * h * 4) as u32 {
+        for i in 0..(w * h * 4) {
             px.push((i.wrapping_mul(73).wrapping_add(11) & 0xff) as u8);
         }
         let enc = encode(w, h, &px).unwrap();
@@ -258,5 +278,16 @@ mod tests {
         let good = encode(4, 4, &solid(4, 4, [1, 2, 3, 4])).unwrap();
         assert_eq!(decode(&good[..10]), None);
         assert_eq!(decode(&good[..good.len() - 1]), None);
+    }
+
+    #[test]
+    fn a_hostile_header_cannot_make_the_decoder_allocate() {
+        let mut huge = b"qoif".to_vec();
+        huge.extend_from_slice(&u32::MAX.to_be_bytes());
+        huge.extend_from_slice(&u32::MAX.to_be_bytes());
+        huge.extend_from_slice(&[4, 0]);
+        huge.extend_from_slice(&[0; 16]);
+        assert_eq!(decode(&huge), None);
+        assert_eq!(encode(129, 128, &vec![0; 129 * 128 * 4]), None);
     }
 }

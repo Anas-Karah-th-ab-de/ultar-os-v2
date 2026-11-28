@@ -55,6 +55,7 @@ pub struct MeshService {
     listen: Listen,
     net: Option<Net>,
     last: Option<MeshState>,
+    pub(crate) view: crate::viewbus::ViewHost,
 }
 
 /// The device's key pair in `file` (mode 0600), created on first start.
@@ -132,6 +133,7 @@ impl MeshService {
             listen,
             net: None,
             last: None,
+            view: crate::viewbus::ViewHost::default(),
         })
     }
 
@@ -387,6 +389,9 @@ impl Service for MeshService {
         let Some(request) = self.remote(request, bus) else {
             return;
         };
+        let Some(request) = self.view_call(request, bus) else {
+            return;
+        };
         let method = request.method().to_owned();
         if method == SetEnabled::METHOD {
             serve::<SetEnabled>(request, |c, _| Done {
@@ -407,6 +412,7 @@ impl Service for MeshService {
         let now = Instant::now();
         self.expire_thinking(now);
         self.expire_acting(now);
+        self.expire_view(now, bus);
         let left = self.runtime.tick(now);
         self.host(left, bus);
     }

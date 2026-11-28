@@ -33,6 +33,7 @@ pub mod service;
 pub mod transfer;
 pub mod trust;
 pub mod view;
+mod viewbus;
 pub mod wire;
 
 pub use service::MeshService;

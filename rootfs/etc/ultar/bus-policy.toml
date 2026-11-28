@@ -346,8 +346,8 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 [[rule]]
 identity  = "system.mesh"
 register  = ["mesh"]
-publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask"]
+publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state"]
+call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "sysdialog.permission", "llm.complete", "agent.ask"]
 subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
@@ -414,6 +414,19 @@ subscribe = ["mesh.*", "agent.state", "agent.progress"]
 identity  = "app.settings"
 call      = ["mesh.*"]
 subscribe = ["mesh.state", "mesh.handoff_progress"]
+
+# Remote view (docs/integration/remote-view.md). The screen service of the viewed device (841)
+# follows the session the mesh serves, sends the picture pieces, and shows who is watching
+# through a notification with a Stop button. The viewer app asks, types and stops.
+[[rule]]
+identity  = "system.screend"
+call      = ["mesh.view_ready", "mesh.view_picture", "mesh.view_locked", "mesh.view_stop", "notify.post", "notify.dismiss", "notify.take_invoked"]
+subscribe = ["mesh.view_serve", "notify.invoked"]
+
+[[rule]]
+identity  = "app.remote"
+call      = ["mesh.view_start", "mesh.view_input", "mesh.view_stop"]
+subscribe = ["mesh.state", "mesh.view"]
 
 # Every app may say what the person is doing in it (what a handoff continues).
 [[rule]]

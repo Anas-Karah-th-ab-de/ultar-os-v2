@@ -1,0 +1,33 @@
+# Ultar remote view - app manifest (docs/APP-RULES.md, docs/integration/remote-view.md).
+id          = "org.ultar.remote"
+version     = "0.1.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.remote.name"
+description = "app.remote.desc"
+icon        = "monitor"
+
+[form]
+factors     = ["tablet", "laptop", "desktop"]
+modes       = ["desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+multi_window = false
+
+[permissions]
+# The mesh: the devices (mesh.state), ask a device to show its screen, send the pointer and
+# keys, end the session, and the session's picture (mesh.view). The viewed device decides:
+# its person says yes first, and only a paired device with the right "control" may ask.
+bus         = ["mesh.view_start", "mesh.view_input", "mesh.view_stop", "mesh.state", "mesh.view"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 160
+cpu         = "foreground"

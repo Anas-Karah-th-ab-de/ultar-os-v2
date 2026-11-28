@@ -19,3 +19,5 @@
 817 = "ui.output-config"
 # Screenshot service: reads outputs for the shell's screenshot button.
 825 = "ui.capture"
+# Remote view source (ultar-screend): reads the screen for the viewer.
+841 = "ui.capture"

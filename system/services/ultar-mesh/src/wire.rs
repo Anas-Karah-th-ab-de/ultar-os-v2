@@ -233,6 +233,9 @@ pub enum Frame {
     ViewStop {
         /// The session.
         id: u64,
+        /// The source ended it because its screen locked.
+        #[serde(default)]
+        locked: bool,
     },
     /// Anything this version does not know.
     #[serde(other)]

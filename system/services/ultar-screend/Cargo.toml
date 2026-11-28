@@ -1,0 +1,30 @@
+[package]
+name = "ultar-screend"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Screen service of Ultar OS: shows this device's screen to a paired device and takes its pointer and keys, only after the person here said yes (remote view, mesh item C1; system services, area 4)"
+
+[lib]
+name = "ultar_screend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-screend"
+path = "src/bin/ultar-screend.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+# The compositor's client library: the screen is read like the screenshot service does
+# (right ui.capture of this user only). tools/check-layers.toml allows exactly this edge.
+ultar-surface = { path = "../../../platform/ultar-surface", default-features = false }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
+# end-to-end tests: two mesh nodes, and the real compositor (headless) for the capture
+ultar-mesh = { path = "../ultar-mesh" }
+ultar-compositor = { path = "../../../platform/ultar-compositor" }
