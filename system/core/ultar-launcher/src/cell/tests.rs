@@ -28,12 +28,16 @@ fn plan() -> CellPlan {
         publish: Some("/data/ultar/publish/camera".into()),
         groups: vec![833],
         dev: DevMode::Binds,
-        tmp_bytes: 64 << 20,
-        drop_rights: Some(u64::MAX),
-        nproc: Some(64),
-        runtime: Some("/data/ultar/foreign/linux".into()),
-        bridge: Some("/usr/lib/ultar/foreign".into()),
-        setup: Some("/data/ultar/foreign/setup/foreign.exe-x".into()),
+        limits: CellLimits {
+            tmp_bytes: 64 << 20,
+            drop_rights: Some(u64::MAX),
+            nproc: Some(64),
+        },
+        foreign: ForeignBinds {
+            runtime: Some("/data/ultar/foreign/linux".into()),
+            bridge: Some("/usr/lib/ultar/foreign".into()),
+            setup: Some("/data/ultar/foreign/setup/foreign.exe-x".into()),
+        },
         program: Program {
             exec: "/usr/bin/camera".into(),
             args: vec!["--".into(), "".into(), "--uid".into()],
@@ -56,11 +60,12 @@ fn a_plan_survives_its_command_line() {
         publish: None,
         groups: Vec::new(),
         dev: DevMode::None,
-        drop_rights: None,
-        nproc: None,
-        runtime: None,
-        bridge: None,
-        setup: None,
+        limits: CellLimits {
+            drop_rights: None,
+            nproc: None,
+            ..p.limits
+        },
+        foreign: ForeignBinds::default(),
         ..p
     };
     let args = bare.to_args();
