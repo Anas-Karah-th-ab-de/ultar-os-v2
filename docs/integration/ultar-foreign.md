@@ -1,4 +1,4 @@
-# ultar-foreign – apps from other systems (stage P2: Linux)
+# ultar-foreign – apps from other systems (stage P2: Linux, stage P4: Windows)
 
 Plan and stages: `docs/FREMD-APPS.md`. This document describes what stage P2 built: Linux programs from a
 `.deb` of the person, installed into a Linux area and run as apps of their own, each in its own cell.
@@ -193,6 +193,77 @@ data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pi
 `ULTAR_FILES_SHOTS=<dir>` / `ULTAR_SETTINGS_SHOTS=<dir>` (`files-foreign-{ready,choices,running,done,not-yet}-*`,
 `settings-foreign-{,app-,remove-,empty-}{ar,en}-{dark,light}`).
 
+## Windows programs (stage P4)
+
+A `.exe` or `.msi` of the person becomes an app of its own that **installs itself in its own cell** on its
+first start. Nothing of the file runs anywhere else, and the cell is the same `app.foreign` cell as a Linux
+program's (the area read-only, own user and data, no network unless granted, no bus).
+
+| Part | Where | What it does |
+|---|---|---|
+| Component „Windows programs“ | `make-linux-runtime.sh` with `COMPONENTS=windows` (amd64 only) | Ubuntu's own `wine`/`wine64` 10 and `fonts-wine` (checked by apt's signatures; no WineHQ repository – one key fewer to trust). Wine 10 of Ubuntu 26.04 runs 32-bit programs in WoW64 mode (`i386-windows` libraries, no 32-bit Linux libraries) and has the Wayland driver (`winewayland`). Plus the wrapper `/usr/lib/ultar/wine/ultar-wine-app`. `/etc/ultar-runtime` says `components=windows`. |
+| Readers | `src/pe.rs`, `src/msi.rs`, `src/winread.rs` | What the file says about itself, read and never run: product, version, company (PE version resource; MSI `Property` table through the compound file and its string pool), the installer kind (NSIS mark after the image, Inno Setup in the version resource), a library is refused, the largest PNG icon. Every offset and count is checked, streams and resources are capped (32/16 MiB), chains follow at most as many steps as the file has sectors; fixed-seed fuzz tests (4000 damaged files each). |
+| Service | `src/windows.rs` | `inspect`: the file's own name, version, publisher (`verified: false`); `installable` only with the component. `install`: the administrator confirms (`foreign.source.exe`/`.msi` in the question), the file is kept as the app's **own installer** `<root>/setup/<app id>/<safe name>` (`0755`/`0644`), the PNG icon in `icons/`, the app is registered as kind `compat-exe` whose program is the wrapper with `<kind> <file> <name>`. `remove`: the launcher removes the app and its data (the Wine prefix), the service its installer and icon; nothing is purged from the Linux area. |
+| Launcher | `foreign.rs` `setup_dir`, `[paths] foreign_setup` | The directory named exactly like the foreign app (never a link) is bound **read-only** at `/.setup` in that app's cell; no manifest may start anything below `/.setup` or `/.ultar` directly. `compat-exe` gets the same cell as `compat-deb`. |
+| Wrapper | `tools/foreign/wine/ultar-wine-app` (in the area) | In the cell, as the app: the Wine prefix in `$HOME/.wine` (Wayland as display; no download of Wine's .NET/HTML engines), **only drive `C:`** (Wine's `Z:` for `/` and every other drive link removed at every start), the installer (`msiexec /i … /qb`, NSIS `/S`, Inno Setup `/SILENT`; another installer with its own window; a program without installer is copied to `C:\Program Files`), the program it brought (first start-menu shortcut that is not an uninstaller or document, one matching the product first), remembered in `$HOME/.ultar-wine/program`, then started (`wine start /wait /unix <shortcut>`; the cell ends with it). |
+
+Why the installer runs on the first start and not in the service: the service cannot enter an app's data
+(`data_root` is the launcher's, `0700`) and must not – the only place where a Windows program may write is
+its own cell. The person sees the installer's progress window through the bridge (MSI, Inno Setup) or the
+program after a silent install (NSIS).
+
+Wine as Ubuntu ships it, learned in the cells: its server is not in `PATH`
+(`/usr/lib/x86_64-linux-gnu/wine/wineserver`, the wrapper finds it), it **breaks with `TMPDIR` set**
+(`free(): invalid pointer` at its start – the cells set `TMPDIR=/tmp`, the wrapper unsets it), it finds
+its libraries through `/proc/self/exe` (the cells bring their own `/proc`), NSIS installers give up
+(code 2) when started through Wine's `\\?\unix\` path – they read themselves through their own path –
+so the wrapper runs every installer from a drive of its own, `S:` = the read-only `/.setup`, removed again
+after the installation; and a new prefix is about
+**1.2 GB** (Wine copies its Windows libraries, 64 and 32 bit, into every prefix) – per Windows app, in
+its own data.
+
+Security notes: Wine's `\\?\unix\` path reaches what the cell sees (the read-only area, its own data, its
+`/tmp`), never the host – the cell is the boundary, the missing `Z:` is tidiness. The installer copy is
+read-only in the cell (`/.setup`), and the data mount is `noexec` (Wine maps Windows programs by reading
+them). No network without the person's permission (same rules as Linux programs).
+
+### Test
+
+| Test | Command | Last line |
+|---|---|---|
+| readers, service, launcher | `cargo test -p ultar-foreign -p ultar-launcher -p ultar-bus` | `test result: ok` |
+| Windows end to end (root, real cells) | `tools/foreign/windows-e2e.sh [OUT]` | `FOREIGN-WINDOWS-E2E: ALLES OK` |
+| Wine on the Ultar kernel (QEMU) | `AREA=OUT DEB= tools/kern-test/foreign-e2e.sh` | `FOREIGN: windows-programs ok` (today: `FEHLT`, see below) |
+
+The end to end builds the area with `COMPONENTS=windows` and, for the test only, `TEST_EXTRA="xvfb
+x11-apps"` (an X server inside the cell for a screenshot – the real display is the bridge), downloads
+Notepad++ 8.7.1 (NSIS) and 7-Zip 24.09 (MSI) from their official pages (SHA-256 printed and pinnable with
+`NPP_SHA256`/`SEVENZIP_SHA256`), and checks for each: described from its own data, "cancelled" installs
+nothing, confirmed: registered with its own installer, first start installs it in the cell (own uid, only
+`lo`, installer read-only, drives only `c:`, `Z:` refused, a host file unreadable through `\\?\unix\`), its
+window shows (screenshot with content, `OUT/shots/*.png`), removal through Settings leaves no data, installer
+or icon and the area's packages unchanged.
+
+### The Ultar kernel and Wine (QEMU, 28.11.2026)
+
+`AREA=<area with COMPONENTS=windows> DEB= tools/kern-test/foreign-e2e.sh` also runs `windows-programs`
+(foreigntest: the area as root in a private mount namespace with its own `/proc`, `/tmp` and device nodes –
+no cell, since the kernel has no network namespace). Result: `wine --version` runs (`wine-10.0`), the new
+prefix does not: `wineboot -i` ends with `err:virtual:virtual_alloc_first_teb wine: failed to map the shared
+user data: c0000018` (`STATUS_CONFLICTING_ADDRESSES`), nothing of the prefix is made.
+
+| Missing for Wine | Seen | Why Wine needs it |
+|---|---|---|
+| `mmap` at a chosen address: hints are ignored (`MAP_FIXED_NOREPLACE` included, the kernel places at its own next address), `MAP_FIXED` only in 4–256 MiB and from 16 TiB | run | Windows' fixed addresses: `KUSER_SHARED_DATA` at `0x7ffe0000`, the reserved low 1 MiB, the lower 4 GiB of 32-bit programs, image bases (`0x140000000`, `0x180000000`) |
+| `waitid` (247) | run (`noch nicht umgesetzt: 247`) | waiting for the started `wineserver`/children |
+| `arch_prctl(ARCH_SET_GS)` (only `SET_FS`/`GET_FS`) | code | Windows x64 code finds its TEB through `%gs` |
+| `sigaltstack` (131) answers 0 and does nothing | code | Wine handles signals (exceptions of Windows code) on its own signal stack |
+| 32-bit programs: a user code selector `0x23` (the kernel has 32-bit code at `0x1b`) and `modify_ldt` (154) | code | WoW64 switches to 32-bit code and gives it its `%fs` TEB through an LDT entry |
+
+"code" means read in the kernel's sources and not yet reached by the run (it stops at the first
+mapping). Until these exist, Windows programs run on the Linux kernel only (like apps with network without
+the barrier of stage P0).
+
 ## Open points
 
 * The installation cell has no network: archive installs (`InstallFrom::Archive`) and `runtime_update`
@@ -205,6 +276,11 @@ data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pi
   (`tools/vm/make-vmware.sh` `SERVICES_UP`).
 * Linux hosts: without a seccomp filter a cell can create a user namespace (all app cells, not only these;
   reported by the end to end). The Ultar kernel has no user namespaces.
+* Windows: each app's prefix is about 1.2 GB (a shared read-only prefix template would save it); the
+  Wayland driver is the default but the end to end shows windows through X11 in the cell (Xvfb) – the
+  run with the real bridge `ultar-wayland` (P1) is still to be done; icons of MSI packages (their `Icon`
+  table) are not read; a program with several start-menu entries becomes one app (the main one); installers that need the network (web installers) fail without
+  the network permission; the installer copy stays as the app's own (repair/reinstall) until removal.
 * Folders (`files` areas) for foreign apps are wired through the launcher but not covered by the end to end.
 * P3: the surfaces ran in the click and picture tests only, not on the Ultar kernel (settings-e2e and
   launcher-e2e do not cover `foreign.*`); on the phone a foreign app is removed in Settings (the grid has

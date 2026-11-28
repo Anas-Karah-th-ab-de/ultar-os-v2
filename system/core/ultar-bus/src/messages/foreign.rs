@@ -78,11 +78,11 @@ impl Source {
         Self::ALL.into_iter().find(|s| s.word() == word)
     }
 
-    /// Whether this version of the system can install it (Windows and Android
-    /// follow in later stages; until then they are refused with
-    /// [`InstallOutcome::NotAvailable`]).
+    /// Whether this version of the system can install it: Linux packages, and Windows
+    /// programs when the Linux area has the component „Windows programs“ (else
+    /// [`InstallOutcome::NotAvailable`]); Android follows in a later stage.
     pub const fn installable(self) -> bool {
-        matches!(self, Self::Deb)
+        matches!(self, Self::Deb | Self::Exe | Self::Msi)
     }
 }
 
@@ -203,7 +203,8 @@ pub struct Install {
 pub enum InstallOutcome {
     /// The job runs; its steps follow on [`Progress`].
     Started(u64),
-    /// Windows and Android follow in a later version.
+    /// Not available on this system: Windows programs without the component „Windows
+    /// programs“ in the Linux area; Android follows in a later version.
     NotAvailable,
     /// The Linux area is not installed (component „Linux programs“).
     RuntimeMissing,
@@ -502,8 +503,10 @@ mod tests {
         for s in Source::ALL {
             assert_eq!(Source::from_word(s.word()), Some(s));
         }
-        assert!(Source::Deb.installable());
-        for later in [Source::Exe, Source::Msi, Source::Apk, Source::Unknown] {
+        for now in [Source::Deb, Source::Exe, Source::Msi] {
+            assert!(now.installable());
+        }
+        for later in [Source::Apk, Source::Unknown] {
             assert!(!later.installable());
         }
         assert!(Choices::default().is_valid());

@@ -146,6 +146,10 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
         let target = mount_point(root, Path::new(crate::foreign::BRIDGE_IN_CELL))?;
         sys_cell::bind(bridge, &target, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
     }
+    if let Some(setup) = plan.setup.as_ref().filter(|s| s.is_dir()) {
+        let target = mount_point(root, Path::new(crate::foreign::SETUP_IN_CELL))?;
+        sys_cell::bind(setup, &target, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
+    }
     let data = mount_point(root, Path::new(DATA))?;
     sys_cell::bind(&plan.data, &data, BindMode::WritableNoExec).map_err(|_| CellFailure::Mounts)?;
     if plan.namespaces.pid {
@@ -213,6 +217,7 @@ mod tests {
             nproc: None,
             runtime: None,
             bridge: None,
+            setup: None,
             program: Program {
                 exec: "/bin/x".into(),
                 args: Vec::new(),

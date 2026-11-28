@@ -218,6 +218,7 @@ fn foreign_isolation(
 /// the system's view, the bridge, its environment, never the bus.
 fn foreign_cell(
     core: &Core,
+    id: &AppId,
     plan: &mut CellPlan,
     env: &mut Vec<(String, String)>,
 ) -> Result<(), LaunchError> {
@@ -238,6 +239,12 @@ fn foreign_cell(
     plan.runtime = Some(runtime);
     plan.program = crate::foreign::bridged(&plan.program, bridge.is_some());
     plan.bridge = bridge;
+    plan.setup = core
+        .config
+        .paths
+        .foreign_setup
+        .as_ref()
+        .and_then(|root| crate::foreign::setup_dir(root, id));
     plan.publish = None;
     // only the compositor's directory of the shared ones; the apps' bus never
     if let Some(app_bus) = &core.config.paths.app_bus {
@@ -360,6 +367,7 @@ pub(crate) fn prepare(
         nproc: Some(u64::from(limits.pids)),
         runtime: None,
         bridge: None,
+        setup: None,
         program,
     };
     let mut env = environment(id, role, if cell { None } else { Some(&data) }, opening);
@@ -378,7 +386,7 @@ pub(crate) fn prepare(
         env.push((PUBLISH_ENV.to_owned(), view::PUBLISH.to_owned()));
     }
     if foreign {
-        foreign_cell(core, &mut plan, &mut env)?;
+        foreign_cell(core, id, &mut plan, &mut env)?;
     }
     Ok(Prepared { plan, env, restart })
 }
