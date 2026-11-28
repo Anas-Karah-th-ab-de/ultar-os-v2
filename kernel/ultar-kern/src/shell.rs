@@ -397,6 +397,10 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             for l in crate::socket::list() {
                 kprintln!("  {l}");
             }
+            let ix = crate::drivers::gen_ixgbe::irq_count();
+            if ix > 0 {
+                kprintln!("  10G MSI-X-Unterbrechungen: {ix}");
+            }
         }
         "dhcp" => dhcp(),
         "ipfest" => {
