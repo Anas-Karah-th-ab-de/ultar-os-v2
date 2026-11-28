@@ -62,4 +62,4 @@ avxtest: avxtest.c
 	gcc -O2 -Wall -Wextra -static -pthread -o $@ $<
 
 schutztest: schutztest.c
-	gcc -O2 -Wall -Wextra -static -o $@ schutztest.c
+	gcc -O2 -Wall -Wextra -static -pthread -o $@ schutztest.c

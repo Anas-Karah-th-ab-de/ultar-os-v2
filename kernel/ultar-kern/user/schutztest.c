@@ -2,6 +2,7 @@
  * of a file below a noexec mount never becomes executable. */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <pthread.h>
 #include <sched.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -35,6 +36,27 @@ static int in_child(void (*fn)(void *), void *arg) {
 
 static void write_to(void *p) { *(volatile char *)p = 1; }
 static void call(void *p) { ((void (*)(void))p)(); }
+
+/* a thread that writes the page again and again (on another core when there is one) */
+static void *writer(void *p) {
+    for (volatile unsigned i = 0;; i++) *(volatile unsigned *)p = i;
+    return NULL;
+}
+
+/* the main thread takes the right away while the writer runs: the writer must fault at once
+ * (TLB shootdown), not go on through the translation its core cached */
+static void shootdown(void *unused) {
+    (void)unused;
+    unsigned *p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    pthread_t t;
+    if (p == MAP_FAILED || pthread_create(&t, NULL, writer, p) != 0) _exit(2);
+    unsigned before = 0;
+    while ((before = *p) < 1000) sched_yield();
+    mprotect(p, 4096, PROT_READ);
+    /* the writer is on another core: no switch of address space flushes its TLB */
+    for (long i = 0; i < 2000000000L; i++) __asm__ volatile("pause");
+    _exit(0);
+}
 
 int main(void) {
     printf("SCHUTZTEST: mprotect\n");
@@ -75,6 +97,7 @@ int main(void) {
         check("noexec-Datei: auch die Kopie im Kind (fork)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 0);
     }
     if (fd >= 0) close(fd);
+    check("Faden auf anderem Kern schreibt -> mprotect trifft ihn sofort (SIGSEGV)", in_child(shootdown, NULL) == SIGSEGV);
     errno = 0;
     check("clone(CLONE_THREAD) ohne CLONE_VM -> EINVAL", syscall(SYS_clone, 0x10000 | 0x800 | SIGCHLD, 0, 0, 0, 0) == -1 && errno == EINVAL);
     printf("SCHUTZTEST: %d Fehler\n", fails);
