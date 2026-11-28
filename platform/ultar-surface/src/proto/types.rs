@@ -333,6 +333,11 @@ impl Rights {
     pub const fn union(self, other: Rights) -> Rights {
         Rights(self.0 | other.0)
     }
+
+    /// Only the rights in both sets.
+    pub const fn intersect(self, other: Rights) -> Rights {
+        Rights(self.0 & other.0)
+    }
 }
 
 /// Modifier keys held (bit set).

@@ -3,7 +3,7 @@
 //!
 //! | | `app.standard` (store) | `app.system` (KM Code Craft) |
 //! |---|---|---|
-//! | grantable | `network`, `background` | all permissions |
+//! | grantable | `network`, `background` | all app permissions (never the system UI ones, S-7) |
 //! | granted at installation | nothing (the user decides) | everything it declares |
 //! | memory default / most | 256 / 1024 MiB | 256 / 4096 MiB |
 //! | processes default / most | 64 / 256 | 128 / 1024 |
@@ -89,7 +89,9 @@ const STANDARD: Profile = Profile {
 
 const SYSTEM: Profile = Profile {
     name: ProfileName::System,
-    grantable: PermissionSet::all(),
+    // the shell, keyboard, lock screen and system dialogs are services with
+    // fixed rights, never apps (review S-7)
+    grantable: PermissionSet::for_apps(),
     granted_at_install: true,
     memory_default_mb: 256,
     memory_max_mb: 4096,
@@ -192,9 +194,28 @@ mod tests {
     #[test]
     fn system_apps_get_what_they_declare() {
         let p = ProfileName::System.profile();
-        let m = manifest("[permissions]\nnetwork = \"ask\"\nui = [\"ui.shell\", \"ui.capture\"]\n");
+        let m =
+            manifest("[permissions]\nnetwork = \"ask\"\nui = [\"ui.overlay\", \"ui.capture\"]\n");
         assert_eq!(p.admit(&m), Ok(()));
-        assert_eq!(p.initial_grants(&m).names(), "network,ui.shell,ui.capture");
+        assert_eq!(
+            p.initial_grants(&m).names(),
+            "network,ui.capture,ui.overlay"
+        );
+    }
+
+    #[test]
+    fn not_even_a_system_app_gets_the_system_ui() {
+        let p = ProfileName::System.profile();
+        for (name, permission) in [
+            ("ui.shell", Permission::UiShell),
+            ("ui.input-method", Permission::UiInputMethod),
+            ("ui.lock-screen", Permission::UiLockScreen),
+            ("ui.system-dialog", Permission::UiSystemDialog),
+        ] {
+            let m = manifest(&format!("[permissions]\nui = [\"{name}\"]\n"));
+            assert_eq!(p.admit(&m), Err(ProfileError::Permission(permission)));
+            assert!(!p.grantable.has(permission));
+        }
     }
 
     #[test]

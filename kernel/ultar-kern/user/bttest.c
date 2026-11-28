@@ -135,13 +135,19 @@ static void keyboard_checks(void) {
     ioctl(ev, EVIOCGBIT(0, sizeof types), types);
     ioctl(ev, EVIOCGBIT(EV_KEY, sizeof bits), bits);
     check("EVIOCGNAME: Name ohne Steuerzeichen", strcmp(name, "Ultar TestTastatur") == 0);
-    check("EVIOCGID: Bluetooth, Hersteller/Produkt", ioctl(ev, EVIOCGID, &id) == 0 && id.bustype == BUS_BLUETOOTH && id.product == 0x4b42);
+    /* S-4: the bus is the kernel's (virtual), whatever the service declared; vendor and product stay */
+    check("EVIOCGID: Bus virtuell statt Bluetooth, Hersteller/Produkt", ioctl(ev, EVIOCGID, &id) == 0 && id.bustype == BUS_VIRTUAL && id.product == 0x4b42);
     check("EVIOCGBIT: nur die erklärten Tasten", (types[0] & 2) && !(types[0] & 4) && (bits[KEY_A / 8] & 1 << KEY_A % 8) && !(bits[KEY_B / 8] & 1 << KEY_B % 8));
     char sysname[128] = {0};
     snprintf(sysname, sizeof sysname, "/sys/class/input/%s/device/name", path + 11);
     FILE *f = fopen(sysname, "r");
     char line[128] = {0};
     check("/sys/class/input/eventN/device/name", f && fgets(line, sizeof line, f) && strcmp(line, "Ultar TestTastatur\n") == 0);
+    if (f) fclose(f);
+    snprintf(sysname, sizeof sysname, "/sys/class/input/%s/device/id/bustype", path + 11);
+    f = fopen(sysname, "r");
+    memset(line, 0, sizeof line);
+    check("/sys/class/input/eventN/device/id/bustype: 0006 (virtuell)", f && fgets(line, sizeof line, f) && strcmp(line, "0006\n") == 0);
     if (f) fclose(f);
     const int press[4][3] = {{EV_KEY, KEY_A, 1}, {EV_SYN, 0, 0}, {EV_KEY, KEY_A, 0}, {EV_SYN, 0, 0}};
     check("Ereignisse schreiben", ev_write(fd, press, 4) == 0);
@@ -188,6 +194,8 @@ static void legacy_mouse_checks(void) {
     unsigned char rel[2] = {0};
     ioctl(ev, EVIOCGBIT(EV_REL, sizeof rel), rel);
     check("Maus: X, Y, Rad", ev >= 0 && rel[0] == 0x03 && rel[1] == 0x01);
+    struct input_id mid;
+    check("Maus (alter Datensatz): Bus virtuell", ioctl(ev, EVIOCGID, &mid) == 0 && mid.bustype == BUS_VIRTUAL);
     const int move[3][3] = {{EV_REL, REL_X, -5}, {EV_KEY, BTN_LEFT, 1}, {EV_SYN, 0, 0}};
     struct input_event got[4];
     check("Bewegung und Taste", ev_write(fd, move, 3) == 0 && read(ev, got, sizeof got) == 3 * (long)sizeof(struct input_event) && got[0].value == -5 &&

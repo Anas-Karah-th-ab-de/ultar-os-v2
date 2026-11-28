@@ -33,7 +33,7 @@ pub use accel::Acceleration;
 pub use input::PointerGrab;
 pub use key_helpers::KeyHelpers;
 pub use key_repeat::KeyRepeat;
-pub use layers::Placed;
+pub use layers::{Placed, CALL_BAND_PERCENT};
 pub use output_config::{Identify, OutputManagement, Provisional, MAX_QUEUED_SETUPS};
 pub use session::{Grant, Session, INDICATOR_MS};
 pub use shell::ShellSession;

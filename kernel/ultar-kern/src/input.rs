@@ -35,6 +35,9 @@ const ENODEV: i64 = 19;
 /// `BUS_USB`, `BUS_I8042` of `struct input_id`.
 const BUS_USB: u16 = 3;
 const BUS_I8042: u16 = 0x11;
+/// `BUS_VIRTUAL`: every device a service makes through `uinput` reports it, whatever the service
+/// declared – the seat (devd, the compositor) tells it from hardware by this (review S-4).
+pub const BUS_VIRTUAL: u16 = 6;
 
 /// HID usage (keyboard page) → Linux key code, usages 0x00..=0x65 (as Linux' `usbkbd`).
 const HID_KEYS: [u8; 0x66] = [
@@ -354,7 +357,8 @@ pub fn name(index: u8) -> Option<String> {
 fn id(index: u8) -> Option<[u16; 4]> {
     match index {
         0 | 1 => Some([BUS_I8042, 1, 1 + index as u16, 0]),
-        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| n.caps.first().map_or([BUS_USB, n.vendor, n.product, 0x0110], |c| c.id)),
+        // the bus of a virtual device is the kernel's, not the service's (S-4)
+        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| n.caps.first().map_or([BUS_USB, n.vendor, n.product, 0x0110], |c| [BUS_VIRTUAL, c.id[1], c.id[2], c.id[3]])),
     }
 }
 
@@ -514,6 +518,12 @@ pub fn sys_file(index: u8, rest: &[&str]) -> Option<String> {
         ["dev"] => Some(format!("13:{}\n", 64 + index as u32)),
         ["uevent"] => Some(format!("MAJOR=13\nMINOR={}\nDEVNAME=input/event{index}\n", 64 + index as u32)),
         ["device", "name"] => name(index).map(|n| n + "\n"),
+        // as Linux: `device/id/{bustype,vendor,product,version}`, four hex digits
+        ["device", "id", field] => {
+            let i = id(index)?;
+            let at = ["bustype", "vendor", "product", "version"].iter().position(|f| f == field)?;
+            Some(format!("{:04x}\n", i[at]))
+        }
         ["device", "uevent"] => {
             let i = id(index)?;
             Some(format!("PRODUCT={:x}/{:x}/{:x}/{:x}\nNAME=\"{}\"\n", i[0], i[1], i[2], i[3], name(index)?))

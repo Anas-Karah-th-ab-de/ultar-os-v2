@@ -186,6 +186,7 @@ impl State {
             return false;
         }
         self.session.locked = true;
+        self.configure_call_screens();
         self.drop_shell_focus();
         self.pointer.grab = None;
         if let Some(r) = self.pointer.snap_preview.take() {
@@ -211,6 +212,7 @@ impl State {
             return Err(ErrorCode::Permission);
         }
         self.session.locked = false;
+        self.configure_call_screens();
         self.damage_all();
         self.notify_session();
         self.update_hover();
