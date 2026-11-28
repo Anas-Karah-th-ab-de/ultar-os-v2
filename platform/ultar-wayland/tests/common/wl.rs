@@ -182,7 +182,7 @@ impl Wl {
                     std::thread::sleep(std::time::Duration::from_millis(1))
                 }
                 Err(e) => {
-                    eprintln!("sendmsg: {e:?}");
+                    let _ = e;
                     self.dead = true;
                     return;
                 }
@@ -200,7 +200,7 @@ impl Wl {
             match recvmsg(&self.sock, &mut iov, &mut anc, RecvFlags::CMSG_CLOEXEC) {
                 Ok(r) if r.bytes == 0 => {
                     self.dead = true;
-                    return;
+                    break;
                 }
                 Ok(r) => {
                     for m in anc.drain() {
@@ -213,7 +213,7 @@ impl Wl {
                 }
                 Err(rustix::io::Errno::AGAIN) => break,
                 Err(e) => {
-                    eprintln!("recvmsg: {e:?}");
+                    let _ = e;
                     self.dead = true;
                     return;
                 }

@@ -8,6 +8,7 @@ use crate::output::Outputs;
 use crate::pixels::Image;
 use crate::seat::Seat;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,7 +17,7 @@ use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1
 use wayland_protocols::xdg::shell::server::{
     xdg_popup::XdgPopup, xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase,
 };
-use wayland_server::backend::protocol::ProtocolError;
+use wayland_server::backend::protocol::{Interface, ProtocolError};
 use wayland_server::backend::{ClientId, ObjectId};
 use wayland_server::protocol::{
     wl_buffer::WlBuffer, wl_callback::WlCallback, wl_surface::WlSurface,
@@ -281,18 +282,33 @@ pub const NO_MEMORY: u32 = 2;
 /// wl_display error: the request cannot be served.
 pub const IMPLEMENTATION: u32 = 3;
 
-/// Ends one Wayland connection with a wl_display error. New objects of
-/// the request need no data then (the connection is already dead).
+/// Stands for wl_display when asking the backend for object 1 (it compares
+/// interfaces by name).
+static WL_DISPLAY: Interface = Interface {
+    name: "wl_display",
+    version: 1,
+    requests: &[],
+    events: &[],
+    c_ptr: None,
+};
+
+/// Ends one Wayland connection with a wl_display error the app can read.
+/// New objects of the request need no data then (the connection is dead).
 pub fn refuse(dh: &DisplayHandle, client: &Client, code: u32, message: &str) {
-    client.kill(
-        dh,
-        ProtocolError {
-            code,
-            object_id: 1,
-            object_interface: "wl_display".into(),
-            message: message.into(),
-        },
-    );
+    let handle = dh.backend_handle();
+    let text = CString::new(message.replace('\0', "")).unwrap_or_default();
+    match handle.object_for_protocol_id(client.id(), &WL_DISPLAY, 1) {
+        Ok(display) => handle.post_error(display, code, text),
+        Err(_) => client.kill(
+            dh,
+            ProtocolError {
+                code,
+                object_id: 1,
+                object_interface: "wl_display".into(),
+                message: message.into(),
+            },
+        ),
+    }
 }
 
 /// The bridge.
