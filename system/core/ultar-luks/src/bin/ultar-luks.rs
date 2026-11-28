@@ -122,8 +122,7 @@ fn unlock() -> Result<(), String> {
     );
     let _ = console.write_all(title.as_bytes());
     loop {
-        let _ = console.write_all(b"Passwort / passphrase: ");
-        let Some(pass) = crypt::read_hidden(&mut console) else {
+        let Some(pass) = crypt::read_hidden(&mut console, b"Passwort / passphrase: ") else {
             return Err("no console input".into());
         };
         match ultar_luks::open(&mut reader(&data), &pass) {

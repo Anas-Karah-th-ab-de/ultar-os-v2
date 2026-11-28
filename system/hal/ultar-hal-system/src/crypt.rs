@@ -45,14 +45,16 @@ pub fn console() -> io::Result<File> {
     OpenOptions::new().read(true).write(true).open(CONSOLE)
 }
 
-/// Reads one line (at most 1 KiB) from `console` with the echo off; the echo comes back
-/// afterwards. `None` when the console ends before any input.
-pub fn read_hidden(console: &mut File) -> Option<Zeroizing<Vec<u8>>> {
+/// Shows `prompt` and reads one line (at most 1 KiB) from `console` with the echo off; the
+/// echo comes back afterwards. The echo goes off **before** the prompt appears, so nothing typed
+/// in answer to the prompt is ever shown. `None` when the console ends before any input.
+pub fn read_hidden(console: &mut File, prompt: &[u8]) -> Option<Zeroizing<Vec<u8>>> {
     let old = tcgetattr(&*console).ok();
     if let Some(mut quiet) = old.clone() {
         quiet.local_flags.remove(LocalFlags::ECHO);
         let _ = tcsetattr(&*console, SetArg::TCSANOW, &quiet);
     }
+    let _ = console.write_all(prompt);
     // room for the longest passphrase: no reallocation leaves copies behind
     let mut line = Zeroizing::new(Vec::with_capacity(MAX_LINE));
     let mut byte = [0u8; 1];

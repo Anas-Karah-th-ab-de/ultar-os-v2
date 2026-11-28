@@ -285,8 +285,9 @@ if [ -n "$TREE_ONLY" ]; then
   echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME-tree)"
   exit 0
 fi
-if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
-  cp /bin/busybox "$R/bin/busybox"; /bin/busybox --list >"$R/bin/.applets"
+BB=$(bash scripts/static-busybox.sh)
+if [ -n "$BB" ]; then
+  cp "$BB" "$R/bin/busybox"; "$BB" --list >"$R/bin/.applets"
 fi
 # `mke2fs -d` keeps the owners of the source files: the images must not depend on who builds them
 root_owned() { # image source-dir

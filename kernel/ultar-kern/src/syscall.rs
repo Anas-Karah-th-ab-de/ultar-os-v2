@@ -1990,9 +1990,12 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
         return if with(|p| p.fd(fd).is_some()).unwrap_or(false) { -ENOTTY } else { -EBADF };
     }
     match req {
-        0x5401 => {
+        // TCGETS, and TCGETS2 (`struct termios2`: the same plus input/output speed, 44 bytes) –
+        // newer glibc (2.42, Ubuntu 26.04+) asks with the latter; without it the echo of a
+        // password prompt could not be switched off
+        0x5401 | 0x802c_542a => {
             let t = TTY.lock();
-            let mut b = vec![0u8; 36];
+            let mut b = vec![0u8; if req == 0x5401 { 36 } else { 44 }];
             b[0..4].copy_from_slice(&0x500u32.to_le_bytes()); // ICRNL|IXON
             b[4..8].copy_from_slice(&0x5u32.to_le_bytes()); // OPOST|ONLCR
             b[8..12].copy_from_slice(&0xbfu32.to_le_bytes()); // B38400|CS8|CREAD
@@ -2000,6 +2003,10 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             b[12..16].copy_from_slice(&lflag.to_le_bytes());
             let cc = [3u8, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22];
             b[17..17 + cc.len()].copy_from_slice(&cc);
+            if b.len() == 44 {
+                b[36..40].copy_from_slice(&38400u32.to_le_bytes()); // c_ispeed
+                b[40..44].copy_from_slice(&38400u32.to_le_bytes()); // c_ospeed
+            }
             drop(t);
             if put(arg, &b) {
                 0
@@ -2007,8 +2014,9 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
                 -EFAULT
             }
         }
-        0x5402..=0x5404 => {
-            let Some(b) = get(arg, 36) else { return -EFAULT };
+        // TCSETS/TCSETSW/TCSETSF and their termios2 forms TCSETS2/W2/F2 (only the flags count)
+        0x5402..=0x5404 | 0x402c_542b..=0x402c_542d => {
+            let Some(b) = get(arg, if req <= 0x5404 { 36 } else { 44 }) else { return -EFAULT };
             let lflag = u32::from_le_bytes(b[12..16].try_into().unwrap());
             let mut t = TTY.lock();
             t.icanon = lflag & 2 != 0;

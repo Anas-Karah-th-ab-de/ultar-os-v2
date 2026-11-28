@@ -27,9 +27,10 @@ if [ "${IMG:-0}" = 1 ] || [ "${RUN:-0}" = 1 ]; then
   for p in ultar-compositor ultar-compositor-testclient; do
     b="${COMPOSITOR_BIN:-../../target/x86_64-unknown-linux-gnu/release}/$p"; [ -x "$b" ] && mcopy -i "$OUT/ultar-kern-esp.img" "$b" ::/bin/
   done
-  if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
-    mcopy -i "$OUT/ultar-kern-esp.img" /bin/busybox ::/bin/busybox
-    /bin/busybox --list > /tmp/ultar-applets && mcopy -i "$OUT/ultar-kern-esp.img" /tmp/ultar-applets ::/bin/.applets
+  BB=$(bash ../../scripts/static-busybox.sh)   # /bin/busybox, or busybox-static on newer Ubuntu
+  if [ -n "$BB" ]; then
+    mcopy -i "$OUT/ultar-kern-esp.img" "$BB" ::/bin/busybox
+    "$BB" --list > /tmp/ultar-applets && mcopy -i "$OUT/ultar-kern-esp.img" /tmp/ultar-applets ::/bin/.applets
   fi
   printf 'Willkommen auf dem Ultar-Kern.\nDiese Datei liegt auf der FAT-Startpartition.\n' > /tmp/ultar-liesmich.txt
   mcopy -i "$OUT/ultar-kern-esp.img" /tmp/ultar-liesmich.txt ::/liesmich.txt

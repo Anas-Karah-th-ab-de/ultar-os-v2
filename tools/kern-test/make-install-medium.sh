@@ -55,8 +55,9 @@ else
     SRC=$W/eigen; mkdir -p "$SRC"/{bin,usr/bin,etc/ultar,data/ultar,root,tmp,home}
     # brand part: one source (docs/BRAND.md)
     { cat rootfs/etc/os-release; printf 'PRETTY_NAME="%s (Ultar-Kern)"\n' "$(. rootfs/etc/os-release; echo "$NAME")"; } > "$SRC/etc/os-release"
-    if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
-      cp /bin/busybox "$SRC/bin/busybox"; /bin/busybox --list > "$SRC/bin/.applets"
+    BB=$(bash scripts/static-busybox.sh)
+    if [ -n "$BB" ]; then
+      cp "$BB" "$SRC/bin/busybox"; "$BB" --list > "$SRC/bin/.applets"
     fi
   fi
   # 2) Startpartition des installierten Systems: A/B-Lader + Marke \ultar\installiert; der Kern liegt roh daneben

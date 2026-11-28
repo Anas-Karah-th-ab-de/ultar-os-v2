@@ -24,7 +24,8 @@ for p in $PROGS; do
     b=$(basename "$l"); [ -e $R/usr/lib/x86_64-linux-gnu/$b ] || cp -L "$l" $R/usr/lib/x86_64-linux-gnu/
   done
 done
-[ -x /bin/busybox ] && cp /bin/busybox $R/usr/bin/busybox
+BB=$(bash scripts/static-busybox.sh); [ -n "$BB" ] || { [ -x /bin/busybox ] && BB=/bin/busybox; }
+[ -n "$BB" ] && cp "$BB" $R/usr/bin/busybox
 for t in /usr/share/terminfo/l/linux /lib/terminfo/l/linux; do [ -f $t ] && { mkdir -p $R/usr/share/terminfo/l; cp -L $t $R/usr/share/terminfo/l/; break; }; done
 printf 'root:x:0:0:root:/root:/bin/bash\n' > $R/etc/passwd
 printf 'root:x:0:\n' > $R/etc/group

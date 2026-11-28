@@ -13,8 +13,9 @@ EFI=kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi
 rm -rf "$Z"; mkdir -p "$Z/EFI/BOOT" "$Z/bin" "$Z/ultar-kern"
 cp "$EFI" "$Z/EFI/BOOT/BOOTX64.EFI"
 for p in hallo hallo-glibc kerntest ereignis; do cp kernel/ultar-kern/user/$p "$Z/bin/"; done
-if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
-  cp /bin/busybox "$Z/bin/"; /bin/busybox --list > "$Z/bin/.applets"
+BB=$(bash scripts/static-busybox.sh)
+if [ -n "$BB" ]; then
+  cp "$BB" "$Z/bin/busybox"; "$BB" --list > "$Z/bin/.applets"
 fi
 # Protokolldatei vorab anlegen (256 KB): der Kern überschreibt sie an Ort und Stelle
 head -c 262144 /dev/zero | tr '\0' ' ' > "$Z/ultar-kern/selbsttest.txt"
