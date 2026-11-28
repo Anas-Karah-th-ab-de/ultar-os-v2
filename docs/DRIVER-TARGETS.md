@@ -46,7 +46,7 @@ und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 | Treiber | T1 | T2 | Stand | Hinweis |
 |---|---|---|---|---|
 | **WLAN Intel** | AX201 | BE200 | ⬜ | Braucht die **geschlossene Intel-Firmware** (frei weitergebbar, wird nur geladen). Die Firmware-Schnittstelle ist nur über den Linux-Quelltext beschrieben → eigener Treiber nach dieser Beschreibung + eigener 802.11-Stapel (WPA2/WPA3). Größtes Einzelpaket. |
-| Bluetooth Intel (USB-HCI + Firmware) | ✔ | ✔ | ⬜ | HCI ist Norm; Firmware geschlossen; `ultar-bt`-Host wiederverwenden |
+| Bluetooth Intel (USB-HCI + Firmware) | ✔ | ✔ | 🔧 HCI-Host da; Intel-Erkennung (Read Version TLV) am echten BE200 belegt (Variante, Modus, Firmware-Name); Firmware-Ladung (Secure Send + Reset) offen, braucht Bootloader-Modus + `.sfi` im Abbild (`docs/integration/bt-intel.md`) | HCI ist Norm; Firmware geschlossen |
 | NPU (Intel AI Boost) | – | ✔ | 🔧 Stufe N0 am Gerät geprüft (VFIO, 24.11.2026: Takt, Einschalten bis zum laufenden IP-Block, Ausschalten); noch keine Inferenz; Stufen: `docs/integration/intel-npu.md` | keine offene Norm, aber offener Linux-Treiber als Beschreibung; Firmware geschlossen |
 
 ## Stufe 4 – Erkundung: Geräte ohne offene Beschreibung (letzter Bauteil)

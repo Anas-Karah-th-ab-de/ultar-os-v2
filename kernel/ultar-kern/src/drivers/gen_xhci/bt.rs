@@ -225,13 +225,11 @@ pub(super) fn attach(hc: &mut Hc, slot: u32, ctx: (u64, u64, u32), d: &Desc, vid
     if vid == 0x8087 {
         let mps = (ev.2 & 0x7ff).clamp(8, 1024) as usize;
         if let Some((variant, img, fw)) = intel_version(hc, slot, ev_dci, mps) {
-            let mode = match img {
-                1 => "Bootloader",
-                2 => "IML",
-                3 => "operativ",
-                _ => "unbekannt",
-            };
-            crate::kprintln!("[bt] Intel-Controller Variante {variant:#x}, Modus {mode}, braucht {fw}");
+            match img {
+                1 | 2 => crate::kprintln!("[bt] Intel-Controller Variante {variant:#x} im {}-Modus, braucht Firmware {fw}", if img == 1 { "Bootloader" } else { "IML" }),
+                3 => crate::kprintln!("[bt] Intel-Controller Variante {variant:#x}, Firmware bereits geladen (operativ)"),
+                _ => crate::kprintln!("[bt] Intel-Controller Variante {variant:#x}, Modus unbekannt"),
+            }
         }
     }
     let pages = [alloc_pages(1), alloc_pages(1), alloc_pages(1)];
