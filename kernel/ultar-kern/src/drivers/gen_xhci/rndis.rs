@@ -70,6 +70,14 @@ struct Nic {
 static NICS: Mutex<Vec<Nic>> = Mutex::new(Vec::new());
 const RX_MAX: usize = 256;
 
+// Vorübergehende Zähler zur Fehlersuche (über `netz` sichtbar): report-Aufrufe für usb-net, davon
+// mit gutem Abschluss, davon als RNDIS-Paket erkannt, davon in die Warteschlange gelegt.
+use core::sync::atomic::{AtomicU64, Ordering};
+static DBG: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
+pub fn dbg() -> [u64; 4] {
+    core::array::from_fn(|i| DBG[i].load(Ordering::Relaxed))
+}
+
 fn rd32(p: u64, off: usize) -> u32 {
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u32) }
 }
@@ -84,14 +92,18 @@ pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, 
     let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
         return false;
     };
+    DBG[0].fetch_add(1, Ordering::Relaxed);
     let part = nic.in_ep.part(trb);
     if matches!(code, 1 | 13) {
+        DBG[1].fetch_add(1, Ordering::Relaxed);
         let got = TD.saturating_sub(left) as usize;
         let base = nic.in_ep.buf + part as u64 * TD as u64;
         if got >= 44 && rd32(base, 0) == PACKET_MSG {
+            DBG[2].fetch_add(1, Ordering::Relaxed);
             let data_off = rd32(base, 8) as usize + 8;
             let data_len = rd32(base, 12) as usize;
             if data_off + data_len <= got && data_len > 0 && nic.rx.len() < RX_MAX {
+                DBG[3].fetch_add(1, Ordering::Relaxed);
                 let mut f: Vec<u8> = Vec::new();
                 if !crate::heap::kernel(|| f.try_reserve_exact(data_len).is_err()) {
                     // SICHERHEIT: Quelle liegt im Teil `part` der DMA-Fläche innerhalb `got`.

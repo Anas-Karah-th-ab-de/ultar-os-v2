@@ -381,6 +381,11 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
 }
 
 /// Zeichen von USB-Tastaturen (für Konsole und Terminal)
+/// USB-Netz-Fehlersuchzähler (report/ok/rndis/queued) – vorübergehend, über `netz` sichtbar.
+pub fn rndis_dbg() -> [u64; 4] {
+    rndis::dbg()
+}
+
 pub fn poll_key() -> Option<char> {
     let mut g = HC.try_lock()?;
     for hc in g.iter_mut() {
