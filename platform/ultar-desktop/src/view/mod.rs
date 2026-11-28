@@ -8,6 +8,7 @@ pub mod banners;
 pub mod bar;
 pub mod bluetooth;
 pub mod calendar;
+pub mod desk;
 pub mod dock;
 pub mod geometry;
 pub mod helper;
@@ -192,6 +193,14 @@ pub enum Target {
     NoteAction(u64, u8),
     /// Lock screen: a control of the playing medium (0 previous, 1 play/pause, 2 next).
     Media(u8),
+    /// Desktop background: a shortcut (index into `Places::shortcuts`).
+    Shortcut(usize),
+    /// Rename dialog of a shortcut: the name field.
+    RenameField,
+    /// Rename dialog: rename.
+    RenameSave,
+    /// Rename dialog: cancel.
+    RenameCancel,
 }
 
 /// A built tree and what its nodes mean.

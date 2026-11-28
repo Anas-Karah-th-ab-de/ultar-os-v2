@@ -101,6 +101,27 @@ impl Ui {
         Ok(())
     }
 
+    /// Changes what a shell brick shows (its kind; label and name stay) – the selected
+    /// shortcut of the desktop – without building the tree again, so a double click that
+    /// began on it still completes. Never emits an action.
+    pub fn set_brick(
+        &mut self,
+        id: NodeId,
+        kind: crate::widgets::BrickKind,
+    ) -> Result<(), UiError> {
+        match &mut self.node_mut(id)?.widget {
+            Widget::Brick(b) => b.kind = kind,
+            _ => {
+                return Err(UiError::WrongWidget {
+                    node: id,
+                    expected: "a brick",
+                })
+            }
+        }
+        self.touch(id);
+        Ok(())
+    }
+
     /// The tooltip of a node.
     pub fn tooltip(&self, id: NodeId) -> Option<&Label> {
         self.slot(id).and_then(|n| n.tooltip.as_ref())

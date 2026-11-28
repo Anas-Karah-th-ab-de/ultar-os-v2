@@ -442,3 +442,26 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+
+# The desktop background: its menu, the app shortcuts, the rename dialog
+desk.desk.new_shortcut = اختصار جديد…
+desk.desk.new_folder = مجلد جديد
+desk.desk.paste = لصق
+desk.desk.size.large = أيقونات كبيرة
+desk.desk.size.medium = أيقونات متوسطة
+desk.desk.size.small = أيقونات صغيرة
+desk.desk.show = إظهار أيقونات سطح المكتب
+desk.desk.sort = ترتيب حسب الاسم
+desk.desk.wallpaper = تغيير الخلفية
+desk.desk.display = إعدادات الشاشة
+desk.desk.settings = تخصيص سطح المكتب
+desk.desk.terminal = فتح في الطرفية
+desk.desk.pick = اختر تطبيقًا لإضافة اختصاره إلى سطح المكتب
+desk.desk.add_shortcut = إضافة إلى سطح المكتب
+desk.desk.remove_shortcut = إزالة من سطح المكتب
+desk.desk.rename = إعادة التسمية
+desk.desk.properties = الخصائص
+desk.desk.rename.title = إعادة تسمية الاختصار
+desk.desk.rename.name = الاسم
+desk.desk.rename.save = إعادة التسمية
+desk.desk.rename.cancel = إلغاء

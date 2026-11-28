@@ -301,6 +301,10 @@ impl Harness {
                     let text = p.view.ui.text(a.node).unwrap().to_owned();
                     self.shell.on_query(&text)
                 }
+                (Some(Target::RenameField), ActionKind::TextChanged) => {
+                    let text = p.view.ui.text(a.node).unwrap().to_owned();
+                    self.shell.on_rename_text(&text)
+                }
                 (Some(t), k) => self.shell.on_popup(&t, k),
                 (None, _) => continue,
             };
@@ -398,6 +402,41 @@ impl Harness {
         for ch in text.chars() {
             self.key_popup(Key::Char(ch));
         }
+    }
+
+    /// The desktop background as the shell shows it now (laid out).
+    pub fn background(&self) -> View {
+        let mut v = ultar_desktop::view::wallpaper::build(
+            &self.shell.d,
+            self.look,
+            self.screen,
+            self.shell.shape,
+            &self.shell.tr,
+        )
+        .unwrap();
+        let _ = v.ui.content_size();
+        v
+    }
+
+    /// `clicks` presses of the primary button on a node of `view` (the background), each
+    /// action handled by the shell; the same tree takes every press (the shell changes the
+    /// selection in place), so two quick ones are a double click.
+    pub fn click_background(&mut self, view: &mut View, target: Target, clicks: usize) {
+        for _ in 0..clicks {
+            for a in Harness::press(view, &target, PointerButton::Primary) {
+                if let Some(t) = view.target(a.node).cloned() {
+                    let out = self.shell.on_desk(&t, &a.kind);
+                    self.apply(out);
+                }
+            }
+        }
+    }
+
+    /// The secondary button on the background over `target` (a shortcut), or at `at` on
+    /// the empty background.
+    pub fn right_background(&mut self, target: Option<Target>, at: (i32, i32)) {
+        let out = self.shell.on_desk_menu(target.as_ref(), at);
+        self.apply(out);
     }
 
     pub fn popup_target(&self, target: &Target) -> bool {
