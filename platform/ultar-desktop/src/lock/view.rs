@@ -76,6 +76,9 @@ pub fn build(
     Ok(Some(view))
 }
 
+/// Width of the company logo on the cover (points).
+const COVER_LOGO: u16 = 200;
+
 /// Most user cards shown (the rest sign in through user switching later).
 const MAX_USER_CARDS: usize = 4;
 
@@ -86,6 +89,15 @@ fn cover(
     t: Option<LocalTime>,
     tr: &Translator,
 ) -> Result<(), UiError> {
+    // The company logo above the clock (BRAND.md §4: the cover of the lock screen).
+    let logo = Brick::new(
+        BrickKind::Logo {
+            width: COVER_LOGO,
+            quiet: false,
+        },
+        Label::key("brand.label.logo"),
+    );
+    view.ui.add(middle, logo)?;
     let clock = view
         .ui
         .add(middle, Flex::column().cross(CrossAlign::Center))?;

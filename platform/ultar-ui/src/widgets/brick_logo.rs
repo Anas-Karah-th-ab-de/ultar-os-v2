@@ -46,7 +46,7 @@ fn logo_points(width: f32, scale: f32) -> (f32, f32) {
     (w, w * logo::HEIGHT as f32 / logo::WIDTH as f32)
 }
 
-/// Strength of a quiet logo (the desktop background).
+/// Strength of a quiet logo (the desktop background on the dark ground).
 const QUIET: f32 = 0.5;
 
 /// Paints the logo centred in `rect` (the plate in the light theme and in high contrast).
@@ -69,10 +69,14 @@ pub(super) fn paint(p: &mut Painter<'_>, rect: Rect, width: u16, quiet: bool, v:
         w,
         h,
     );
-    if env.theme == ThemeKind::Light || env.high_contrast {
+    let plated = env.theme == ThemeKind::Light || env.high_contrast;
+    if plated {
         let plate = Rect::new(at.x - pad, at.y - pad, at.w + 2.0 * pad, at.h + 2.0 * pad);
         p.fill(plate, Some(Radius::Card), plate_colour());
     }
+    // On its own plate the logo stands at full strength (a dimmed logo on the dark plate
+    // reads muddy); quiet applies on the dark ground only.
+    let quiet = quiet && !plated;
     let (px_w, px_h) = p.pixel_size(at);
     if let Some(rgba) = scaled(px_w, px_h) {
         let previous = quiet.then(|| p.set_opacity(QUIET));

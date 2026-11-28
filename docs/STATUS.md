@@ -2,6 +2,22 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
+
+Befund des Eigentümers in VMware (v2 gegen v1): das Firmenlogo fehlte an mehreren Stellen, besonders bei der
+Installation; der Ein/Aus-Knopf fehlte; Änderungen in den Einstellungen wurden nicht übernommen. Ursache des
+dritten Punkts: viele Einstellungen hatten keinen Abnehmer – u. a. wurde die bei der Installation gewählte
+Sprache nirgends angewandt, Apps bekamen weder Sprache noch Thema, Uhr und Sperrbildschirm zeigten UTC.
+
+| Baustein | Stand |
+|---|---|
+| Logo | `BrickKind::Logo` (Bitmap aus `ultar-brand`, flächengemittelt verkleinert, dunkle Platte im hellen Thema); Installer: Willkommen, Schreiben, Fertig; Einstellungen › Info; Sperrbildschirm; Desktop-Hintergrund „ultar-noir“ (Logo ruhig in der Mitte wie in v1); Kern: Startbild und Text-Installer |
+| Ein/Aus | im App-Raster (Startmenü) unten am Ende, öffnet das Ein/Aus-Menü (Ruhezustand, Neustart, Ausschalten, Abmelden, Benutzer wechseln) |
+| Sprache, Thema, Akzent, Textgröße | sofort und ohne Neustart: Leiste und Blätter, Sperrbildschirm, Systemdialoge, Bildschirmtastatur, Einstellungen-Fenster, Titelleisten des Compositors (`Request::ConfigureLook` über displayd), jede neu gestartete App (Launcher übergibt `ULTAR_LANG`/`ULTAR_THEME`/`ULTAR_ACCENT`/`ULTAR_FONT_SIZE`) |
+| Uhr | Zeitzone mit Sommerzeit (`ultar_i18n::tz`), 12/24 h, Sekunden, Wochentag, Datum, Hidschri – Leiste und Sperrbildschirm |
+| Leiste | Symbole mittig/am Anfang, Papierkorb, Laufwerke, Akku-Prozent |
+| Ehrlichkeit | Einstellungen ohne Abnehmer in acht der ersten Bereiche zeigen jetzt „In dieser Version noch nicht verfügbar“ statt nur einen Wert zu speichern (`docs/integration/settings-wiring.md` §2) |
+
 ## Treiber-Welle A (28.11.2026) – Netzwerk-Fundament und DMA-Schutz
 
 | Baustein | Stand |
