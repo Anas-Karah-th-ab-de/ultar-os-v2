@@ -403,7 +403,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             }
             let u = crate::drivers::gen_xhci::rndis_dbg();
             if u != [0; 4] {
-                kprintln!("  usb-net report {} ok {} rndis {} queued {}", u[0], u[1], u[2], u[3]);
+                kprintln!("  usb-net report {} matched {} rndis {} queued {}", u[0], u[1], u[2], u[3]);
             }
         }
         "dhcp" => dhcp(),

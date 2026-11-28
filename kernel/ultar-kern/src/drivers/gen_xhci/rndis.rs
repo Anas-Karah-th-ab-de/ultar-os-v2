@@ -88,14 +88,14 @@ fn wr32(p: u64, off: usize, v: u32) {
 /// Eine fertige Bulk-IN-Übertragung der USB-Netzkarte: Rahmen aus dem RNDIS-Paket nehmen, in die
 /// Warteschlange legen, Übertragung neu armieren. Aus der Ereignisschleife (`pump`).
 pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, left: u32) -> bool {
+    DBG[0].fetch_add(1, Ordering::Relaxed); // jeder report-Aufruf (auch für fremde Endpunkte)
     let mut list = NICS.lock();
     let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
         return false;
     };
-    DBG[0].fetch_add(1, Ordering::Relaxed);
+    DBG[1].fetch_add(1, Ordering::Relaxed); // Treffer: Bulk-IN-Abschluss dieser usb-net-Karte
     let part = nic.in_ep.part(trb);
     if matches!(code, 1 | 13) {
-        DBG[1].fetch_add(1, Ordering::Relaxed);
         let got = TD.saturating_sub(left) as usize;
         let base = nic.in_ep.buf + part as u64 * TD as u64;
         if got >= 44 && rd32(base, 0) == PACKET_MSG {
