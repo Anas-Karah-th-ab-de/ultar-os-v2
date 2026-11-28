@@ -107,6 +107,28 @@ TRAP_NOERR 65
 TRAP_NOERR 66
 TRAP_NOERR 255
 
+# MSI/MSI-X-Vektoren 0x90..0xEF (dezimal 144..239): je ein kleiner Einsprung, der 0 als Fehlercode
+# und seinen Vektor legt und in den gemeinsamen Pfad springt. Eine Adresstabelle ULTAR_MSI_STUBS in
+# .rodata (in derselben Reihenfolge gefuellt) gibt dem Kern alle Einspruenge, um die IDT-Tore zu
+# setzen. Ohne .altmacro (vom eingebauten Assembler nicht getragen): jede Runde legt erst die Adresse
+# ihres Einsprungs in die Tabelle, dann folgt der Einsprung selbst (lokales Label 7).
+.pushsection .rodata
+.balign 8
+.global ULTAR_MSI_STUBS
+ULTAR_MSI_STUBS:
+.popsection
+.set msi_i, 144
+.rept 96
+    .pushsection .rodata
+    .quad 7f
+    .popsection
+7:
+    push 0
+    push msi_i
+    jmp ultar_trap_common
+    .set msi_i, msi_i + 1
+.endr
+
 ultar_trap_common:
     test byte ptr [rsp + 24], 3
     jz 1f
@@ -242,6 +264,8 @@ extern "sysv64" {
     fn ultar_trap66();
     fn ultar_trap255();
     fn ultar_syscall();
+    /// Adresstabelle der 96 MSI/MSI-X-Einsprünge (Vektor 0x90..0xEF), in .rodata erzeugt.
+    static ULTAR_MSI_STUBS: [u64; 96];
     /// Prozess fortsetzen: `frame` liegt auf seinem Kernstapel; kehrt mit dem Grund aus `back` zurück
     pub fn ultar_resume(frame: *mut TrapFrame, ctx: *mut u64) -> u64;
     /// zurück in den Planer (verlässt den Kernstapel des Prozesses)
@@ -283,6 +307,11 @@ pub unsafe fn init() {
     for (i, h) in v {
         arch::set_gate(i, h as usize as u64);
     }
+    // MSI/MSI-X-Tore 0x90..0xEF aus der Adresstabelle der Einsprünge setzen.
+    let stubs = core::ptr::addr_of!(ULTAR_MSI_STUBS) as *const u64;
+    for i in 0..96usize {
+        arch::set_gate(0x90 + i, *stubs.add(i));
+    }
     // syscall/sysret: EFER.SCE, Einsprung, Kern-Segmente, beim Eintritt IF/DF/TF/AC löschen
     init_msrs();
 }
@@ -308,6 +337,10 @@ extern "sysv64" fn ultar_trap_rust(f: &mut TrapFrame) {
         VEC_WAKE => crate::apic::eoi(),
         VEC_SPURIOUS => {}
         VEC_SYSCALL => crate::proc::on_syscall(f),
+        v if crate::msi::in_pool(v as u8) => {
+            crate::msi::dispatch(v as u8);
+            crate::apic::eoi();
+        }
         v if f.from_user() => crate::proc::on_fault(f, v),
         v => {
             let cr2: u64;

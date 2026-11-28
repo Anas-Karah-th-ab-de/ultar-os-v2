@@ -42,6 +42,7 @@ mod eingabe;
 mod ext4;
 mod klog;
 mod mem;
+mod msi;
 mod dhcp;
 mod net;
 mod oom;
