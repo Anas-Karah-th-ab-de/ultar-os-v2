@@ -82,7 +82,7 @@ pub fn make_mounts_private() -> Result<(), Errno> {
 /// Mounts a fresh in-memory tree at `target` with `options`
 /// (`size=`, `mode=`, `uid=`, `gid=`), without set-id programs, devices or
 /// anything that can be executed from it (`nosuid,nodev,noexec`; the Ultar
-/// kernel does not know `noexec` yet and ignores it).
+/// kernel enforces `noexec` for `execve` and executable `mmap` as well).
 pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), Errno> {
     let data = std::ffi::CString::new(options).map_err(|_| Errno::EINVAL)?;
     mount(

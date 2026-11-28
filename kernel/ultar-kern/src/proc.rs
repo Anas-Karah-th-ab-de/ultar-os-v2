@@ -31,7 +31,8 @@ pub enum FdKind {
     Null,
     Zero,
     Random,
-    File { data: Arc<Vec<u8>>, pos: u64, path: String, append: bool, write: bool, dirty: bool },
+    /// `no_exec`: opened below a `noexec` mount – may not be mapped executable
+    File { data: Arc<Vec<u8>>, pos: u64, path: String, append: bool, write: bool, dirty: bool, no_exec: bool },
     /// `path` ist der Pfad im Dateibaum des Kerns; `view`/`tag`: path as the opening process saw it and the
     /// view it was opened in (base for *at calls, see isolation::path)
     /// (the listing is shared between duplicates of the descriptor – a directory can be large)
@@ -116,7 +117,7 @@ impl Fd {
             FdKind::Null => FdKind::Null,
             FdKind::Zero => FdKind::Zero,
             FdKind::Random => FdKind::Random,
-            FdKind::File { data, pos, path, append, write, dirty } => FdKind::File { data: data.clone(), pos: *pos, path: path.clone(), append: *append, write: *write, dirty: *dirty },
+            FdKind::File { data, pos, path, append, write, dirty, no_exec } => FdKind::File { data: data.clone(), pos: *pos, path: path.clone(), append: *append, write: *write, dirty: *dirty, no_exec: *no_exec },
             FdKind::Dir { ents, pos, path, view, tag } => FdKind::Dir { ents: ents.clone(), pos: *pos, path: path.clone(), view: view.clone(), tag: *tag },
             FdKind::PipeR(p) => {
                 p.readers.fetch_add(1, Ordering::SeqCst);

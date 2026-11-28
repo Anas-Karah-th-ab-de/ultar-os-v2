@@ -48,6 +48,8 @@ pub struct Loc {
     pub host: String,
     /// The covering mount is read-only.
     pub read_only: bool,
+    /// Nothing below the covering mount may be executed (`noexec`).
+    pub no_exec: bool,
     /// The view is narrower than the host tree.
     pub confined: bool,
     /// Tag of the view the path was resolved in.
@@ -69,7 +71,7 @@ impl View {
         let mut view = String::from("/");
         view.push_str(&parts.join("/"));
         let t = self.mnt.translate(&join(&self.root, &view));
-        Loc { view, host: t.host, read_only: t.read_only, confined: self.confined, tag: self.tag }
+        Loc { view, host: t.host, read_only: t.opts.read_only, no_exec: t.opts.no_exec, confined: self.confined, tag: self.tag }
     }
 
     /// Host path of the absolute, already resolved view path `view_path`.

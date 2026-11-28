@@ -23,6 +23,8 @@ const ECHILD: i64 = 10;
 const EAGAIN: i64 = 11;
 const ENOMEM: i64 = 12;
 const EACCES: i64 = 13;
+/// `mmap` protection bit: executable pages.
+const PROT_EXEC: u64 = 4;
 const EFAULT: i64 = 14;
 const EEXIST: i64 = 17;
 const EXDEV: i64 = 18;
@@ -936,7 +938,7 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 }
                 Err(e) => Out::Res(Res::Val(e)),
             },
-            FdKind::File { data: fd_data, pos, write, append, dirty, path } => {
+            FdKind::File { data: fd_data, pos, write, append, dirty, path, .. } => {
                 if !*write {
                     return Out::Res(Res::Val(-EBADF));
                 }
@@ -1207,7 +1209,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 return -EROFS;
             }
             let data = if trunc && acc != 0 { Arc::new(Vec::new()) } else { data };
-            FdKind::File { data, pos: 0, path: path.clone(), append, write: acc != 0, dirty: trunc && acc != 0 }
+            FdKind::File { data, pos: 0, path: path.clone(), append, write: acc != 0, dirty: trunc && acc != 0, no_exec: loc.no_exec }
         }
         None if creat => {
             if loc.read_only {
@@ -1229,7 +1231,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 return -ENOSPC;
             }
             crate::perm::created(&path, crate::perm::S_IFREG, _mode as u32);
-            FdKind::File { data: empty, pos: 0, path: path.clone(), append, write: true, dirty: false }
+            FdKind::File { data: empty, pos: 0, path: path.clone(), append, write: true, dirty: false, no_exec: loc.no_exec }
         }
         None => return -ENOENT,
     };
@@ -2955,12 +2957,14 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
     }
     let data = if flags & 0x20 == 0 {
         match with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
-            Some(FdKind::File { data, .. }) => Some(data.clone()),
+            Some(FdKind::File { data, no_exec, .. }) => Some((data.clone(), *no_exec)),
             _ => None,
         })
         .flatten()
         {
-            Some(d) => Some(d),
+            // a file below a `noexec` mount is never mapped executable (as Linux: EPERM)
+            Some((_, true)) if prot & PROT_EXEC != 0 => return -EPERM,
+            Some((d, _)) => Some(d),
             None => return -EBADF,
         }
     } else {
@@ -3237,6 +3241,9 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
         Err(e) => return e,
     };
     let full = loc.host.clone();
+    if loc.no_exec {
+        return -EACCES;
+    }
     if let Err(e) = crate::perm::may_exec(&full) {
         return e;
     }
@@ -3259,6 +3266,9 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
             Ok(l) => l,
             Err(e) => return e,
         };
+        if iloc.no_exec {
+            return -EACCES;
+        }
         if let Err(e) = crate::perm::may_exec(&iloc.host) {
             return e;
         }
@@ -3274,7 +3284,8 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
 fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<String>, loc: &Loc) -> i64 {
     let path = loc.view.as_str();
     // the dynamic loader named by the program is read through the caller's view as well
-    let read = |p: &str| locate(-100, p, true).ok().and_then(|l| fs::read_all(&l.host));
+    // (never from below a `noexec` mount, as Linux refuses such an interpreter)
+    let read = |p: &str| locate(-100, p, true).ok().filter(|l| !l.no_exec).and_then(|l| fs::read_all(&l.host));
     let img = match proc::load_elf(data, &argv, &envp, path, &read) {
         Ok(i) => i,
         Err(e) => {

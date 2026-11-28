@@ -153,6 +153,56 @@ static void cell_processes_work(void) {
     check("Zelle: Programm aus /bin starten (execve)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) != 99);
 }
 
+/* copies `from` to `to` (mode 0755); 0 on success */
+static int copy_prog(const char *from, const char *to) {
+    char b[65536];
+    int in = open(from, O_RDONLY), out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0755), ok = in >= 0 && out >= 0;
+    ssize_t n;
+    while (ok && (n = read(in, b, sizeof b)) > 0) ok = write(out, b, n) == n;
+    if (in >= 0) close(in);
+    if (out >= 0 && close(out) != 0) ok = 0;
+    return ok ? 0 : -1;
+}
+
+/* runs `path` in a child: its exit code, or 100 + errno when execve failed */
+static int run_prog(const char *path) {
+    int st = 0;
+    pid_t c = fork();
+    if (c == 0) execl(path, "hallo", (char *)0), _exit(100 + errno);
+    return waitpid(c, &st, 0) == c && WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+}
+
+static int mounts_say_noexec(const char *at) {
+    char b[4096] = {0}, want[128];
+    int fd = open("/proc/mounts", O_RDONLY);
+    if (fd < 0) return 0;
+    int n = read(fd, b, sizeof b - 1);
+    close(fd);
+    snprintf(want, sizeof want, " %s tmpfs rw,noexec ", at);
+    return n > 0 && strstr(b, want) != NULL;
+}
+
+/* (5) S-8: nothing below a noexec mount runs – not by execve, not mapped executable, not through a bind */
+static int cell_noexec(void) {
+    check("noexec: tmpfs mit MS_NOEXEC an /mnt", mount("tmpfs", "/mnt", "tmpfs", MS_NOSUID | MS_NOEXEC, NULL) == 0);
+    check("noexec: /proc/mounts zeigt noexec", mounts_say_noexec("/mnt"));
+    check("noexec: Programm hineinkopiert", copy_prog("/bin/hallo", "/mnt/hallo") == 0 && access("/mnt/hallo", X_OK) == 0);
+    check("noexec: execve verweigert (EACCES)", run_prog("/mnt/hallo") == 100 + EACCES);
+    int fd = open("/mnt/hallo", O_RDONLY);
+    void *rx = fd >= 0 ? mmap(NULL, 4096, PROT_READ | PROT_EXEC, MAP_PRIVATE, fd, 0) : MAP_FAILED;
+    denied("noexec: mmap(PROT_EXEC) verweigert", rx == MAP_FAILED ? -1 : 0, EPERM);
+    void *ro = fd >= 0 ? mmap(NULL, 4096, PROT_READ, MAP_PRIVATE, fd, 0) : MAP_FAILED;
+    check("noexec: mmap(PROT_READ) bleibt erlaubt", ro != MAP_FAILED && !memcmp(ro, "\177ELF", 4));
+    if (fd >= 0) close(fd);
+    int ok = mkdir("/mnt/a", 0755) == 0 && mkdir("/mnt/b", 0755) == 0 && copy_prog("/bin/hallo", "/mnt/a/hallo") == 0;
+    check("noexec: bind eines noexec-Ordners", ok && mount("/mnt/a", "/mnt/b", NULL, MS_BIND, NULL) == 0);
+    check("noexec: bind behält noexec", run_prog("/mnt/b/hallo") == 100 + EACCES);
+    check("noexec: Programme aus /bin laufen weiter", run_prog("/bin/hallo") < 100);
+    check("noexec: Remount ohne MS_NOEXEC hebt es auf (nur mit MOUNT-Recht)", umount2("/mnt/b", 0) == 0 && mount(NULL, "/mnt", NULL, MS_REMOUNT, NULL) == 0 && run_prog("/mnt/hallo") < 100);
+    check("noexec: /mnt wieder abgehängt", umount2("/mnt", MNT_DETACH) == 0);
+    return 0;
+}
+
 /* after execve inside the cell (argument --rechte): nothing came back */
 int after_exec(void) {
     return rights() == 0 && mount("tmpfs", "/mnt", "tmpfs", 0, NULL) == -1 && errno == EPERM ? 0 : 1;
@@ -213,6 +263,7 @@ int cell_main(void) {
     cell_files_work();
     cell_escape_pids();
     cell_processes_work();
+    sub(cell_noexec);
     sibling = fork();
     if (sibling == 0) _exit(idle());
     sub(limited_killer);

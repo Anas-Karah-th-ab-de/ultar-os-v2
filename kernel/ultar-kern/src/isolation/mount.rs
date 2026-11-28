@@ -56,12 +56,28 @@ impl Source {
     }
 }
 
+/// Per-mount flags the kernel enforces.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Opts {
+    /// Nothing may be written below the mount.
+    pub read_only: bool,
+    /// Nothing below the mount may be executed or mapped executable (`noexec`).
+    pub no_exec: bool,
+}
+
+impl Opts {
+    /// The stricter of two flag sets (a bind keeps what its source forbids).
+    pub fn union(self, other: Opts) -> Opts {
+        Opts { read_only: self.read_only || other.read_only, no_exec: self.no_exec || other.no_exec }
+    }
+}
+
 /// One entry of a mount table.
 #[derive(Clone)]
 pub struct Mount {
     at: String,
     source: Source,
-    read_only: bool,
+    opts: Opts,
     fstype: &'static str,
 }
 
@@ -69,8 +85,8 @@ pub struct Mount {
 pub struct Target {
     /// Host path the namespace path stands for.
     pub host: String,
-    /// Whether the covering mount is read-only.
-    pub read_only: bool,
+    /// Flags of the covering mount.
+    pub opts: Opts,
 }
 
 /// One mount namespace.
@@ -115,7 +131,7 @@ impl MountNs {
             .call_once(|| {
                 // lives as long as the machine: it belongs to the kernel, not to whoever asks first
                 crate::heap::kernel(|| {
-                    let root = Mount { at: String::from("/"), source: Source::Tree(String::from("/")), read_only: false, fstype: "rootfs" };
+                    let root = Mount { at: String::from("/"), source: Source::Tree(String::from("/")), opts: Opts::default(), fstype: "rootfs" };
                     Arc::new(MountNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), initial: true, epoch: AtomicU64::new(0), mounts: Mutex::new(vec![root]) })
                 })
             })
@@ -156,15 +172,15 @@ impl MountNs {
             }
         }
         match best {
-            Some((m, rest)) => Target { host: join(&m.source.host_root(), rest), read_only: m.read_only },
+            Some((m, rest)) => Target { host: join(&m.source.host_root(), rest), opts: m.opts },
             // unreachable: every table holds "/", kept as a closed door rather than a panic
-            None => Target { host: String::from("/\0tmpfs"), read_only: true },
+            None => Target { host: String::from("/\0tmpfs"), opts: Opts { read_only: true, no_exec: true } },
         }
     }
 
     /// What a bind mount of the namespace path `path` shows: the covering mount's source, narrowed to
-    /// `path`, and whether that mount is read-only.
-    pub fn source_of(&self, path: &str) -> (Source, bool) {
+    /// `path`, and that mount's flags.
+    pub fn source_of(&self, path: &str) -> (Source, Opts) {
         let mounts = self.mounts.lock();
         let mut best: Option<(&Mount, &str)> = None;
         for m in mounts.iter() {
@@ -180,27 +196,27 @@ impl MountNs {
                     Source::Tree(p) => Source::Tree(join(p, rest)),
                     Source::Tmpfs(t, sub) => Source::Tmpfs(t.clone(), alloc::format!("{sub}{rest}")),
                 };
-                (src, m.read_only)
+                (src, m.opts)
             }
-            None => (Source::Tree(String::from("/\0tmpfs")), true),
+            None => (Source::Tree(String::from("/\0tmpfs")), Opts { read_only: true, no_exec: true }),
         }
     }
 
     /// Add a mount at the namespace path `at`.
-    pub fn add(&self, at: &str, source: Source, read_only: bool, fstype: &'static str) -> Result<(), MountError> {
+    pub fn add(&self, at: &str, source: Source, opts: Opts, fstype: &'static str) -> Result<(), MountError> {
         let mut mounts = self.mounts.lock();
         if mounts.len() >= MAX_MOUNTS {
             return Err(MountError::Full);
         }
-        mounts.push(Mount { at: at.to_string(), source, read_only, fstype });
+        mounts.push(Mount { at: at.to_string(), source, opts, fstype });
         Ok(())
     }
 
-    /// Change the read-only flag of the topmost mount at `at`.
-    pub fn remount(&self, at: &str, read_only: bool) -> Result<(), MountError> {
+    /// Replace the flags of the topmost mount at `at` (as Linux `MS_REMOUNT` does).
+    pub fn remount(&self, at: &str, opts: Opts) -> Result<(), MountError> {
         let mut mounts = self.mounts.lock();
         let m = mounts.iter_mut().rev().find(|m| m.at == at).ok_or(MountError::NotMountPoint)?;
-        m.read_only = read_only;
+        m.opts = opts;
         Ok(())
     }
 
@@ -251,8 +267,8 @@ impl MountNs {
         Ok(())
     }
 
-    /// The table for `/proc/mounts`: (mount point, file system type, read-only).
-    pub fn table(&self) -> Vec<(String, &'static str, bool)> {
-        self.mounts.lock().iter().map(|m| (m.at.clone(), m.fstype, m.read_only)).collect()
+    /// The table for `/proc/mounts`: (mount point, file system type, flags).
+    pub fn table(&self) -> Vec<(String, &'static str, Opts)> {
+        self.mounts.lock().iter().map(|m| (m.at.clone(), m.fstype, m.opts)).collect()
     }
 }
