@@ -18,6 +18,9 @@ pub const PWT: u64 = 8;
 pub const PCD: u64 = 16;
 pub const HUGE: u64 = 0x80;
 pub const OWN: u64 = 0x200;
+/// Bit 10 (free for software): the page holds a copy of a file below a `noexec` mount – `mprotect`
+/// never makes it executable.
+pub const NOEXEC_FILE: u64 = 0x400;
 pub const NX: u64 = 1 << 63;
 const ADDR: u64 = 0x000f_ffff_ffff_f000;
 
@@ -213,6 +216,73 @@ impl AddrSpace {
         Some(pa)
     }
 
+    /// Marks the page at `va` as a copy of a `noexec` file (see [`NOEXEC_FILE`]).
+    pub fn mark_noexec_file(&self, va: u64) {
+        if let Some(e) = self.walk(va) {
+            if *e & P != 0 {
+                *e |= NOEXEC_FILE;
+            }
+        }
+    }
+
+    /// Whether `mprotect` may give the pages of `[va, va + len)` the rights `w`/`x`: never
+    /// executable for a copy of a `noexec` file, and a shared page (a memory object, the
+    /// framebuffer) gets no right its mapping did not have.
+    pub fn may_protect(&self, va: u64, len: u64, w: bool, x: bool) -> bool {
+        let mut a = va;
+        while a < va + len {
+            if let Some(e) = self.walk(a) {
+                let e = *e;
+                if e & P != 0 {
+                    if x && (e & NOEXEC_FILE != 0 || (e & OWN == 0 && e & nx() != 0)) {
+                        return false;
+                    }
+                    if w && e & OWN == 0 && e & W == 0 {
+                        return false;
+                    }
+                }
+            }
+            a += 4096;
+        }
+        true
+    }
+
+    /// `mprotect` of the mapped page at `va`: exactly writable `w`, executable `x` (readable always –
+    /// x86 has no write-only or no-access user page). Nothing for an unmapped page.
+    pub fn protect(&self, va: u64, w: bool, x: bool) {
+        if let Some(e) = self.walk(va) {
+            if *e & P != 0 && *e & U != 0 {
+                *e = (*e & !(W | NX)) | if w { W } else { 0 } | if x { 0 } else { nx() };
+                // SAFETY: invalidates the translation of one user address; no memory is touched.
+                unsafe { core::arch::asm!("invlpg [{}]", in(reg) va) };
+            }
+        }
+    }
+
+    /// Gives the reserved, not yet touched parts of `[va, va + len)` the rights `w`/`x`, so pages
+    /// that appear there later get them. `false`: no room for the split ranges – nothing changed.
+    pub fn relabel(&self, va: u64, len: u64, w: bool, x: bool) -> bool {
+        let end = va + len;
+        let parts = {
+            let l = self.lazy.lock();
+            let n = l.iter().filter(|r| r.0 < end && r.1 > va).count();
+            if n == 0 {
+                return true;
+            }
+            // the ranges are split at both ends at most once more, plus the relabelled parts
+            if l.len() + n + 2 > MAX_RANGES {
+                return false;
+            }
+            let Some(mut parts) = crate::mem::try_with_capacity::<(u64, u64)>(n) else { return false };
+            parts.extend(l.iter().filter(|r| r.0 < end && r.1 > va).map(|r| (r.0.max(va), r.1.min(end))));
+            parts
+        };
+        if !self.unreserve(va, len) {
+            return false;
+        }
+        parts.iter().all(|&(a, b)| self.reserve(a, b - a, w, x))
+    }
+
     pub fn unmap(&self, va: u64) {
         if let Some(e) = self.walk(va) {
             if *e & P != 0 && *e & U != 0 {
@@ -352,7 +422,12 @@ impl AddrSpace {
             }
             let va = if va & (1 << 47) != 0 { va | 0xffff_0000_0000_0000 } else { va };
             match n.map(va, fl & W != 0, fl & NX == 0) {
-                Some(np) => unsafe { core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096) },
+                Some(np) => {
+                    unsafe { core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096) };
+                    if fl & NOEXEC_FILE != 0 {
+                        n.mark_noexec_file(va);
+                    }
+                }
                 None => ok = false,
             }
         });

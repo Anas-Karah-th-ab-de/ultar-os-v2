@@ -336,7 +336,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         260 => Res::Val(crate::perm::sys_chown(a[0] as i32 as i64, a[1], a[2], a[3], a[4])),
         268 | 452 => Res::Val(crate::perm::sys_chmod(a[0] as i32 as i64, a[1], a[2], if nr == 452 { a[3] } else { 0 })),
         74 | 75 => Res::Val(sys_fsync(a[0])),
-        149 | 150 | 151 | 152 | 10 | 28 | 131 | 273 | 109 => Res::Val(0),
+        10 => Res::Val(sys_mprotect(a[0], a[1], a[2])),
+        149 | 150 | 151 | 152 | 28 | 131 | 273 | 109 => Res::Val(0),
         11 => Res::Val(sys_munmap(a[0], a[1])),
         12 => Res::Val(sys_brk(a[0])),
         13 => Res::Val(sys_sigaction(a[0], a[1], a[2])),
@@ -2964,12 +2965,14 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         {
             // a file below a `noexec` mount is never mapped executable (as Linux: EPERM)
             Some((_, true)) if prot & PROT_EXEC != 0 => return -EPERM,
-            Some((d, _)) => Some(d),
+            Some(d) => Some(d),
             None => return -EBADF,
         }
     } else {
         None
     };
+    let file_noexec = data.as_ref().is_some_and(|d| d.1);
+    let data = data.map(|d| d.0);
     with(|p| {
         let va = match place(p, addr, len, flags) {
             Ok(v) => v,
@@ -2993,6 +2996,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
                 }
                 return -ENOMEM;
             };
+            if file_noexec {
+                p.space().mark_noexec_file(a);
+            }
             if let Some(d) = &data {
                 let s = (off + (a - va)) as usize;
                 if s < d.len() {
@@ -3003,6 +3009,38 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
             a += 4096;
         }
         va as i64
+    })
+    .unwrap_or(-ENOMEM)
+}
+
+/// `mprotect(addr, len, prot)`: the rights of mapped pages and of the reserved range change at once.
+/// Never executable for a copy of a `noexec` file and no new right for a shared page (`EACCES`, as
+/// Linux). `PROT_NONE` leaves a page readable (x86 has no user page without read access): writes
+/// and execution fault.
+fn sys_mprotect(addr: u64, len: u64, prot: u64) -> i64 {
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > MMAP_MAX || addr >= USER_TOP || addr + len > USER_TOP {
+        return -EINVAL;
+    }
+    // PROT_READ | PROT_WRITE | PROT_EXEC (PROT_GROWSDOWN/UP are not supported)
+    if prot & !7 != 0 {
+        return -EINVAL;
+    }
+    let len = (len + 4095) & !4095;
+    let (w, x) = (prot & 2 != 0, prot & PROT_EXEC != 0);
+    with(|p| {
+        let sp = p.space();
+        if !sp.may_protect(addr, len, w, x) {
+            return -EACCES;
+        }
+        if !sp.relabel(addr, len, w, x) {
+            return -ENOMEM;
+        }
+        let mut a = addr;
+        while a < addr + len {
+            sp.protect(a, w, x);
+            a += 4096;
+        }
+        0
     })
     .unwrap_or(-ENOMEM)
 }
