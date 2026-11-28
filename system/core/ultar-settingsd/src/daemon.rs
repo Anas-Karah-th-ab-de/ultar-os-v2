@@ -423,6 +423,22 @@ pub fn lock_instance(store: &std::path::Path) -> Result<std::fs::File, DaemonErr
     }
 }
 
+/// The access rules, reloaded on SIGHUP; warns when every caller is allowed.
+fn prepare_access(
+    args: &DaemonArgs,
+    translator: &Translator,
+    log: &mut dyn Write,
+    hooks: &Hooks<'_>,
+) -> Result<Reloadable, DaemonError> {
+    let access = Reloadable::new(load_access(args)?);
+    reload_on_hangup(args, &access, hooks);
+    if args.policy.is_none() {
+        let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
+        hooks.logger.log(Level::Warn, "settingsd.allow_all");
+    }
+    Ok(access)
+}
+
 /// Runs the service until a stop signal or a `settings.shutdown` call
 /// ends it. Either way everything pending is written to disk first.
 ///
@@ -436,12 +452,7 @@ pub fn run(
     log: &mut dyn Write,
     hooks: &Hooks<'_>,
 ) -> Result<(), DaemonError> {
-    let access = Reloadable::new(load_access(args)?);
-    reload_on_hangup(args, &access, hooks);
-    if args.policy.is_none() {
-        let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
-        hooks.logger.log(Level::Warn, "settingsd.allow_all");
-    }
+    let access = prepare_access(args, translator, log, hooks)?;
     let token = token_source(args)
         .map(|source| (hooks.secret)(&source))
         .transpose()
