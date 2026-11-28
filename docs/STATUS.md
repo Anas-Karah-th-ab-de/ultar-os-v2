@@ -6,7 +6,8 @@ Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 
 | Baustein | Stand |
 |---|---|
-| Windows-Programme | `.exe`/`.msi` über `ultar-foreign`: Angaben aus der Datei (PE-Versionsressource, MSI-Property-Tabelle, eigene begrenzte Leser mit Fuzz-Tests), Bestätigung durch den Administrator, Datei als eigener Installer der App (`setup/<id>`, im Launcher schreibgeschützt bei `/.setup`), Art `compat-exe`; die App installiert sich beim ersten Start **in ihrer eigenen Zelle** über Wine 10 aus Ubuntu (WoW64, Wayland-Treiber, nur Laufwerk `C:`), Komponente `COMPONENTS=windows` im Linux-Bereich. Prüfung `tools/foreign/windows-e2e.sh` (Notepad++ NSIS, 7-Zip MSI). Doku `docs/integration/ultar-foreign.md` § Windows |
+| Windows-Programme | `.exe`/`.msi` über `ultar-foreign`: Angaben aus der Datei (PE-Versionsressource, MSI-Property-Tabelle, eigene begrenzte Leser mit Fuzz-Tests), Bestätigung durch den Administrator, Datei als eigener Installer der App (`setup/<id>`, im Launcher schreibgeschützt bei `/.setup`), Art `compat-exe`; die App installiert sich beim ersten Start **in ihrer eigenen Zelle** über Wine 10 aus Ubuntu (WoW64, Wayland-Treiber, nur Laufwerk `C:`), Komponente `COMPONENTS=windows` im Linux-Bereich. Prüfung `tools/foreign/windows-e2e.sh` (Notepad++ NSIS, 7-Zip MSI) → `FOREIGN-WINDOWS-E2E: ALLES OK` auf Server .8 (28.11.2026, echte Zellen unter Linux, beide Programme starten mit arabischer Oberfläche; Installer laufen von eigenem Laufwerk `S:`, weil NSIS am `\\?\unix\`-Pfad scheitert). Doku `docs/integration/ultar-foreign.md` § Windows |
+| Ultar-Kern | Wine startet (`wine --version`), das Präfix nicht: feste Adressen bei `mmap`, `waitid`, `ARCH_SET_GS`, `sigaltstack`, 32-Bit-Codeselektor/`modify_ldt` fehlen – bis dahin laufen Windows-Programme nur auf dem Linux-Kern |
 
 ## Apps aus anderen Systemen, Stufe P2 Linux (28.11.2026, Zweig `feat/fa-p2-linux`, nicht in main)
 
