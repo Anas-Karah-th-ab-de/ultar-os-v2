@@ -489,7 +489,10 @@ fn a_linux_program_goes_in_runs_in_its_cell_and_leaves_without_trace() {
     assert_eq!(line(&probe, "bus"), "none");
     assert_eq!(line(&probe, "bus-sockets"), "");
     let devices: BTreeSet<&str> = line(&probe, "devices").split_whitespace().collect();
-    let allowed: BTreeSet<&str> = ["null", "zero", "full", "random", "urandom", "tty"].into();
+    // ptmx: the cell's own terminals (a devpts instance of its own, or on the Ultar kernel slaves that
+    // open for their owner only), never the host's
+    let allowed: BTreeSet<&str> =
+        ["null", "zero", "full", "random", "urandom", "tty", "ptmx"].into();
     assert!(devices.is_subset(&allowed), "{devices:?}");
     assert_eq!(
         line(&probe, "net").trim(),
