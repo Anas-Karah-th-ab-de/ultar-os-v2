@@ -45,7 +45,8 @@ const COMPOSITOR_DEFAULT: &str = "/run/ultar/ui/compositor.sock";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lang = Lang::from_env();
     let translator = i18n::full_translator(lang)?;
-    let env = PaintEnv::new(lang, ThemeKind::Dark);
+    // the person's theme, accent and text size, handed over by the app launcher
+    let env = PaintEnv::new(lang, ThemeKind::Dark).with_session(false);
     let mut ui = Ui::new(
         env,
         InputMode::Pointer,

@@ -121,7 +121,7 @@ fn run(o: Options) -> Result<(), AppError> {
         ThemeKind::Dark
     };
     let ui = Ui::new(
-        PaintEnv::new(o.lang, theme),
+        PaintEnv::new(o.lang, theme).with_session(o.light),
         InputMode::Pointer,
         Size::new(1.0, 1.0),
         tr,
@@ -131,7 +131,7 @@ fn run(o: Options) -> Result<(), AppError> {
     let mut window =
         UiWindow::new(client, &WindowConfig::toplevel(&title), ui).map_err(surface_err)?;
     let placeholder = Ui::new(
-        PaintEnv::new(o.lang, theme),
+        PaintEnv::new(o.lang, theme).with_session(o.light),
         InputMode::Pointer,
         Size::new(1.0, 1.0),
         ultar_settings::i18n::translator(o.lang, None),

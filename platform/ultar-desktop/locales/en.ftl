@@ -23,6 +23,7 @@ desk.apps.search = Search apps
 desk.apps.title = All apps
 desk.apps.uninstall = Remove app…
 desk.bar.apps = All apps
+desk.bar.battery = {level}%
 desk.bar.clock = Calendar and notifications: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = Overview
@@ -441,3 +442,35 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+
+# The desktop background: its menu, the app shortcuts, the rename dialog
+desk.desk.new_shortcut = New shortcut…
+desk.desk.new_folder = New folder
+desk.desk.paste = Paste
+desk.desk.size.large = Large icons
+desk.desk.size.medium = Medium icons
+desk.desk.size.small = Small icons
+desk.desk.show = Show desktop icons
+desk.desk.sort = Sort by name
+desk.desk.wallpaper = Change background
+desk.desk.display = Display settings
+desk.desk.settings = Desktop settings
+desk.desk.terminal = Open in Terminal
+desk.desk.pick = Choose an app to put its shortcut on the desktop
+desk.desk.add_shortcut = Add to desktop
+desk.desk.remove_shortcut = Remove from desktop
+desk.desk.rename = Rename
+desk.desk.properties = Properties
+desk.desk.rename.title = Rename shortcut
+desk.desk.rename.name = Name
+desk.desk.rename.save = Rename
+desk.desk.rename.cancel = Cancel
+desk.desk.home = Home folder
+desk.desk.show_in_files = Show in Files
+desk.desk.trash = Move to trash
+desk.desk.no_app = No app opens this file
+desk.desk.no_app.body = Install an app for this kind of file from the Store.
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Copied on {arg0}
+mesh.clip.body = Paste with Ctrl+V

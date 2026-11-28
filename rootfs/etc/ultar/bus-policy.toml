@@ -65,7 +65,7 @@ subscribe = ["settings.changed", "session.state", "account.users"]
 # launcher.admin as well, which only the administrator has.
 [[rule]]
 identity  = "system.shell"
-call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "modem.set_data", "power.torch", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
+call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.resolve", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "modem.set_data", "power.torch", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
 subscribe = ["net.wifi", "vpn.state", "settings.changed", "notify.posted", "power.state", "devices.capabilities", "display.outputs", "account.users", "power.actions", "session.state", "notify.dismissed", "calendar.changed", "audio.state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
 
 
@@ -99,12 +99,14 @@ call      = ["settings.get"]
 subscribe = ["settings.changed", "devices.capabilities"]
 
 # System dialogs (815): offers `sysdialog` (permission and administrator
-# prompts) and asks to keep new display settings.
+# prompts) and asks to keep new display settings. Reads the language and the look
+# of the settings (settings.get, settings.changed) so every dialog speaks the
+# person's language.
 [[rule]]
 identity  = "system.sysdialog"
 register  = ["sysdialog"]
-call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert"]
-subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state"]
+call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert", "settings.get"]
+subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state", "settings.changed"]
 
 
 # Network service: reports whether the connection is metered (nothing else of
@@ -212,7 +214,7 @@ subscribe = ["settings.changed"]
 # actions are confirmed by the services in the system dialog, not by this rule.
 [[rule]]
 identity  = "app.settings"
-call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "launcher.list", "launcher.permissions", "launcher.revoke", "launcher.candidates", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4"]
+call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "update.download", "update.apply", "launcher.list", "launcher.permissions", "launcher.revoke", "launcher.candidates", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4"]
 subscribe = ["settings.changed", "settings.pending", "settings.pending_resolved", "devices.capabilities", "devices.driver_state", "net.wifi", "vpn.state", "display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state", "power.state", "update.progress"]
 
 # The Files app: opens a file with its default app – the launcher resolves the URI through
@@ -342,12 +344,14 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 # progress; lists and starts apps for what arrives, asks the person through the system
 # dialog before anything is accepted (`sysdialog.handoff`), and lets a paired device with
 # the right "model" think with this device's language model and one with the right
-# "control" ask this device's helper (`agent.ask`).
+# "control" ask this device's helper (`agent.ask`). Shared clipboard
+# (docs/integration/mesh-clipboard.md): when an entry of another device arrives it posts one
+# short notice (`notify.post`, at most one in ten seconds, only the device's name inside).
 [[rule]]
 identity  = "system.mesh"
 register  = ["mesh"]
 publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask"]
+call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask", "notify.post"]
 subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
@@ -397,7 +401,7 @@ call      = ["launcher.list", "launcher.start", "launcher.stop", "audio.set_volu
              # the methods the helper may call stay exactly the ones listed above.
              "media.system", "power.system", "session.system", "notify.system"]
 
-# Voice control (841, docs/integration/ultar-voiced.md): offers `voice`, publishes its
+# Voice control (842, docs/integration/ultar-voiced.md): offers `voice`, publishes its
 # state. It hears the microphone only through the audio service (`audio.capture` is asked
 # only while the person has switched voice control on), speaks through `audio.play` and hands
 # the recognised words to the helper (`agent.ask_voice`; the helper knows it as a voice).

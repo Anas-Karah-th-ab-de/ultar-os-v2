@@ -8,10 +8,14 @@ args = [
     "--compositor", "/run/ultar/ui/compositor.sock",
     "--bus", "/run/ultar/bus/desktop.sock",
     "--state", "/data/ultar/desktop",
+    "--desk-folder", "/data/ultar/areas/desktop",
 ]
 user = 816
-# Its own folder: the per-person search history (search.history), nothing else.
+# Its own folder: the per-person search history (search.history) and desktop shortcuts.
 dirs = ["/data/ultar/desktop"]
+# The user's files group (ids.toml userfiles): it reads the file area `desktop` to show its
+# items on the background; every change to them is Files' (files://desktop/…?action=…).
+groups = [836]
 after = ["compositor", "launcher", "settingsd", "lock"]
 restart = "always"
 

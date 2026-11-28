@@ -7,6 +7,8 @@ mod arrangement;
 mod badge;
 mod brick;
 mod brick_art;
+mod brick_desk;
+mod brick_logo;
 mod brick_measure;
 mod brick_overview;
 mod brick_phone;

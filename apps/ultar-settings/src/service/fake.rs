@@ -181,6 +181,14 @@ impl UpdatePort for Fake {
         self.call("update.check".into())
     }
 
+    fn download(&mut self) -> PortResult<()> {
+        self.call("update.download".into())
+    }
+
+    fn apply(&mut self) -> PortResult<()> {
+        self.call("update.apply".into())
+    }
+
     fn offline(&mut self, path: &str) -> PortResult<()> {
         self.call(format!("update.offline {path}"))
     }

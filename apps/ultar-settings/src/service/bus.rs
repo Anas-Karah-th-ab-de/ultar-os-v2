@@ -1,6 +1,6 @@
 //! Bus implementations of the ports – the only place of the app with bus calls.
 
-use super::update_contract::{Check, Offline, Progress};
+use super::update_contract::{Apply, Check, Download, Offline, Progress};
 use super::BtCall;
 use super::{
     AccountPort, AccountRequest, ClipboardPort, DevicesPort, DisplayPort, FilesPort, PortError,
@@ -246,6 +246,17 @@ impl BusUpdate {
 impl UpdatePort for BusUpdate {
     fn check(&mut self) -> PortResult<()> {
         call(&self.client, &Check {}, CALL_TIMEOUT).map(|_| ())
+    }
+
+    fn download(&mut self) -> PortResult<()> {
+        let download = Download {
+            allow_metered: true,
+        };
+        call(&self.client, &download, CALL_TIMEOUT).map(|_| ())
+    }
+
+    fn apply(&mut self) -> PortResult<()> {
+        call(&self.client, &Apply {}, CALL_TIMEOUT).map(|_| ())
     }
 
     fn offline(&mut self, path: &str) -> PortResult<()> {

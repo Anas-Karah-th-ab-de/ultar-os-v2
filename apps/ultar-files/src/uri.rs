@@ -75,6 +75,38 @@ fn decode(part: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// A change the desktop asks of Files for one of its icons (`files://desktop/<name>?action=…`):
+/// Files shows the item's folder with the item selected and runs the command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UriAction {
+    /// The rename dialog.
+    Rename,
+    /// Move to the trash (with undo).
+    Trash,
+    /// The properties.
+    Properties,
+    /// A new folder in the folder (its name ready to type).
+    NewFolder,
+}
+
+/// Splits `?action=…` off a `files://` URI (an unknown action is dropped, the place stays).
+pub fn split_action(uri: &str) -> (&str, Option<UriAction>) {
+    let Some((base, word)) = uri.rsplit_once("?action=") else {
+        return (uri, None);
+    };
+    if !base.starts_with("files://") {
+        return (uri, None);
+    }
+    let action = match word {
+        "rename" => UriAction::Rename,
+        "trash" => UriAction::Trash,
+        "properties" => UriAction::Properties,
+        "new_folder" => UriAction::NewFolder,
+        _ => return (base, None),
+    };
+    (base, Some(action))
+}
+
 /// The place a URI names: the trash, a `files://` place, or a folder of a mounted drive.
 pub fn parse(uri: &str, drives: &[Drive]) -> Option<Loc> {
     if uri.len() > MAX_URI || uri.chars().any(char::is_control) {
@@ -112,6 +144,27 @@ fn walk(mut loc: Loc, path: &str) -> Option<Loc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_desktop_asks_for_actions_on_its_icons() {
+        assert_eq!(
+            split_action("files://desktop/a%3Fb.txt?action=rename"),
+            ("files://desktop/a%3Fb.txt", Some(UriAction::Rename))
+        );
+        assert_eq!(
+            split_action("files://desktop/?action=new_folder"),
+            ("files://desktop/", Some(UriAction::NewFolder))
+        );
+        assert_eq!(
+            split_action("files://desktop/x?action=format"),
+            ("files://desktop/x", None)
+        );
+        assert_eq!(
+            split_action("trash:///?action=trash"),
+            ("trash:///?action=trash", None)
+        );
+        assert_eq!(split_action("files://home/"), ("files://home/", None));
+    }
 
     #[test]
     fn places_round_trip_through_uris() {

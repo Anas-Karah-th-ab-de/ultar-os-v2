@@ -1,6 +1,6 @@
 [package]
 name = "ultar-sprache"
-version = "0.8.0"
+version = "0.8.1"
 edition.workspace = true
 description = "Sprache der Befehlszeilen-Werkzeuge (Deutsch, Arabisch, Englisch)"
 

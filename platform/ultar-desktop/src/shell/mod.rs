@@ -3,6 +3,8 @@
 //! the world outside (compositor, services); it never draws.
 
 mod bar;
+mod desk;
+mod desk_items;
 mod grid;
 mod handoff;
 mod helper;
@@ -15,6 +17,8 @@ mod render;
 mod shapes;
 mod sheets;
 
+pub use desk::{item as desk_item, shortcut as shortcut_item};
+pub use desk_items::{item as icon_item, HOME_URI};
 pub use menus::{open_menu, MenuKind, MENU_KEYBOARD_SETTINGS};
 pub use render::{build_bar, build_popup, status_icons, Popup};
 pub use shapes::{bar_panel, build_second, second_panel};
@@ -57,6 +61,16 @@ pub enum Effect {
     /// Keep the search history beside the shell (save it when `search.history` is on,
     /// delete it when off). The entries are already in the state.
     History,
+    /// Keep the desktop's shortcuts beside the shell (they are already in the state).
+    Shortcuts,
+    /// Open a file with its default app (the launcher resolves the URI); none installed for
+    /// it is said in a notice.
+    OpenFile {
+        /// Its `files://` URI.
+        uri: String,
+        /// Its name (for the notice).
+        name: String,
+    },
 }
 
 /// What an app start opens (`launcher.start` version 2, docs/integration/ultar-launcher.md):
@@ -192,13 +206,28 @@ impl Shell {
 
     /// Now in local time (the start of the epoch if the clock is off the calendar).
     pub fn local_time(&self) -> Option<LocalTime> {
-        LocalTime::at(self.clock.now_ms(), self.clock.offset_s())
+        LocalTime::at(self.clock.now_ms(), self.offset_s())
+    }
+
+    /// Offset of the local time: the time zone of the settings (`datetime.timezone.name`),
+    /// the clock's own until the service said.
+    pub fn offset_s(&self) -> i32 {
+        self.d
+            .prefs
+            .offset_s(self.clock.now_ms(), self.clock.offset_s())
+    }
+
+    /// Switches every text to `lang` (`region.language` changed while the shell runs).
+    pub fn set_lang(&mut self, lang: ultar_i18n::Lang) {
+        self.d.lang = lang;
+        self.tr = crate::i18n::translator_or_keys(lang);
     }
 
     /// Opens `open`, or closes it when it is open already (a second click closes, §13).
     pub fn toggle(&mut self, open: Open) -> Outcome {
         let same = std::mem::discriminant(&self.d.open) == std::mem::discriminant(&open);
         self.d.open = if same { Open::None } else { open };
+        self.d.places.picking = false;
         if self.d.open == Open::Overview
             || matches!(self.d.open, Open::Apps(_))
             || self.d.open == Open::None
@@ -243,6 +272,8 @@ impl Shell {
         }
         self.d.open = Open::None;
         self.d.overview.query.clear();
+        self.d.places.picking = false;
+        self.d.places.draft.clear();
         self.d.svc.wifi.joining = None;
         self.d.svc.mesh.targets.clear();
         Outcome::surfaces()
@@ -260,6 +291,15 @@ impl Shell {
                 grid::app_menu(self, &app.clone(), *id)
             }
             (Target::Categories, ActionKind::Selected(i)) => grid::category(self, *i),
+            (Target::RenameField, ActionKind::Submitted)
+            | (Target::RenameSave, ActionKind::Activated) => desk::rename_done(self),
+            (Target::RenameCancel, ActionKind::Activated) => self.close(),
+            (Target::AppItem(app), ActionKind::DragStarted) => {
+                desk::drag_started(self, &app.clone())
+            }
+            (Target::AppItem(app), ActionKind::DragEnded { target, .. }) => {
+                desk::drag_ended(self, &app.clone(), target.is_none())
+            }
             _ => sheets::on_popup(self, target, kind),
         }
     }
@@ -330,6 +370,22 @@ impl Shell {
     /// A command of the open menu.
     pub fn on_menu(&mut self, id: u32) -> Outcome {
         menus::chosen(self, id)
+    }
+
+    /// An action on the desktop background (a shortcut selected or opened).
+    pub fn on_desk(&mut self, target: &Target, kind: &ActionKind) -> Outcome {
+        desk::on_desk(self, target, kind)
+    }
+
+    /// The secondary button or the menu key on the desktop background at screen point
+    /// `at`: on a shortcut (`target`) its menu, elsewhere the background's.
+    pub fn on_desk_menu(&mut self, target: Option<&Target>, at: (i32, i32)) -> Outcome {
+        desk::open_at(self, target, at)
+    }
+
+    /// Text typed into the rename dialog of a shortcut.
+    pub fn on_rename_text(&mut self, text: &str) -> Outcome {
+        desk::typed(self, text)
     }
 
     /// Drives with media appeared (`volumes.state`): `apps.removable_media` decides what

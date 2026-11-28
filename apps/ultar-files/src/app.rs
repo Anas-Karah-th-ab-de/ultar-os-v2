@@ -106,10 +106,18 @@ impl App {
             shown: None,
         };
         app.poll_drives();
+        let (uri, action) = uri.map_or((None, None), |u| {
+            let (u, a) = crate::uri::split_action(u);
+            (Some(u), a)
+        });
         if let Some(loc) = uri.and_then(|u| crate::uri::parse(u, &app.state.drives)) {
             app.state.folder = loc;
         }
         app.reload();
+        if let Some(action) = action {
+            let effects = app.uri_action(action);
+            app.apply(effects);
+        }
         app.rebuild()?;
         Ok(app)
     }

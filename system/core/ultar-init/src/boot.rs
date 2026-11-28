@@ -268,16 +268,30 @@ pub fn sprache_von_startpartition() {
     }
 }
 
-/// The LUKS2 tool (system/core/ultar-luks): asks for the passphrase on the console and hands
-/// the key to the kernel, which mounts /data.
+/// The graphical unlock screen (platform/ultar-unlock): draws on the framebuffer, hands the
+/// key to the kernel, which mounts /data.
+const UNLOCK_SCREEN: &str = "/usr/bin/ultar-unlock";
+/// The LUKS2 tool (system/core/ultar-luks): the same on the text console (no framebuffer,
+/// or the screen failed).
 const LUKS_TOOL: &str = "/usr/bin/ultar-luks";
 
-/// Encrypted data partition (Ultar kernel): waits for `ultar-luks unlock` before the services
-/// start, so no service writes into a /data that is not mounted yet. Without encryption
-/// (control file missing or not `locked`) nothing happens.
+/// Encrypted data partition (Ultar kernel): waits for the unlock before the services start,
+/// so no service writes into a /data that is not mounted yet – first the graphical screen,
+/// the text console when it cannot run. Without encryption (control file missing or not
+/// `locked`) nothing happens.
 pub fn unlock_data() {
     if !ultar_hal_system::crypt::locked() {
         return;
+    }
+    match std::process::Command::new(UNLOCK_SCREEN).status() {
+        Ok(s) if s.success() => {
+            log("daten entsperrt (/data, Bildschirm)");
+            return;
+        }
+        Ok(s) => log(&format!("Entsperr-Bildschirm: {s}, weiter auf der Konsole")),
+        Err(e) => log(&format!(
+            "{UNLOCK_SCREEN} nicht startbar: {e}, weiter auf der Konsole"
+        )),
     }
     match std::process::Command::new(LUKS_TOOL).arg("unlock").status() {
         Ok(s) if s.success() => log("daten entsperrt (/data)"),

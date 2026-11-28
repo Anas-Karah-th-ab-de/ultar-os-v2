@@ -1,6 +1,6 @@
 # ultar-voiced – Sprachsteuerung „Hey KM“ für den Helfer
 
-Stand: Paket `voice` (Punkt C8). Der Dienst `ultar-voiced` (Nutzer 841) lässt die Person den
+Stand: Paket `voice` (Punkt C8). Der Dienst `ultar-voiced` (Nutzer 842) lässt die Person den
 Helfer (`ultar-agentd`) mit der Stimme bedienen: Weckwort sagen, Anfrage sprechen, die Antwort
 wird vorgelesen. Arabisch zuerst, dann Englisch und Deutsch. Alles läuft auf dem Gerät.
 
@@ -217,8 +217,8 @@ on.“ (75 %). Alle 14 Zeilen stehen in der Ausgabe des Tests (`--nocapture`).
 
 - `rootfs/etc/ultar/bus-policy.toml`: Regel `system.voiced`, `app.settings` darf `voice.*`,
   `system.audiod` darf `audio.mic` veröffentlichen.
-- `rootfs/etc/ultar/ids.toml`: Nutzer `voiced = 841` und Mitgliedschaften.
-- `rootfs/etc/ultar/services/bus.toml`, `logd.toml`: Sockel und Gruppe 841.
-- `system/core/ultar-busd/src/service_files_tests.rs`: die Tabellen kennen 841/`voiced`.
+- `rootfs/etc/ultar/ids.toml`: Nutzer `voiced = 842` und Mitgliedschaften.
+- `rootfs/etc/ultar/services/bus.toml`, `logd.toml`: Sockel und Gruppe 842.
+- `system/core/ultar-busd/src/service_files_tests.rs`: die Tabellen kennen 842/`voiced`.
 - `system/services/ultar-agentd/tests/process.rs`: der Prozess-Test für `agent.ask_voice`.
 - `apps/ultar-settings/src/**`: außer der Assistent-Seite die Verdrahtung (Port, Zustand, Aktion).

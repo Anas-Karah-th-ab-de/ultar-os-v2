@@ -39,7 +39,10 @@ fn read_start(client: &Client, launcher: &Launcher) {
             }
         }
     }
-    for key in [AUTOSTART, CLEAN_DOWNLOADS, CLEAN_DAYS] {
+    let keys = [AUTOSTART, CLEAN_DOWNLOADS, CLEAN_DAYS]
+        .into_iter()
+        .chain(crate::look::KEYS);
+    for key in keys {
         let key = key.to_owned();
         if let Ok(reply) = client.call(&Get { key: key.clone() }, RETRY) {
             if let Some(value) = reply.value {

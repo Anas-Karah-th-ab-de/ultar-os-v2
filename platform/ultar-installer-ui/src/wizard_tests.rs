@@ -65,7 +65,12 @@ fn names_and_answers() {
     assert!(!valid_name(""));
     assert!(!valid_name(&"a".repeat(40)));
     let mut w = wizard();
-    w.account = ["أنس".into(), "anas".into(), "ultar-pc".into()];
+    w.account = [
+        "أنس".into(),
+        "anas".into(),
+        "ultar-pc".into(),
+        String::new(),
+    ];
     let a = w.answers();
     assert_eq!(a.get("user"), Some("anas"));
     assert_eq!(a.get("timezone"), Some("Asia/Damascus"));
@@ -73,4 +78,32 @@ fn names_and_answers() {
     w.step = Step::Account;
     w.account[1] = "X".into();
     assert_eq!(w.blocked(), Some("installer.reason.user"));
+}
+
+#[test]
+fn ssh_key_is_optional_checked_and_recorded() {
+    let ed =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl anas@pc";
+    let mut w = wizard();
+    w.account = [
+        "Anas".into(),
+        "anas".into(),
+        "ultar-pc".into(),
+        String::new(),
+    ];
+    w.secrets.password = [
+        crate::secret::Secret::new("geheim-genug"),
+        crate::secret::Secret::new("geheim-genug"),
+    ];
+    w.step = Step::Account;
+    // empty: no key in the record, the step is not held up by it
+    assert_ne!(w.blocked(), Some("installer.reason.ssh_key"));
+    assert_eq!(w.answers().get("ssh_key"), None);
+    // a broken line holds the step
+    w.account[3] = "ssh-ed25519 kaputt".into();
+    assert_eq!(w.blocked(), Some("installer.reason.ssh_key"));
+    // a valid line goes into the record, trimmed
+    w.account[3] = format!("  {ed}\n");
+    assert_eq!(w.blocked(), None);
+    assert_eq!(w.answers().get("ssh_key"), Some(ed));
 }

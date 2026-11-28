@@ -7,9 +7,9 @@ args = [
     "--state", "/data/ultar/voice",
     "--log-socket", "/run/ultar/log/voiced.sock",
 ]
-# Its own user (841) without kernel rights. Its files: the settings, the person's trained
+# Its own user (842) without kernel rights. Its files: the settings, the person's trained
 # words and voice (no recordings) and the speech models the update brought.
-user = 841
+user = 842
 dirs = ["/data/ultar/voice"]
 notify = true
 after = ["bus"]

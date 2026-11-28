@@ -12,6 +12,13 @@
 # no job of another device runs. Over the internet it goes through the relay of the Ultar
 # account server, signed in with the device token the account service writes after the
 # person signs in (read before every connection; signed out: no relay).
+#
+# Shared clipboard (docs/integration/mesh-clipboard.md): this user (833) holds the right
+# ui.clipboard-bridge in compositor-rights.toml and reads the clipboard through the
+# compositor only while the mesh is on: text (16 KiB) and pictures (4 MiB), never a
+# password, never while the session is locked. It is off per device until the person
+# switches "Share the clipboard" on in Settings > Mesh. One short notice per arrival
+# (at most one in ten seconds) goes to the notification service.
 editions = ["phone", "desktop", "server"]
 exec = "/usr/bin/ultar-mesh"
 args = [
@@ -21,6 +28,7 @@ args = [
     "--log-socket", "/run/ultar/log/mesh.sock",
     "--relay", "wss://ultar.code-craft.tech/v1/verbund/relais",
     "--relay-token-file", "/data/ultar/account-relay/relay.token",
+    "--compositor", "/run/ultar/ui/compositor.sock",
 ]
 # Its own user (833) without kernel rights: ports above 1024 and its own folders; group
 # accountrelay (838) to read the relay token.

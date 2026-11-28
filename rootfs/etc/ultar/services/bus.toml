@@ -45,14 +45,15 @@ args = [
     # Device mesh (833), helper (834), the language model's bus face (835).
     "--listen", "/run/ultar/bus/mesh.sock=system.mesh", "--mode", "0660", "--group", "833", "--max-connections", "4",
     "--listen", "/run/ultar/bus/agentd.sock=system.agentd", "--mode", "0660", "--group", "834", "--max-connections", "4",
-    "--listen", "/run/ultar/bus/voiced.sock=system.voiced", "--mode", "0660", "--group", "841", "--max-connections", "2",
+    "--listen", "/run/ultar/bus/voiced.sock=system.voiced", "--mode", "0660", "--group", "842", "--max-connections", "2",
     "--listen", "/run/ultar/bus/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835", "--max-connections", "2",
     "--listen", "/run/ultar/bus/llmcloud.sock=system.llmcloud", "--mode", "0660", "--group", "837", "--max-connections", "2",
     # Call service (829) and the modem service (ril, root on the phone).
     "--listen", "/run/ultar/bus/calld.sock=system.calld", "--mode", "0660", "--group", "829", "--max-connections", "4",
     "--listen", "/run/ultar/bus/ril.sock=system.ril", "--mode", "0600", "--max-connections", "2",
-    # The update service (root: it writes the slots and the boot control).
-    "--listen", "/run/ultar/bus/updated.sock=system.updated", "--mode", "0600", "--max-connections", "4",
+    # The update service (root: it writes the slots and the boot control; group 841, because
+    # root without file_admin passes no permission check on the Ultar kernel).
+    "--listen", "/run/ultar/bus/updated.sock=system.updated", "--mode", "0660", "--group", "841", "--max-connections", "4",
     # Administration tools run by root: usettings, udevctl, ulog, uinit, ulaunch.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The graphical installer (installation medium, user and group 840).
@@ -72,7 +73,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 839, 840, 841]
+groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 839, 840, 841, 842]
 public_dirs = ["/run/ultar/bus", "/run/ultar/appbus"]
 notify = true
 after = ["logd"]

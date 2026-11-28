@@ -51,7 +51,7 @@ llmcloud = 837
 osk = 839
 installer = 840
 # Voice control (ultar-voiced, docs/integration/ultar-voiced.md): hears and speaks only through the bus.
-voiced = 841
+voiced = 842
 nobody = 65534
 
 [groups]
@@ -66,12 +66,16 @@ radio = 831
 disk = 832
 # The user's file areas (/data/ultar/areas/*, 0770 launcher:userfiles): system apps that
 # declare file areas get this group in their cell (ultar-launcher areas.rs); the launcher
-# cleans the person's downloads folder (storage.clean_downloads). The volume service does
+# cleans the person's downloads folder (storage.clean_downloads); the desktop shell reads
+# the area `desktop` (its items on the background). The volume service does
 # not have it: it handles untrusted USB file systems and must not reach the areas.
 userfiles = 836
 # The relay token of the Ultar account (/data/ultar/account-relay, 0750/0640 accountd:accountrelay):
 # written by the account service after sign-in, read by the mesh service for the Verbund relay.
 accountrelay = 838
+# The update service runs as root (raw A/B partitions), but root without file_admin passes no
+# permission check on the Ultar kernel: its bus and log sockets are open to this group.
+updated = 841
 
 [members]
 busd = ["logd"]
@@ -90,7 +94,7 @@ desktop = ["busd"]
 audio = ["audiod"]
 radio = ["netd", "btd"]
 disk = ["volumed"]
-userfiles = ["launcher"]
+userfiles = ["launcher", "desktop"]
 # Their sockets at the bus and the log service are open to their own groups.
 displayd = ["busd", "logd"]
 accountd = ["busd", "logd"]
@@ -111,6 +115,7 @@ llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
 osk = ["busd"]
 voiced = ["busd", "logd"]
+updated = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at
