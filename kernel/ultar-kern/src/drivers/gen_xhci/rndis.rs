@@ -170,21 +170,26 @@ impl NetDev for RndisHandle {
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
-        // Die IN-Türklingel neu läuten (QEMUs xHCI nimmt eine Bulk-IN-Übertragung beim NAK aus der
-        // Bearbeitung; der neue Anstoß lässt sie bei inzwischen angekommenen Daten abschließen),
-        // dann pumpen, damit fertige Übertragungen in die Warteschlange kommen.
-        {
+        // DIAGNOSE: synchroner Bulk-IN auf dem IN-Endpunkt (wie der Massenspeicher-Treiber), um zu
+        // sehen, ob der Endpunkt überhaupt überträgt. tx dient hier als Empfangspuffer (≥ TX).
+        let got = {
             let mut hcs = super::HC.lock();
-            if let Some(hc) = hcs.iter_mut().find(|h| h.index == self.hc_index) {
-                w32(hc.db + self.slot as u64 * 4, self.in_dci);
-                hc.pump();
-            }
+            let hc = hcs.iter_mut().find(|h| h.index == self.hc_index)?;
+            hc.transfer(self.slot, self.in_dci, self.tx, TX, 3)?
+        };
+        DBG[1].fetch_add(1, Ordering::Relaxed);
+        if got < 44 || rd32(self.tx, 0) != PACKET_MSG {
+            return None;
         }
-        let mut list = NICS.lock();
-        let nic = list.iter_mut().find(|n| n.hc_index == self.hc_index && n.slot == self.slot)?;
-        let f = nic.rx.pop_front()?;
-        let n = f.len().min(buf.len());
-        buf[..n].copy_from_slice(&f[..n]);
+        DBG[2].fetch_add(1, Ordering::Relaxed);
+        let data_off = rd32(self.tx, 8) as usize + 8;
+        let data_len = rd32(self.tx, 12) as usize;
+        if data_off + data_len > got {
+            return None;
+        }
+        DBG[3].fetch_add(1, Ordering::Relaxed);
+        let n = data_len.min(buf.len());
+        unsafe { core::ptr::copy_nonoverlapping((self.tx + data_off as u64) as *const u8, buf.as_mut_ptr(), n) };
         Some(n)
     }
 }
@@ -280,8 +285,8 @@ pub(super) fn attach(
     // Empfangsfläche + Sendepuffer, Empfang armieren
     let in_buf = alloc_pages(TDS * TD as usize / 4096).ok_or("kein Speicher")?;
     let tx = alloc_pages(1).ok_or("kein Speicher")?;
-    let mut in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
-    in_ep.arm_all(hc, slot);
+    let in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
+    // DIAGNOSE: nicht vor-armieren; recv liest synchron (siehe recv).
     WANT.store(in_dci as u64 | (slot as u64) << 8 | (out_dci as u64) << 16, Ordering::Relaxed);
     NICS.lock().push(Nic { hc_index: hc.index, slot, in_ep, rx: VecDeque::new() });
 
