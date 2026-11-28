@@ -8,7 +8,7 @@ Rules for this file (owner, 2026-11-28):
 Markup inside texts: [label](/path/), **bold**, `code`. Internal paths get the language prefix.
 """
 
-ASSET_VERSION = "090"
+ASSET_VERSION = "091"
 
 
 def L(ar, en, de):

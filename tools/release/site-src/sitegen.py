@@ -23,6 +23,8 @@ LANGS = ("ar", "en", "de")
 PREFIX = {"ar": "", "en": "/en", "de": "/de"}
 ASSET_PATHS = ("/downloads/", "/img/", "/store/", "/v1/", "/style.css", "/app.js")
 VERSION = P.ASSET_VERSION
+# The Arabic home carries the choice: "/" alone sends English and German browsers to /en/ or /de/ (app.js).
+HOME_AR = "/?lang=ar"
 
 
 def tx(v, lang):
@@ -36,6 +38,8 @@ def tx(v, lang):
 
 def loc(href, lang):
     """Internal page links get the language prefix; files and external links stay."""
+    if lang == "ar" and href == "/":
+        return HOME_AR
     if href.startswith("/") and not href.startswith(ASSET_PATHS):
         return PREFIX[lang] + href
     return href
@@ -295,13 +299,13 @@ def header(page, lang):
     langs = []
     for l2 in LANGS:
         cur = ' aria-current="true"' if l2 == lang else ""
-        langs.append(f'<a hreflang="{l2}" lang="{l2}" href="{PREFIX[l2]}{page_path(page["slug"])}"{cur}><b>{P.LANG_NAME[l2]}</b></a>')
+        langs.append(f'<a hreflang="{l2}" lang="{l2}" href="{loc(page_path(page["slug"]), l2)}"{cur}><b>{P.LANG_NAME[l2]}</b></a>')
     lang_dd = (f'<details class="dd lang-dd"><summary aria-label="{html.escape(tx(T["lang_label"], lang))}">'
                f'<span class="globe" aria-hidden="true"></span>{P.LANG_SHORT[lang]}</summary>'
                f'<div class="panel">{"".join(langs)}</div></details>')
     return (
         '<header class="top" id="top"><div class="bar">'
-        f'<a class="brand" href="{PREFIX[lang] or ""}/"><img src="/img/logo.png" alt="KM Code Craft" width="130" height="55">'
+        f'<a class="brand" href="{loc("/", lang)}"><img src="/img/logo.png" alt="KM Code Craft" width="130" height="55">'
         f'<span>Ultar OS</span></a>'
         f'<button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">'
         f'<span class="burger" aria-hidden="true"></span>{html.escape(tx(T["menu"], lang))}</button>'
