@@ -34,6 +34,9 @@ fn found(source: Source) -> InspectOutcome {
             lan: true,
             folders: vec!["documents".into()],
         },
+        signer: String::new(),
+        refusal: None,
+        not_granted: Vec::new(),
     })
 }
 

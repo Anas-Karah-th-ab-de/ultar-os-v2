@@ -1,9 +1,9 @@
 //! `foreigntest` – what the kernel under it offers the apps from other systems
 //! (`tools/kern-test/foreign-e2e.sh` runs it on the Ultar kernel in QEMU; on Linux as
-//! root it should say `FOREIGN: ALLES OK` but for the network barrier of stage P0).
+//! root it should say `FOREIGN: ALLES OK`).
 //!
 //! ```text
-//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE]
+//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE] [--dex FILE]
 //! ```
 //!
 //! With the area's component „Windows programs“ (`components=windows`) it also runs Wine
@@ -20,6 +20,8 @@ use std::time::Duration;
 use ultar_foreign::cellrun::{self, CellJob, Mode, SetupStep, INBOX_IN_CELL};
 use ultar_sys::cell::{self as sys_cell, BindMode, Namespaces};
 
+// ART of the component "Android apps" (check android-art)
+mod art;
 mod wine;
 
 /// The raw checks, each in a child (`--check NAME`): name and what it needs.
@@ -445,7 +447,7 @@ fn main() {
     let words: Vec<String> = std::env::args().skip(1).collect();
     let area = PathBuf::from(arg(&words, "--area").unwrap_or_else(|| "/data/foreign/linux".into()));
     if let Some(name) = arg(&words, "--check") {
-        std::process::exit(match raw(&name, &area) {
+        std::process::exit(match art::or_raw(&name, &area, arg(&words, "--dex"), raw) {
             Ok(()) => 0,
             Err(detail) => {
                 eprintln!("{detail}");
@@ -459,6 +461,10 @@ fn main() {
     let mut report = Report::default();
     raw_checks(&me, &area, &mut report);
     windows_check(&me, &area);
+    // the Android runtime (stage P5), when the area has it
+    if let Some(dex) = arg(&words, "--dex") {
+        report.line("android-art", art::apart(&me, &area, &dex));
+    }
     cell_checks(&helper, &area, &mut report);
     if let Some(deb) = arg(&words, "--deb") {
         package_checks(&helper, &area, &deb, &mut report);

@@ -2,6 +2,13 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Android-Apps (Stufe P5, 28.11.2026, in main über `integ/fa-android`)
+
+| Teil | Stand |
+|---|---|
+| Android-Apps | `.apk` über `ultar-foreign`: eigene begrenzte Leser (ZIP, AXML, ARSC, Signatur v2/v3 mit RSA/ECDSA, Fuzz-Tests), Ablehnung von reinem ARM-Code, unsignierten, nur-v1-signierten und veränderten Apps, Aktualisierung nur vom selben Signierer und nie auf eine ältere Fassung, Art `compat-apk`. Laufzeit: Android Translation Layer + ART (art_standalone) aus festen Quellen gebaut (`tools/foreign/make-android-runtime.sh`, Paket `ultar-android-runtime` im Linux-Bereich). Bilder über den bwrap-Ersatz des Linux-Bereichs (`bwrap-shim.c`, wendet jetzt glycins seccomp-Filter an; `bwrap-cell` entfällt). Prüfung `tools/foreign/android-e2e.sh` (Gravity Defied) → `FOREIGN-ANDROID-E2E: ALLES OK` auf .12 (vor der Zusammenführung); Dateien zeigt die Ablehnungsgründe. Doku `docs/integration/ultar-foreign.md` § Android |
+| Ultar-Kern | ART läuft noch nicht (`android-art`): `readlink("/proc/self/exe")` nur im eigenen `/proc` des Kerns (glibc-`$ORIGIN`), `/proc/<pid>/maps` fehlt, `MAP_32BIT`/Abbildungen unter 4 GB, ein abstürzendes ART endet nicht – Kern-Fork `feat/fa-k2-wine` |
+
 ## Apps aus anderen Systemen, Integration 2 (28.11.2026, Zweig `integ/fa-windows`)
 
 | Baustein | Stand |

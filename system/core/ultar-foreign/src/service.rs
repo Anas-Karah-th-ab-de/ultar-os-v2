@@ -125,6 +125,7 @@ impl ForeignService {
         let windows = match crate::detect::open_source(&self.ctx.sources, &path).map(|o| o.source) {
             Ok(Source::Deb) => false,
             Ok(Source::Exe | Source::Msi) if self.ctx.layout.windows_installed() => true,
+            Ok(Source::Apk) if self.ctx.layout.android_installed() => false,
             Ok(Source::Unknown) | Err(_) => return InstallOutcome::Invalid,
             Ok(_) => return InstallOutcome::NotAvailable,
         };
@@ -267,7 +268,7 @@ impl ForeignService {
         if deb && !self.state.package_used(&record.package, &record.id) {
             let ctx = self.ctx.clone();
             self.busy = bus.later(move |_client: &Client| {
-                let purged = jobs::purge(&ctx, &record.package);
+                let purged = jobs::take_out(&ctx, &record);
                 Box::new(
                     move |s: &mut ForeignService, bus: &Bus<'_, ForeignService>| {
                         s.busy = false;

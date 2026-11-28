@@ -39,6 +39,13 @@ pub struct AppRecord {
     pub lan: bool,
     /// The person's folders.
     pub folders: Vec<String>,
+    /// Android apps: SHA-256 fingerprints of the signers' certificates (an update must
+    /// share one of them).
+    #[serde(default)]
+    pub signers: Vec<String>,
+    /// Android apps: the version number (an update never goes back).
+    #[serde(default)]
+    pub version_code: u32,
 }
 
 /// Everything remembered.
@@ -150,7 +157,7 @@ impl AppRecord {
         }
     }
 
-    /// The launcher manifest (kind `compat-deb`, launcher `foreign.rs`).
+    /// The launcher manifest (kind `compat-deb`, `compat-exe` or `compat-apk`, launcher `foreign.rs`).
     pub fn manifest(&self) -> String {
         let mut root = toml::Table::new();
         let text = |s: &str| toml::Value::String(s.to_owned());
@@ -161,6 +168,7 @@ impl AppRecord {
         );
         let kind = match Source::from_word(&self.source) {
             Some(Source::Exe | Source::Msi) => "compat-exe",
+            Some(Source::Apk) => "compat-apk",
             _ => "compat-deb",
         };
         root.insert("kind".into(), text(kind));
@@ -240,6 +248,8 @@ mod tests {
             network: true,
             lan: false,
             folders: vec!["documents".into()],
+            signers: Vec::new(),
+            version_code: 0,
         }
     }
 
