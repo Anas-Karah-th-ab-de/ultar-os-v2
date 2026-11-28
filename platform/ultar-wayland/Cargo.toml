@@ -1,0 +1,30 @@
+[package]
+name = "ultar-wayland"
+version = "0.8.1"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Wayland front end for apps from other systems: one instance per app cell, pure Rust, forwards windows to ultar-compositor (platform, area 5)"
+
+[lib]
+name = "ultar_wayland"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-wayland"
+path = "src/main.rs"
+
+[dependencies]
+ultar-surface = { path = "../ultar-surface", default-features = false }
+ultar-hal-gfx = { path = "../../system/hal/ultar-hal-gfx" }
+# Only for the layout tables (keymap.rs): the app gets exactly the compositor's characters.
+ultar-compositor = { path = "../ultar-compositor" }
+rustix = { version = "1", default-features = false, features = ["std", "event", "fs", "pipe", "process", "net"] }
+wayland-server = { version = "0.31", default-features = false }
+wayland-protocols = { version = "0.32", default-features = false, features = ["server", "unstable", "staging"] }
+
+[dev-dependencies]
+# The tests run the compositor in-process (headless) and take its pictures.
+ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-ui = { path = "../ultar-ui" }
+rustix = { version = "1", default-features = false, features = ["std", "event", "fs", "pipe", "process", "net"] }

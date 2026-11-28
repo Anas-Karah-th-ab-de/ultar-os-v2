@@ -2,6 +2,14 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Fremde Apps, Stufe P1: Wayland-Brücke (28.11.2026, Zweig feat/fa-p1-wayland)
+
+| Baustein | Stand |
+|---|---|
+| `ultar-wayland` | Wayland-Server in reinem Rust (ohne libwayland, statisch baubar) für **eine** App-Zelle; gibt Fenster als gewöhnlicher Client an `ultar-compositor` weiter (Fenster, Unterflächen, Menüs, Tastatur ar/en/de, Zeiger, Touch, Zwischenablage, Maximieren/Vollbild/Minimieren, Schließen). Grenzen je Verbindung und gegenüber dem Compositor; falsche Anfragen beenden nur die eine Verbindung |
+| Geprüft | `tools/kern-test/wayland-e2e.sh` → `WAYLAND: ALLES OK`: weston-simple-shm, weston-terminal, foot, gtk4-demo, Qt 6, SDL3 mit Bildschirmfotos; Fuzz-Test (200 Verbindungen); auf dem Ultar-Kern in QEMU `WAYLAND-QEMU: OK` |
+| Offen | GTK 4 zeigt zwei Titelleisten ohne Recht `CLIENT_HEADER`; keine GPU-Puffer, kein Xwayland, keine Eingabemethode – siehe `docs/integration/ultar-wayland.md` |
+
 ## Systemauslastung auf dem Schreibtisch, Logo ohne Platte (28.11.2026)
 
 | Baustein | Stand |
