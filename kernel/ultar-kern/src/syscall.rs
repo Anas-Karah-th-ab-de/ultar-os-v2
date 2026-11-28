@@ -321,6 +321,10 @@ pub fn dispatch(f: &mut TrapFrame) {
         1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
         3 => Res::Val(sys_close(a[0])),
+        436 => Res::Val(crate::fdcalls::close_range(a[0], a[1], a[2])),
+        277 => Res::Val(crate::fdcalls::sync_file_range(a[0], a[3])),
+        26 => Res::Val(crate::fdcalls::msync(a[0], a[2])),
+        81 => Res::Val(crate::fdcalls::fchdir(a[0])),
         4 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
         6 => Res::Val(sys_stat_path(-100, a[0], a[1], 0x100)),
         5 => Res::Val(sys_fstat(a[0], a[1])),
@@ -397,7 +401,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         79 => Res::Val(sys_getcwd(a[0], a[1])),
         80 => Res::Val(sys_chdir(a[0])),
         83 => Res::Val(sys_mkdir(-100, a[0], a[1])),
-        87 | 84 => Res::Val(sys_unlink(-100, a[0])),
+        87 => Res::Val(sys_unlink(-100, a[0], false)),
+        84 => Res::Val(sys_unlink(-100, a[0], true)),
         89 => Res::Val(sys_readlink(-100, a[0], a[1], a[2])),
         267 => Res::Val(sys_readlink(a[0] as i32 as i64, a[1], a[2], a[3])),
         40 => sys_sendfile(a[0], a[1], a[2], a[3]),
@@ -524,7 +529,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         257 => Res::Val(sys_open(a[0] as i32 as i64, a[1], a[2], a[3])),
         258 => Res::Val(sys_mkdir(a[0] as i32 as i64, a[1], a[2])),
         262 => Res::Val(sys_stat_path(a[0] as i32 as i64, a[1], a[2], a[3])),
-        263 => Res::Val(sys_unlink(a[0] as i32 as i64, a[1])),
+        // unlinkat: AT_REMOVEDIR (0x200) makes it rmdir
+        263 => Res::Val(sys_unlink(a[0] as i32 as i64, a[1], a[2] & 0x200 != 0)),
         269 | 439 => Res::Val(crate::perm::sys_access(a[0] as i32 as i64, a[1], a[2], if nr == 439 { a[3] } else { 0 })),
         // select: timeval (microseconds), rounded up to whole milliseconds
         23 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])).saturating_mul(1000).saturating_add(u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])).min(999_999).div_ceil(1000)).min(i64::MAX as u64) as i64).unwrap_or(-1) }),
@@ -1326,7 +1332,7 @@ fn sys_fsync(fd: u64) -> i64 {
 
 /// `close`: a written file is stored first, and an error doing so is the result (`EIO`,
 /// `ENOSPC`) – the data is then not on the medium, and the caller must know.
-fn sys_close(fd: u64) -> i64 {
+pub(crate) fn sys_close(fd: u64) -> i64 {
     let taken = with(|p| p.g.fds.get_mut(fd as u32 as usize).and_then(Option::take)).flatten();
     let Some(mut f) = taken else { return -EBADF };
     let job = match &mut f.kind {
@@ -1843,12 +1849,26 @@ fn sys_mkdir(dirfd: i64, path: u64, mode: u64) -> i64 {
     }
 }
 
-fn sys_unlink(dirfd: i64, path: u64) -> i64 {
+/// `unlink` (`dir` = false) and `rmdir` (`dir` = true): each removes only its own kind – `unlink` of a
+/// directory is `EISDIR`, `rmdir` of anything else (a file, a link) `ENOTDIR`. dpkg tells a file from a
+/// directory exactly so (`rmdir` must answer `ENOTDIR`); a kernel that removed the file instead made dpkg
+/// refuse every package ("package metadata contained directory").
+fn sys_unlink(dirfd: i64, path: u64, dir: bool) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
+    if dir && (p == "." || p.ends_with("/.")) {
+        return -EINVAL;
+    }
     let loc = match locate(dirfd, &p, false) {
         Ok(l) => l,
         Err(e) => return e,
     };
+    let is_dir = link_at(&loc).is_none() && matches!(fs::stat(&loc.host), Some((1, _)));
+    match (dir, is_dir, fs::stat(&loc.host).is_some() || link_at(&loc).is_some()) {
+        (_, _, false) => return -ENOENT,
+        (true, false, true) => return -ENOTDIR,
+        (false, true, true) => return -EISDIR,
+        _ => {}
+    }
     // removing a mount point would remove what it shows (the bound file or directory of the host)
     if loc.mount_point {
         return -EBUSY;
@@ -3527,6 +3547,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
                 *d = None;
             }
         }
+        reset_at_exec(p);
         p.space().activate();
     });
     unsafe { crate::paging::wrmsr(0xC000_0100, 0) };
@@ -3534,6 +3555,24 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
     // a parent waiting in vfork goes on now (the child no longer uses its memory)
     proc::vfork_exec(proc::current());
     0
+}
+
+/// What `execve` resets, as Linux does: a caught signal goes back to its default action (its handler
+/// lies in the old program – a new image jumping there ran into data or the middle of an instruction:
+/// dpkg-deb and perl started by dpkg died with SIGILL/SIGSEGV at dpkg's handler address); an ignored
+/// signal stays ignored, mask and pending signals stay. The address the kernel clears at the thread's end
+/// (`set_tid_address`/`CLONE_CHILD_CLEARTID`) belonged to the old image as well.
+fn reset_at_exec(p: &mut Proc) {
+    for act in p.g.sigact.iter_mut() {
+        if act.handler > 1 {
+            *act = proc::SigAct::default();
+        } else {
+            act.flags = 0;
+            act.restorer = 0;
+            act.mask = 0;
+        }
+    }
+    p.clear_tid = 0;
 }
 
 fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {

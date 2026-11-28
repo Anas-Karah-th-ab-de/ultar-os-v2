@@ -42,6 +42,7 @@ mod svcdev;
 mod efi;
 mod eingabe;
 mod ext4;
+mod fdcalls;
 mod klog;
 mod mem;
 mod msi;
