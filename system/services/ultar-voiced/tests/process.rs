@@ -55,7 +55,11 @@ fn training_listens_only_for_the_takes_and_leaves_it_off() {
 #[test]
 fn the_word_the_request_and_the_answer() {
     let b = listening("voice-flow");
-    assert_eq!(b.seen.capture.lock().unwrap().last(), Some(&true));
+    assert!(
+        wait_until(WAIT, || b.seen.capture.lock().unwrap().last()
+            == Some(&true)),
+        "the microphone-in-use topic never said it is on"
+    );
     b.set_text("open the settings");
     b.speak(&word_then_request(400.0, &word(500.0, 1.05, 2.0)));
     assert!(
@@ -74,7 +78,8 @@ fn the_word_the_request_and_the_answer() {
     );
     // the tone first, then the answer, was played; the answer was spoken
     assert!(
-        wait_until(WAIT, || b.tone_level(880.0) > 0.03 && b.tone_level(440.0) > 0.03),
+        wait_until(WAIT, || b.tone_level(880.0) > 0.03
+            && b.tone_level(440.0) > 0.03),
         "the tone ({:.3}) and the answer ({:.3}) did not both reach the card ({} bytes)",
         b.tone_level(880.0),
         b.tone_level(440.0),

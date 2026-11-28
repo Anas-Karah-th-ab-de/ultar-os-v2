@@ -226,7 +226,9 @@ impl Mix {
             let (mut l, mut r) = (0.0f32, 0.0f32);
             for v in &mut self.voices {
                 let class_gain = self.duck[usize::from(v.class.byte())];
-                if v.state == State::Starved && (v.buf.len() >= v.prefill || (v.ended && !v.buf.is_empty())) {
+                if v.state == State::Starved
+                    && (v.buf.len() >= v.prefill || (v.ended && !v.buf.is_empty()))
+                {
                     v.state = State::Playing;
                 }
                 let (a, b) = match (v.state, v.buf.front().copied()) {
@@ -328,7 +330,10 @@ mod tests {
         }
         let out = run(&mut m, 4000);
         assert!(peak(&out) <= 1.0, "peak {}", peak(&out));
-        assert!(out[2 * 3000] > 0.99 && out[2 * 3000 + 1] < -0.99, "driven hard");
+        assert!(
+            out[2 * 3000] > 0.99 && out[2 * 3000 + 1] < -0.99,
+            "driven hard"
+        );
         // below the knee the sum is exact
         assert_eq!(limit(0.5), 0.5);
         assert_eq!(limit(-0.8), -0.8);
@@ -345,10 +350,18 @@ mod tests {
         assert_eq!(peak(&run(&mut m, 200)), 0.0);
         m.push(1, &vec![(0.8, 0.8); 1000]);
         let start = run(&mut m, 300);
-        assert!(jump(&start) < 0.8 / FADE_FRAMES as f32 * 1.2, "start {}", jump(&start));
+        assert!(
+            jump(&start) < 0.8 / FADE_FRAMES as f32 * 1.2,
+            "start {}",
+            jump(&start)
+        );
         // the client stops: the sound runs out and fades from where it was
         let out = run(&mut m, 2000);
-        assert!(jump(&out) < 0.8 / FADE_FRAMES as f32 * 1.2, "underrun {}", jump(&out));
+        assert!(
+            jump(&out) < 0.8 / FADE_FRAMES as f32 * 1.2,
+            "underrun {}",
+            jump(&out)
+        );
         assert!(out[2 * 1999].abs() < 1e-6, "silent at the end");
         assert_eq!(m.underruns(1), 1);
         assert!(!m.sounding());
@@ -368,7 +381,10 @@ mod tests {
         m.push(1, &vec![(0.4, 0.4); MAX_FRAMES]);
         let ducked = run(&mut m, 500);
         let level = 20.0 * (ducked[2 * 499] / 0.4).log10();
-        assert!((level + 15.0).abs() < 0.2, "media at {level} dB under a call");
+        assert!(
+            (level + 15.0).abs() < 0.2,
+            "media at {level} dB under a call"
+        );
         // a prompt during the call is not ducked, and does not lift the duck
         m.push(3, &vec![(0.3, 0.3); 4000]);
         let with_prompt = run(&mut m, 1000);
@@ -378,7 +394,11 @@ mod tests {
         run(&mut m, 30_000);
         m.push(1, &vec![(0.4, 0.4); 2000]);
         let after = run(&mut m, 1000);
-        assert!((after[2 * 999] - 0.4).abs() < 0.01, "back at {}", after[2 * 999]);
+        assert!(
+            (after[2 * 999] - 0.4).abs() < 0.01,
+            "back at {}",
+            after[2 * 999]
+        );
         assert!(m.duck_of(Class::Media) > 0.999);
     }
 
@@ -398,7 +418,7 @@ mod tests {
         p.push(2, &vec![(0.1, 0.1); 3000]);
         run(&mut p, 1000);
         assert!((p.duck_of(Class::Media) - DUCK_PROMPT).abs() < 1e-3);
-        assert!(DUCK_CALL < DUCK_RING && DUCK_RING < DUCK_PROMPT);
+        const { assert!(DUCK_CALL < DUCK_RING && DUCK_RING < DUCK_PROMPT) };
     }
 
     #[test]
@@ -416,7 +436,7 @@ mod tests {
             gone.extend(m.mix(&mut out));
         }
         assert_eq!(gone, vec![7]);
-        assert!(m.is_empty() && m.len() == 0);
+        assert!(m.is_empty());
         // a short clip (less than the cushion) that ended still plays
         m.add(8, Class::Prompt, 1000);
         m.push(8, &vec![(0.5, 0.5); 200]);

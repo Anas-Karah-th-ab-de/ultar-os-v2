@@ -225,7 +225,10 @@ mod tests {
         let (play, cap) = (d.join("play.raw"), d.join("cap.raw"));
         let mut dev = FileDevice::open(&play, &cap).unwrap();
         assert_eq!(dev.write(&[1, -2, 3, -4]).unwrap(), 4);
-        assert_eq!(std::fs::read(&play).unwrap(), vec![1, 0, 254, 255, 3, 0, 252, 255]);
+        assert_eq!(
+            std::fs::read(&play).unwrap(),
+            vec![1, 0, 254, 255, 3, 0, 252, 255]
+        );
         let mut buf = [0i16; 8];
         assert_eq!(dev.read(&mut buf).unwrap(), 0, "no microphone file yet");
         let mut f = std::fs::File::create(&cap).unwrap();

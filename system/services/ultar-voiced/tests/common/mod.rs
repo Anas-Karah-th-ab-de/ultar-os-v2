@@ -6,9 +6,9 @@
 
 use std::f32::consts::PI;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::io::Write;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use ultar_bus::messages::agent::{Answer, AskVoice, Brain};
@@ -312,7 +312,9 @@ impl Bench {
 
     /// Waits until the sound server says the microphone is in use.
     fn wait_for_microphone(&self) {
-        let on = wait_until(WAIT, || self.seen.capture.lock().unwrap().last() == Some(&true));
+        let on = wait_until(WAIT, || {
+            self.seen.capture.lock().unwrap().last() == Some(&true)
+        });
         assert!(on, "the sound server never opened the microphone");
         // the server throws away what was recorded before it began to listen: let it begin
         std::thread::sleep(Duration::from_millis(150));
@@ -354,7 +356,9 @@ impl Bench {
 
     /// Bytes the sound server has written to the card's play file.
     pub fn played_bytes(&self) -> usize {
-        fs::metadata(&self.play_file).map(|m| m.len() as usize).unwrap_or(0)
+        fs::metadata(&self.play_file)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0)
     }
 
     /// How loud the tone `hz` is in everything the sound server has played so far (the mean

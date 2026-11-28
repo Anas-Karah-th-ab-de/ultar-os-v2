@@ -196,10 +196,9 @@ impl Service for AudioService {
             };
             if let Ok(reply) = bus.call(&get, Duration::from_millis(200)) {
                 self.mono_known = true;
-                if let (Some(on), Some(s)) = (
-                    reply.value.as_ref().and_then(mono_of),
-                    self.sound.as_mut(),
-                ) {
+                if let (Some(on), Some(s)) =
+                    (reply.value.as_ref().and_then(mono_of), self.sound.as_mut())
+                {
                     s.set_mono(on);
                 }
             }

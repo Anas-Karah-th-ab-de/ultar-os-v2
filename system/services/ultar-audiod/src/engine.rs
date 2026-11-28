@@ -275,8 +275,8 @@ impl Engine {
         let Some(last) = self.last.replace(now) else {
             return 0;
         };
-        let exact = now.saturating_duration_since(last).as_secs_f64() * f64::from(CARD_RATE)
-            + self.frac;
+        let exact =
+            now.saturating_duration_since(last).as_secs_f64() * f64::from(CARD_RATE) + self.frac;
         let frames = (exact.floor() as u64).min(MAX_STEP_FRAMES);
         self.frac = exact - exact.floor();
         frames

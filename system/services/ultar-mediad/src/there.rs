@@ -345,7 +345,8 @@ mod tests {
             let (mut s, _) = listener.accept().unwrap();
             let mut hello = [0u8; ultar_audio_stream::HELLO_LEN];
             s.read_exact(&mut hello).unwrap();
-            s.write_all(&ultar_audio_stream::Status::Ok.encode()).unwrap();
+            s.write_all(&ultar_audio_stream::Status::Ok.encode())
+                .unwrap();
             let mut pcm = Vec::new();
             s.read_to_end(&mut pcm).unwrap();
             (Hello::decode(&hello), pcm)

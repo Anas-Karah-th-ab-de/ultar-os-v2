@@ -7,15 +7,17 @@
 //! * `audio.mic`: the microphone as chunks of 20 ms at 16 kHz, while somebody leases it;
 //! * `audio.mic_state`: who records, for the mark in the shell.
 
+use crate::conn::Rights;
 use crate::engine::{Engine, Event, ListenerSpec};
 use crate::service::AudioService;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
-use crate::conn::Rights;
 use ultar_audio_stream::{MAX_RATE, MIN_RATE};
 use ultar_bus::messages::audio::MicState;
-use ultar_bus::messages::voice::{AudioDone, Capture, MicChunk, Play, MAX_CHUNK_SAMPLES, SAMPLE_RATE};
+use ultar_bus::messages::voice::{
+    AudioDone, Capture, MicChunk, Play, MAX_CHUNK_SAMPLES, SAMPLE_RATE,
+};
 use ultar_bus::{Call, Identity, IncomingRequest, Policy};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Poster};
@@ -69,7 +71,10 @@ pub fn listeners(
     let mut specs = Vec::new();
     for item in list.split(',').filter(|s| !s.is_empty()) {
         let (identity, group) = match item.split_once(':') {
-            Some((i, g)) => (i, Some(g.parse::<u32>().map_err(|_| format!("group of {item}"))?)),
+            Some((i, g)) => (
+                i,
+                Some(g.parse::<u32>().map_err(|_| format!("group of {item}"))?),
+            ),
             None => (item, None),
         };
         Identity::new(identity).map_err(|_| format!("identity {identity}"))?;
@@ -132,7 +137,9 @@ impl Sound {
     }
 
     fn send_users(&self) {
-        let _ = self.tx.send(Cmd::Capture(self.leases.keys().cloned().collect()));
+        let _ = self
+            .tx
+            .send(Cmd::Capture(self.leases.keys().cloned().collect()));
     }
 
     /// `audio.capture` of `caller`; `false` when there is no card.
@@ -141,7 +148,8 @@ impl Sound {
             return false;
         }
         if on {
-            self.leases.insert(caller.to_owned(), Instant::now() + LEASE);
+            self.leases
+                .insert(caller.to_owned(), Instant::now() + LEASE);
         } else {
             self.leases.remove(caller);
         }
@@ -220,7 +228,11 @@ impl Sound {
                 }
                 bus.log(Record::new(
                     Level::Info,
-                    if present { "audiod.card" } else { "audiod.card_gone" },
+                    if present {
+                        "audiod.card"
+                    } else {
+                        "audiod.card_gone"
+                    },
                 ));
             }
         }
@@ -257,7 +269,9 @@ fn engine_loop(mut eng: Engine, rx: &Receiver<Cmd>, poster: &Poster<AudioService
         }
         eng.step(Instant::now());
         for ev in eng.drain_events() {
-            let posted = poster.post(Box::new(move |s: &mut AudioService, bus| s.sound_event(ev, bus)));
+            let posted = poster.post(Box::new(move |s: &mut AudioService, bus| {
+                s.sound_event(ev, bus)
+            }));
             if !posted {
                 return;
             }

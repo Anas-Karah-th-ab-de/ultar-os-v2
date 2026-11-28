@@ -265,12 +265,18 @@ mod tests {
             ..Rights::default()
         };
         assert!(caller.allow(&call));
-        assert!(!caller.allow(&media), "a call right is not the right to play media");
+        assert!(
+            !caller.allow(&media),
+            "a call right is not the right to play media"
+        );
         let no_mic = Rights {
             call: true,
             ..Rights::default()
         };
-        assert!(!no_mic.allow(&call), "a call needs the microphone right to record");
+        assert!(
+            !no_mic.allow(&call),
+            "a call needs the microphone right to record"
+        );
         assert!(Rights::all().allow(&call) && Rights::all().allow(&ring));
         assert!(!Rights::default().allow(&media));
         assert!(needs_capture(Direction::Duplex) && !needs_capture(Direction::Play));
@@ -279,18 +285,28 @@ mod tests {
     #[test]
     fn client_pcm_becomes_48k_frames_and_odd_bytes_wait() {
         let mut mono = PlayIn::new(&Hello::new(Class::Media, Direction::Play, 48_000, 1));
-        let bytes: Vec<u8> = [1000i16, -1000].iter().flat_map(|s| s.to_le_bytes()).collect();
+        let bytes: Vec<u8> = [1000i16, -1000]
+            .iter()
+            .flat_map(|s| s.to_le_bytes())
+            .collect();
         let f = mono.take(&bytes[..3]);
         assert_eq!(f.len(), 1);
         assert!((f[0].0 - 1000.0 / 32768.0).abs() < 1e-6 && f[0].0 == f[0].1);
         let f = mono.take(&bytes[3..]);
         assert_eq!(f.len(), 1, "the second half completes the second sample");
         let mut stereo = PlayIn::new(&Hello::new(Class::Media, Direction::Play, 48_000, 2));
-        let bytes: Vec<u8> = [500i16, -500].iter().flat_map(|s| s.to_le_bytes()).collect();
+        let bytes: Vec<u8> = [500i16, -500]
+            .iter()
+            .flat_map(|s| s.to_le_bytes())
+            .collect();
         let f = stereo.take(&bytes);
         assert!(f[0].0 > 0.0 && f[0].1 < 0.0, "channels stay apart");
         let slow = PlayIn::new(&Hello::new(Class::Call, Direction::Play, 16_000, 1));
-        assert_eq!(slow.bytes_for(480), 160 * 2, "10 ms of the card is 10 ms of the client");
+        assert_eq!(
+            slow.bytes_for(480),
+            160 * 2,
+            "10 ms of the card is 10 ms of the client"
+        );
         assert_eq!(slow.bytes_for(1), 2, "never less than one client frame");
     }
 }

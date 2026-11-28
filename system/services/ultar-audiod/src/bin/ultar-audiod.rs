@@ -53,8 +53,12 @@ fn engine(args: &CommonArgs) -> Result<Option<Engine>, Msg> {
     };
     let specs = match args.option("streams") {
         Some(list) => {
-            let dir = args.required_path("stream-dir").map_err(|_| Msg::BadArguments)?;
-            let policy = args.required_path("policy").map_err(|_| Msg::BadArguments)?;
+            let dir = args
+                .required_path("stream-dir")
+                .map_err(|_| Msg::BadArguments)?;
+            let policy = args
+                .required_path("policy")
+                .map_err(|_| Msg::BadArguments)?;
             let policy = Policy::load(&policy).map_err(|_| Msg::State)?;
             listeners(&dir, list, &policy).map_err(|_| Msg::BadArguments)?
         }

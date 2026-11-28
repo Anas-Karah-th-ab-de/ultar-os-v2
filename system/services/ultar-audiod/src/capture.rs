@@ -132,17 +132,23 @@ mod tests {
     #[test]
     fn the_microphone_arrives_at_the_clients_rate_and_channels() {
         let mut rec = Rec::new(&hello(16_000, 2, false));
-        let tone: Vec<f32> = (0..4800)
-            .map(|i| 0.5 * (i as f32 * 0.131).sin())
-            .collect();
+        let tone: Vec<f32> = (0..4800).map(|i| 0.5 * (i as f32 * 0.131).sin()).collect();
         rec.feed(&tone, &[], &[]);
         // 100 ms at 48 kHz = 1600 frames at 16 kHz, two channels, two bytes each (a little
         // less while the filter fills)
-        assert!(rec.backlog() > 1400 * 4 && rec.backlog() <= 1600 * 4, "{}", rec.backlog());
+        assert!(
+            rec.backlog() > 1400 * 4 && rec.backlog() <= 1600 * 4,
+            "{}",
+            rec.backlog()
+        );
         let mut sink = Vec::new();
         rec.flush(&mut sink).unwrap();
         assert_eq!(sink.len() % 4, 0);
-        assert_eq!(&sink[..2], &sink[2..4], "both channels carry the same sound");
+        assert_eq!(
+            &sink[..2],
+            &sink[2..4],
+            "both channels carry the same sound"
+        );
         assert_eq!(rec.backlog(), 0);
     }
 
@@ -184,6 +190,9 @@ mod tests {
     fn echo_cancellation_is_only_on_when_asked_for() {
         assert!(Rec::new(&hello(16_000, 1, true)).wants_echo_path());
         assert!(!Rec::new(&hello(16_000, 1, false)).wants_echo_path());
-        assert_eq!(mono_of(&[1000, 3000, -2000, -2000]), vec![2000.0 / 32768.0, -2000.0 / 32768.0]);
+        assert_eq!(
+            mono_of(&[1000, 3000, -2000, -2000]),
+            vec![2000.0 / 32768.0, -2000.0 / 32768.0]
+        );
     }
 }

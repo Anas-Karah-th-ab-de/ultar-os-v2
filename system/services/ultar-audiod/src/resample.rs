@@ -89,7 +89,11 @@ impl Resampler {
                 sum += self.buf[k] * w;
                 weights += w;
             }
-            out.push(if weights.abs() > 1e-6 { sum / weights } else { 0.0 });
+            out.push(if weights.abs() > 1e-6 {
+                sum / weights
+            } else {
+                0.0
+            });
             self.pos += self.step;
         }
         let drop = (self.pos.floor() as usize).saturating_sub(reach);

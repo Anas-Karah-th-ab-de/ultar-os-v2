@@ -143,7 +143,9 @@ fn the_sound_server_gives_its_stream_sockets_to_the_groups_of_its_clients() {
     for client in ["calld:829", "mediad:824"] {
         assert!(text.contains(client), "no stream socket for {client}");
     }
-    assert!(audiod.2.confinement.groups.contains(&829) && audiod.2.confinement.groups.contains(&824));
+    assert!(
+        audiod.2.confinement.groups.contains(&829) && audiod.2.confinement.groups.contains(&824)
+    );
     assert!(text.contains("--device") && text.contains("/dev/ultar/pcm"));
 }
 
