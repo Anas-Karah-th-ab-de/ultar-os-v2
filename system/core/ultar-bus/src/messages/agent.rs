@@ -52,6 +52,9 @@ pub struct Ask {
 pub struct AskVoice {
     /// What the person said.
     pub text: String,
+    /// The screen was locked when it was said: the helper then only looks and explains, it
+    /// changes nothing and ends nothing (the harmless requests only).
+    pub locked: bool,
 }
 
 /// How a step went.

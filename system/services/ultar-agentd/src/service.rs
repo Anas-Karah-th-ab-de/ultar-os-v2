@@ -181,11 +181,20 @@ impl AgentService {
         });
     }
 
-    fn ask(&mut self, request: IncomingRequest, text: String, voice: bool, bus: &Bus<'_, Self>) {
+    fn ask(
+        &mut self,
+        request: IncomingRequest,
+        text: String,
+        voice: Option<bool>,
+        bus: &Bus<'_, Self>,
+    ) {
         self.next += 1;
         let id = self.next;
         let brain = self.state().brain;
-        let limits = self.limits.clone();
+        // A request spoken while the screen is locked reaches only the harmless tools.
+        let mut limits = self.limits.clone();
+        limits.locked = voice == Some(true);
+        let voice = voice.is_some();
         let (reach, lately) = (self.reach_words(), self.log.lately());
         let asked = text.clone();
         let started = bus.later(move |client| {
@@ -257,7 +266,7 @@ impl Service for AgentService {
         if request.method() == AskVoice::METHOD {
             match request.decode::<AskVoice>() {
                 Ok(ask) if !ask.text.trim().is_empty() && ask.text.len() <= MAX_REQUEST => {
-                    self.ask(request, ask.text, true, bus);
+                    self.ask(request, ask.text, Some(ask.locked), bus);
                 }
                 _ => {
                     let _ = request.fail(ErrorCode::BadPayload);
@@ -271,7 +280,7 @@ impl Service for AgentService {
         }
         match request.decode::<Ask>() {
             Ok(ask) if !ask.text.trim().is_empty() && ask.text.len() <= MAX_REQUEST => {
-                self.ask(request, ask.text, false, bus);
+                self.ask(request, ask.text, None, bus);
             }
             _ => {
                 let _ = request.fail(ErrorCode::BadPayload);

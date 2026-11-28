@@ -73,7 +73,9 @@
 //! | `agent.progress` | topic | – | each step of the request being answered |
 //! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
 //! | `voice.state` | topic | yes | voice control service (`ultar-voiced`, see [`voice`]) |
-//! | `voice.set_enabled` / `set_language` / `set_model` / `enroll` / `test` / `set_locked` | calls | – | voice control service |
+//! | `voice.set_enabled` / `set_language` / `set_model` / `enroll` / `forget` / `test` / `set_locked` / `owner_confirmed` | calls | - | voice control service |
+//! | `audio.mic` | topic | no | microphone chunks of the audio service, only while `audio.capture` is on |
+//! | `audio.capture` / `audio.play` | calls | - | the voice service asks the audio service for the microphone stream and plays clips |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -246,6 +248,10 @@ mod tests {
         check_call::<super::power::Restart>();
         check_call::<super::power::PowerOff>();
         check_call::<super::init::Power>();
+    }
+
+    #[test]
+    fn voice_contract_names_are_valid() {
         check_topic::<super::voice::VoiceState>();
         check_call::<super::voice::SetEnabled>();
         check_call::<super::voice::SetLanguage>();
@@ -253,6 +259,11 @@ mod tests {
         check_call::<super::voice::Enroll>();
         check_call::<super::voice::Test>();
         check_call::<super::voice::SetLocked>();
+        check_call::<super::voice::Forget>();
+        check_call::<super::voice::OwnerConfirmed>();
+        check_call::<super::voice::Capture>();
+        check_call::<super::voice::Play>();
+        check_topic::<super::voice::MicChunk>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {
@@ -268,6 +279,8 @@ mod tests {
             retained::<super::devices::DriverState>(),
             retained::<super::notify::Posted>(),
             retained::<super::settings::Changed>(),
+            retained::<super::voice::VoiceState>(),
+            retained::<super::voice::MicChunk>(),
         ];
         let expected = [
             ("devices.capabilities", true),
@@ -276,6 +289,9 @@ mod tests {
             ("devices.driver_state", false),
             ("notify.posted", false),
             ("settings.changed", false),
+            ("voice.state", true),
+            // the microphone is a stream, not a state: nothing is kept for late subscribers
+            ("audio.mic", false),
         ];
         assert_eq!(table, expected);
     }

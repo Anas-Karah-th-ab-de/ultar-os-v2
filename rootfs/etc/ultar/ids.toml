@@ -50,6 +50,8 @@ llmcloud = 837
 # The on-screen keyboard (ultar-osk): compositor right ui.input-method only.
 osk = 839
 installer = 840
+# Voice control (ultar-voiced, docs/integration/ultar-voiced.md): hears and speaks only through the bus.
+voiced = 841
 nobody = 65534
 
 [groups]
@@ -108,6 +110,7 @@ agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
 osk = ["busd"]
+voiced = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

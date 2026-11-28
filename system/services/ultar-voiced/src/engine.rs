@@ -1,15 +1,17 @@
-//! The device backends behind the pipeline: microphone, speech-to-text and text-to-speech.
+//! The device backends behind the service: speech to text and text to speech.
 //!
-//! The real ones are the `whisper` and `espeak` packages built by `ultar-paketbau`, started
-//! only when they are needed. Until those packages are installed the service runs with the
-//! [`Silent`] stand-ins, which report "missing" and let everything else keep working; the
-//! pipeline and the locked-screen rules stay fully testable with the in-memory fakes used
-//! by the tests.
+//! The real ones are the `whisper` and `espeak-ng` packages built by `ultar-paketbau`
+//! ([`crate::whisper`], [`crate::espeak`]); their processes are started only when they are
+//! needed. Without those packages the service runs with the [`Silent`] stand-ins, which say
+//! "not installed" instead of pretending to hear or speak, and everything else keeps working.
+//! The pipeline and the lock rules stay fully testable with the stand-ins of the tests.
 
-/// Why a backend could not do its work (goes to the log and to [`VoiceOutcome`]).
+use ultar_bus::messages::voice::Play;
+
+/// Why a backend could not do its work (goes to the log and decides what the person sees).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineError {
-    /// The package is not installed (the Settings page offers the download).
+    /// The package (or the model) is not installed.
     Missing(&'static str),
     /// It ran but failed.
     Failed(String),
@@ -18,7 +20,7 @@ pub enum EngineError {
 impl std::fmt::Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EngineError::Missing(package) => write!(f, "package {package} not installed"),
+            EngineError::Missing(what) => write!(f, "{what} not installed"),
             EngineError::Failed(why) => f.write_str(why),
         }
     }
@@ -26,51 +28,56 @@ impl std::fmt::Display for EngineError {
 
 /// Turns a recording into text.
 pub trait Transcriber: Send + Sync {
-    /// Transcribes PCM16 mono.
+    /// The program and a model are on the device.
+    fn installed(&self, model: &str) -> bool;
+    /// Transcribes PCM16 mono in `language` (`ar`, `en`, `de`) with `model` (empty: the
+    /// first installed one). The text is empty when nothing was understood.
     fn transcribe(
         &self,
         pcm16: &[i16],
-        sample_rate: u32,
+        rate: u32,
         language: &str,
+        model: &str,
     ) -> Result<String, EngineError>;
+    /// Called every few seconds: stops what has been idle for long.
+    fn idle_check(&self) {}
 }
 
 /// Speaks a text aloud.
 pub trait Speaker: Send + Sync {
-    /// Synthesises and plays `text`.
-    fn say(&self, text: &str, language: &str) -> Result<(), EngineError>;
+    /// The program is on the device.
+    fn installed(&self) -> bool;
+    /// Synthesises `text` in `language` as a clip for the audio service.
+    fn synthesize(&self, text: &str, language: &str) -> Result<Play, EngineError>;
 }
 
-/// The microphone stream (capture comes from `ultar-audiod`).
-pub trait Listener: Send + Sync {
-    /// The next PCM16 chunk, or `None` when nothing new arrived.
-    fn next_chunk(&self) -> Result<Option<Vec<i16>>, EngineError>;
-}
-
-/// Stand-ins that say "not installed" instead of pretending to hear or speak.
+/// Stand-ins that say "not installed".
 #[derive(Default)]
 pub struct Silent;
 
 impl Transcriber for Silent {
+    fn installed(&self, _model: &str) -> bool {
+        false
+    }
+
     fn transcribe(
         &self,
         _pcm16: &[i16],
-        _sample_rate: u32,
+        _rate: u32,
         _language: &str,
+        _model: &str,
     ) -> Result<String, EngineError> {
         Err(EngineError::Missing("whisper"))
     }
 }
 
 impl Speaker for Silent {
-    fn say(&self, _text: &str, _language: &str) -> Result<(), EngineError> {
-        Err(EngineError::Missing("espeak"))
+    fn installed(&self) -> bool {
+        false
     }
-}
 
-impl Listener for Silent {
-    fn next_chunk(&self) -> Result<Option<Vec<i16>>, EngineError> {
-        Ok(None)
+    fn synthesize(&self, _text: &str, _language: &str) -> Result<Play, EngineError> {
+        Err(EngineError::Missing("espeak-ng"))
     }
 }
 
@@ -80,22 +87,23 @@ mod tests {
 
     #[test]
     fn silent_backends_report_missing() {
-        let t = Silent;
-        let s = Silent;
-        let l = Silent;
+        assert!(!Transcriber::installed(&Silent, ""));
+        assert!(!Speaker::installed(&Silent));
         assert_eq!(
-            t.transcribe(&[0i16; 16], 16_000, "ar"),
+            Silent.transcribe(&[0i16; 16], 16_000, "ar", ""),
             Err(EngineError::Missing("whisper"))
         );
-        assert_eq!(s.say("x", "ar"), Err(EngineError::Missing("espeak")));
-        assert_eq!(l.next_chunk(), Ok(None));
+        assert_eq!(
+            Silent.synthesize("x", "ar"),
+            Err(EngineError::Missing("espeak-ng"))
+        );
     }
 
     #[test]
     fn errors_have_a_text() {
         assert_eq!(
             EngineError::Missing("whisper").to_string(),
-            "package whisper not installed"
+            "whisper not installed"
         );
         assert_eq!(EngineError::Failed("x".into()).to_string(), "x");
     }

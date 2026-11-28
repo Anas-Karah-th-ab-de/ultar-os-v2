@@ -1,69 +1,130 @@
-//! The state machine of one spoken request: listen → record → transcribe → ask → answer →
-//! speak. The pipeline decides; the service owns the backends and performs the effects.
+//! The state machine of one spoken request: listen for the word, record the request until
+//! silence, check the speaker, hand it on, speak the answer, listen again. It also records
+//! the enrolment takes and runs the Settings test. The pipeline only decides; the service owns
+//! the backends and performs the effects. All time is counted in samples, so it is exact in
+//! tests.
+//!
+//! Nothing is kept before the word: while listening the audio only passes through a short
+//! utterance buffer that is dropped at the next pause; a request is recorded only after the
+//! word and is dropped as soon as it was handed on.
 
-use crate::audio;
 use crate::detect::{VoicePrint, WakeWord};
 use crate::mfcc::Mfcc;
-use ultar_bus::messages::voice::Phase;
+use crate::vad::{Segmenter, Vad, HOP};
+use ultar_bus::messages::voice::{EnrollKind, Phase, MAX_REQUEST_SECS, SAMPLE_RATE};
 
-/// Samples of the wake-word window (0.8 s at 16 kHz).
-pub const WAKE_WINDOW: usize = 12_800;
-/// Silence this long ends the request (1.5 s).
-pub const STOP_SILENCE: usize = 24_000;
+const RATE: usize = SAMPLE_RATE as usize;
+/// Longest utterance looked at for the wake word (3 s).
+pub const WAKE_MAX: usize = RATE * 3;
+/// Pause that ends the request (1.2 s).
+pub const END_HOPS: usize = 120;
+/// How long the person has to start speaking after the word (6 s).
+pub const START_TIMEOUT: usize = RATE * 6;
+/// Start of the recording that is thrown away: the listening tone (0.3 s).
+pub const TONE_SKIP: usize = RATE * 3 / 10;
 /// Most samples of one request (15 s).
-pub const MAX_REQUEST: usize = 240_000;
+pub const MAX_REQUEST: usize = RATE * MAX_REQUEST_SECS as usize;
+/// How long the Settings test waits for the word (10 s).
+pub const TEST_WINDOW: usize = RATE * 10;
+/// How long an enrolment take waits for the person (10 s).
+pub const TAKE_WINDOW: usize = RATE * 10;
+/// Shortest take of the voice sentence (1.5 s).
+pub const VOICE_TAKE_MIN: usize = RATE * 3 / 2;
+/// Longest take of the voice sentence (12 s).
+pub const VOICE_TAKE_MAX: usize = RATE * 12;
+/// Longest take of a word (3 s).
+pub const WORD_TAKE_MAX: usize = WAKE_MAX;
 
 /// What the service must do next.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
-    /// Nothing to do.
-    None,
-    /// Publish the listening mark and play the short sound.
-    BeginListening,
-    /// The word was heard: publish the recording mark and play the sound.
+    /// The word was heard: play the listening tone, show the mark.
     BeginRecording,
-    /// The request is complete: transcribe it.
+    /// An enrolment take is complete.
+    Take {
+        /// What is enrolled.
+        kind: EnrollKind,
+        /// The take.
+        samples: Vec<f32>,
+    },
+    /// No take came in time.
+    TakeMissed(EnrollKind),
+    /// The Settings test heard the word.
+    Heard,
+    /// The Settings test heard nothing in time.
+    Missed,
+    /// The request is complete and was the person's voice: transcribe it.
     Transcribe(Vec<f32>),
-    /// The speaker is not the person: refuse, do nothing else.
+    /// The speaker is not the person: nothing was kept, nothing runs.
     RefuseSpeaker,
-    /// Ask the helper by voice.
-    Ask(String),
-    /// Speak the answer aloud.
-    Speak(String),
+    /// Nobody spoke after the word.
+    GaveUp,
 }
 
-/// The decision logic; the MFCC extractor is built once per pipeline.
-pub struct Pipeline {
-    mfcc: Mfcc,
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Mode {
+    Wake,
+    Test,
+    Enrol(EnrollKind),
+}
+
+/// What the person trained.
+#[derive(Default)]
+struct Templates {
     wake: Option<WakeWord>,
     secret: Option<WakeWord>,
     print: Option<VoicePrint>,
+}
+
+/// The decision logic.
+pub struct Pipeline {
+    mfcc: Mfcc,
+    templates: Templates,
     locked: bool,
+    listening: bool,
     phase: Phase,
-    ring: Vec<f32>,
+    mode: Mode,
+    seg: Segmenter,
+    vad: Vad,
     request: Vec<f32>,
+    skipped: usize,
+    waited: usize,
     silent: usize,
+    spoke: bool,
+    owner_ok: bool,
 }
 
 impl Pipeline {
-    /// A pipeline from the enrolled templates; `None` disables that part.
-    pub fn new(
+    /// A pipeline without enrolment, idle.
+    pub fn new() -> Self {
+        Self {
+            mfcc: Mfcc::new(),
+            templates: Templates::default(),
+            locked: false,
+            listening: false,
+            phase: Phase::Idle,
+            mode: Mode::Wake,
+            seg: Segmenter::new(WAKE_MAX),
+            vad: Vad::new(),
+            request: Vec::new(),
+            skipped: 0,
+            waited: 0,
+            silent: 0,
+            spoke: false,
+            owner_ok: false,
+        }
+    }
+
+    /// Sets what is enrolled (`None`: not enrolled).
+    pub fn enrol(
+        &mut self,
         wake: Option<WakeWord>,
         secret: Option<WakeWord>,
         print: Option<VoicePrint>,
-        locked: bool,
-    ) -> Self {
-        Self {
-            mfcc: Mfcc::new(),
-            wake,
-            secret,
-            print,
-            locked,
-            phase: Phase::Idle,
-            ring: Vec::new(),
-            request: Vec::new(),
-            silent: 0,
-        }
+    ) {
+        self.templates.wake = wake;
+        self.templates.secret = secret;
+        self.templates.print = print;
     }
 
     /// The current phase (mirrors `voice.state.phase`).
@@ -71,221 +132,257 @@ impl Pipeline {
         self.phase
     }
 
-    /// The screen is locked now: only the secret word wakes the helper.
+    /// The feature extractor (for the service's enrolment checks).
+    pub fn mfcc(&self) -> &Mfcc {
+        &self.mfcc
+    }
+
+    /// The screen is locked (or not): only the secret word counts while locked.
     pub fn set_locked(&mut self, locked: bool) {
         self.locked = locked;
     }
 
-    /// Starts (or restarts) listening; the first `BeginListening` marks the state.
-    pub fn begin(&mut self) -> Effect {
-        if self.phase == Phase::Idle {
-            self.phase = Phase::Listening;
-            self.ring.clear();
-            Effect::BeginListening
+    /// Whether anything would wake it now (a detector for the current lock state exists).
+    pub fn can_wake(&self) -> bool {
+        if self.locked {
+            self.templates.secret.is_some()
         } else {
-            Effect::None
+            self.templates.wake.is_some() || self.templates.secret.is_some()
         }
     }
 
-    /// Feeds one chunk of audio; returns the effects of this chunk.
+    /// The next request is accepted without the speaker check (the person confirmed by
+    /// fingerprint or face).
+    pub fn accept_next_speaker(&mut self) {
+        self.owner_ok = true;
+    }
+
+    fn clear(&mut self) {
+        self.seg.reset();
+        self.vad.reset();
+        self.request.clear();
+        self.skipped = 0;
+        self.waited = 0;
+        self.silent = 0;
+        self.spoke = false;
+    }
+
+    /// Back to the quiet baseline: listening for the word when it is on, idle otherwise.
+    fn baseline(&mut self) {
+        self.clear();
+        self.mode = Mode::Wake;
+        self.seg = Segmenter::new(WAKE_MAX);
+        self.phase = if self.listening {
+            Phase::Listening
+        } else {
+            Phase::Idle
+        };
+    }
+
+    /// An enrolment take or the Settings test is under way: it is not interrupted.
+    fn interactive(&self) -> bool {
+        self.phase == Phase::Enrolling
+            || (self.phase == Phase::Listening && self.mode == Mode::Test)
+    }
+
+    /// Starts listening for the word (voice control is on).
+    pub fn start(&mut self) {
+        self.listening = true;
+        if !self.interactive() && matches!(self.phase, Phase::Idle | Phase::Listening) {
+            self.baseline();
+        }
+    }
+
+    /// Stops listening at once (voice control is off): everything buffered is dropped.
+    pub fn stop(&mut self) {
+        self.listening = false;
+        if !self.interactive() {
+            self.baseline();
+        }
+    }
+
+    /// Gives up whatever is under way (an enrolment take, the test) and goes back to the
+    /// baseline.
+    pub fn cancel(&mut self) {
+        self.baseline();
+    }
+
+    /// Records the next enrolment take.
+    pub fn begin_enrol(&mut self, kind: EnrollKind) {
+        self.clear();
+        self.mode = Mode::Enrol(kind);
+        let max = match kind {
+            EnrollKind::Voice => VOICE_TAKE_MAX,
+            _ => WORD_TAKE_MAX,
+        };
+        self.seg = Segmenter::new(max);
+        self.phase = Phase::Enrolling;
+    }
+
+    /// Waits once for the word (the Settings test button).
+    pub fn begin_test(&mut self) {
+        self.clear();
+        self.mode = Mode::Test;
+        self.seg = Segmenter::new(WAKE_MAX);
+        self.phase = Phase::Listening;
+    }
+
+    /// Feeds samples; returns the effects they led to.
     pub fn feed(&mut self, samples: &[f32]) -> Vec<Effect> {
         match self.phase {
             Phase::Listening => self.listen(samples),
+            Phase::Enrolling => self.take(samples),
             Phase::Recording => self.record(samples),
             _ => Vec::new(),
         }
     }
 
-    /// The transcription finished (`None`: the request was silent or unspoken).
-    pub fn on_text(&mut self, text: String) -> Vec<Effect> {
-        let text = text.trim().to_owned();
-        if text.is_empty() {
-            self.phase = Phase::Idle;
-            vec![Effect::None]
+    /// The transcription finished; `true` when there is a request to hand on.
+    pub fn on_text(&mut self, empty: bool) -> bool {
+        if empty {
+            self.baseline();
+            false
         } else {
             self.phase = Phase::Thinking;
-            vec![Effect::Ask(text)]
+            true
         }
     }
 
-    /// The helper answered; speak it.
-    pub fn on_answer(&mut self, text: String) -> Vec<Effect> {
+    /// The transcription started.
+    pub fn thinking(&mut self) {
+        self.phase = Phase::Thinking;
+    }
+
+    /// The helper answered; the answer is being spoken.
+    pub fn answering(&mut self) {
         self.phase = Phase::Answering;
-        vec![Effect::Speak(text)]
     }
 
-    /// After the answer was spoken (or the speech failed): listen again.
-    pub fn resume(&mut self) -> Effect {
-        if self.phase == Phase::Answering || self.phase == Phase::Idle {
-            self.phase = Phase::Listening;
-            self.ring.clear();
-            Effect::BeginListening
+    /// After the answer was spoken (or failed): listen again.
+    pub fn resume(&mut self) {
+        self.baseline();
+    }
+
+    fn word_matches(&self, utterance: &[f32]) -> bool {
+        let wake = if self.locked {
+            None
         } else {
-            Effect::None
-        }
+            self.templates.wake.as_ref()
+        };
+        [wake, self.templates.secret.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|d| d.matches(&self.mfcc, utterance))
     }
 
     fn listen(&mut self, samples: &[f32]) -> Vec<Effect> {
-        self.ring.extend_from_slice(samples);
-        let drop = self.ring.len().saturating_sub(WAKE_WINDOW);
-        if drop > 0 {
-            self.ring.drain(..drop);
-        }
-        let detector = if self.locked {
-            self.secret.as_ref()
-        } else {
-            self.wake.as_ref()
-        };
-        let Some(detector) = detector else {
-            return Vec::new();
-        };
-        if detector.matches(&self.mfcc, &self.ring) {
-            self.phase = Phase::Recording;
-            self.request.clear();
-            self.silent = 0;
-            vec![Effect::BeginRecording]
-        } else {
-            Vec::new()
-        }
-    }
-
-    fn record(&mut self, samples: &[f32]) -> Vec<Effect> {
-        if audio::is_silent(samples) {
-            self.silent += samples.len();
-        } else {
-            self.silent = 0;
-        }
-        self.request.extend_from_slice(samples);
-        if self.silent < STOP_SILENCE && self.request.len() < MAX_REQUEST {
-            return Vec::new();
-        }
-        let taken = std::mem::take(&mut self.request);
-        self.phase = Phase::Thinking;
-        // The speaker check runs on the recorded request; a stranger is refused.
-        if let Some(print) = &self.print {
-            if !print.accepts(&self.mfcc, &taken) {
-                self.phase = Phase::Idle;
-                return vec![Effect::RefuseSpeaker];
-            }
-        }
-        vec![Effect::Transcribe(taken)]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::detect::{VoicePrint, WakeWord};
-    use crate::mfcc::Mfcc;
-    use std::f32::consts::PI;
-
-    const CHUNK: usize = 160;
-
-    /// A synthetic "word": tone bursts around `base` Hz, tweaked by `seed`.
-    fn word(base: f32, seed: f32, len: usize) -> Vec<f32> {
-        let rate = crate::mfcc::SAMPLE_RATE as f32;
-        (0..len)
-            .map(|i| {
-                let t = i as f32 / rate;
-                let burst = 0.5 + 0.5 * (2.0 * PI * 3.0 * t).sin();
-                let wobble = 1.0 + seed * 0.05 * (2.0 * PI * 7.0 * t).sin();
-                (2.0 * PI * base * wobble * t).sin() * 0.25 * burst
-            })
-            .collect()
-    }
-
-    /// Feeds a whole buffer in 10 ms chunks; returns whether any effect matched `check`.
-    fn feed(pipe: &mut Pipeline, samples: &[f32], check: &dyn Fn(&Effect) -> bool) -> bool {
-        let mut hit = false;
-        for at in (0..samples.len()).step_by(CHUNK) {
-            for e in pipe.feed(&samples[at..(at + CHUNK).min(samples.len())].to_vec()) {
-                hit |= check(&e);
-            }
-        }
-        hit
-    }
-
-    /// Feeds `n` chunks of silence.
-    fn silence(pipe: &mut Pipeline, chunks: usize) -> Vec<Effect> {
         let mut out = Vec::new();
-        for _ in 0..chunks {
-            out.extend(pipe.feed(&vec![0.0f32; CHUNK]));
+        for utterance in self.seg.push(samples) {
+            if !self.word_matches(&utterance) {
+                continue;
+            }
+            if self.mode == Mode::Test {
+                self.baseline();
+                out.push(Effect::Heard);
+            } else {
+                // What came right after the word (the start of the request) is kept.
+                let rest = self.seg.take_rest();
+                self.clear();
+                self.phase = Phase::Recording;
+                out.push(Effect::BeginRecording);
+                self.absorb(&rest);
+            }
+            return out;
+        }
+        if self.mode == Mode::Test {
+            self.waited += samples.len();
+            if self.waited >= TEST_WINDOW {
+                self.baseline();
+                out.push(Effect::Missed);
+            }
         }
         out
     }
 
-    fn is_recording(e: &Effect) -> bool {
-        matches!(e, Effect::BeginRecording)
-    }
-    fn is_transcribe(e: &Effect) -> bool {
-        matches!(e, Effect::Transcribe(_))
-    }
-    fn is_refuse(e: &Effect) -> bool {
-        matches!(e, Effect::RefuseSpeaker)
-    }
-
-    #[test]
-    fn a_full_request_flows_from_wake_to_ask() {
-        let mfcc = Mfcc::new();
-        let wake = WakeWord::from_clips(&mfcc, &[word(440.0, 0.0, 16_000)]).unwrap();
-        let mut pipe = Pipeline::new(Some(wake), None, None, false);
-        assert_eq!(pipe.begin(), Effect::BeginListening);
-        assert!(feed(&mut pipe, &word(440.0, 1.0, 16_000), &is_recording));
-        let effects = silence(&mut pipe, STOP_SILENCE / CHUNK + 3);
-        assert!(effects.iter().any(is_transcribe));
-        assert_eq!(
-            pipe.on_text("افتح الإعدادات".to_owned()),
-            vec![Effect::Ask("افتح الإعدادات".to_owned())]
-        );
-    }
-
-    #[test]
-    fn locked_means_only_the_secret_word_counts() {
-        let mfcc = Mfcc::new();
-        let wake = WakeWord::from_clips(&mfcc, &[word(440.0, 0.0, 16_000)]).unwrap();
-        let secret = WakeWord::from_clips(&mfcc, &[word(2_000.0, 0.0, 16_000)]).unwrap();
-        let mut pipe = Pipeline::new(Some(wake), Some(secret), None, true);
-        pipe.begin();
-        // The ordinary wake word does nothing while locked.
-        assert!(!feed(&mut pipe, &word(440.0, 1.0, 16_000), &is_recording));
-        // The secret word does.
-        assert!(feed(&mut pipe, &word(2_000.0, 1.0, 16_000), &is_recording));
-    }
-
-    #[test]
-    fn a_stranger_is_refused_while_the_person_is_accepted() {
-        let mfcc = Mfcc::new();
-        let wake = WakeWord::from_clips(&mfcc, &[word(440.0, 0.0, 16_000)]).unwrap();
-        let print = VoicePrint::from_clips(&mfcc, &[word(600.0, 0.0, 16_000)]).unwrap();
-        let mut pipe = Pipeline::new(Some(wake), None, Some(print), false);
-        pipe.begin();
-        assert!(feed(&mut pipe, &word(440.0, 0.0, 16_000), &is_recording));
-        // The person's voice passes.
-        let effects = {
-            let mut p = Pipeline::new(Some(wake.clone()), None, Some(print.clone()), false);
-            p.begin();
-            feed(&mut p, &word(440.0, 0.0, 16_000), &is_recording);
-            p.record(&word(600.0, 5.0, 16_000));
-            silence(&mut p, STOP_SILENCE / CHUNK + 3)
+    fn take(&mut self, samples: &[f32]) -> Vec<Effect> {
+        let Mode::Enrol(kind) = self.mode else {
+            return Vec::new();
         };
-        assert!(effects.iter().any(is_transcribe) && !effects.iter().any(is_refuse));
-        // A stranger is refused.
-        let effects = {
-            let mut p = Pipeline::new(Some(wake), None, Some(print), false);
-            p.begin();
-            feed(&mut p, &word(440.0, 0.0, 16_000), &is_recording);
-            p.record(&word(3_000.0, 0.0, 16_000));
-            silence(&mut p, STOP_SILENCE / CHUNK + 3)
-        };
-        assert!(effects.iter().any(is_refuse));
+        for utterance in self.seg.push(samples) {
+            let fits = match kind {
+                EnrollKind::Voice => utterance.len() >= VOICE_TAKE_MIN,
+                _ => utterance.len() <= WORD_TAKE_MAX,
+            };
+            if fits {
+                self.baseline();
+                return vec![Effect::Take {
+                    kind,
+                    samples: utterance,
+                }];
+            }
+        }
+        self.waited += samples.len();
+        if self.waited >= TAKE_WINDOW {
+            self.baseline();
+            return vec![Effect::TakeMissed(kind)];
+        }
+        Vec::new()
     }
 
-    #[test]
-    fn empty_transcript_goes_back_to_idle_and_resume_listens_again() {
-        let mut pipe = Pipeline::new(None, None, None, false);
-        assert_eq!(pipe.on_text("   ".to_owned()), vec![Effect::None]);
-        assert_eq!(pipe.phase(), Phase::Idle);
-        assert_eq!(pipe.resume(), Effect::BeginListening);
-        assert_eq!(pipe.phase(), Phase::Listening);
+    /// Adds samples to the request and follows who speaks.
+    fn absorb(&mut self, samples: &[f32]) {
+        self.request.extend_from_slice(samples);
+        for hop in self.vad.push(samples) {
+            if hop.speech {
+                self.spoke = true;
+                self.silent = 0;
+            } else if self.spoke {
+                self.silent += 1;
+            } else {
+                self.waited += HOP;
+            }
+        }
+    }
+
+    fn record(&mut self, samples: &[f32]) -> Vec<Effect> {
+        let usable = if self.skipped < TONE_SKIP {
+            let skip = (TONE_SKIP - self.skipped).min(samples.len());
+            self.skipped += skip;
+            &samples[skip..]
+        } else {
+            samples
+        };
+        if usable.is_empty() {
+            return Vec::new();
+        }
+        self.absorb(usable);
+        if !self.spoke && self.waited >= START_TIMEOUT {
+            self.baseline();
+            return vec![Effect::GaveUp];
+        }
+        let finished = (self.spoke && self.silent >= END_HOPS) || self.request.len() >= MAX_REQUEST;
+        if !finished {
+            return Vec::new();
+        }
+        let request = std::mem::take(&mut self.request);
+        let skip_check = std::mem::take(&mut self.owner_ok);
+        if let Some(print) = &self.templates.print {
+            if !skip_check && !print.accepts(&self.mfcc, &request) {
+                self.baseline();
+                return vec![Effect::RefuseSpeaker];
+            }
+        }
+        self.phase = Phase::Thinking;
+        vec![Effect::Transcribe(request)]
     }
 }
+
+impl Default for Pipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+#[path = "pipeline_tests.rs"]
+mod tests;

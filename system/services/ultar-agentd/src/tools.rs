@@ -111,6 +111,8 @@ pub struct Limits {
     pub see_screen: bool,
     /// Suspicious links in the model's answers are warned about (`assistant.check_links`).
     pub check_links: bool,
+    /// The request was spoken while the screen was locked: only harmless looking is open.
+    pub locked: bool,
 }
 
 impl Default for Limits {
@@ -120,9 +122,21 @@ impl Default for Limits {
             read_only: false,
             see_screen: false,
             check_links: true,
+            locked: false,
         }
     }
 }
+
+/// Tools that only look but still show something private: closed while the screen is locked.
+pub const LOCKED_CLOSED: [&str; 7] = [
+    "see_screen",
+    "notifications",
+    "settings_list",
+    "setting_get",
+    "what_did_you_do",
+    "devices",
+    "storage",
+];
 
 impl Limits {
     /// Why `tool` is closed now, in words for the model (`None`: it is open).
@@ -131,6 +145,8 @@ impl Limits {
             Some("the person switched this area off for the helper")
         } else if tool.name == "see_screen" && !self.see_screen {
             Some("the person has not allowed the helper to see the screen")
+        } else if self.locked && (tool.risk != Reads || LOCKED_CLOSED.contains(&tool.name)) {
+            Some("the screen is locked: only harmless looking is open; the person unlocks first")
         } else if self.read_only && tool.risk != Reads {
             Some("the person lets the helper only look, not act; they change that in Settings")
         } else {
@@ -248,6 +264,37 @@ mod tests {
         assert!(find("format_disk").is_none());
         assert_eq!(Call::new("wifi", &[("on", "true")]).arg("on"), "true");
         assert_eq!(Call::new("wifi", &[]).arg("on"), "");
+    }
+
+    #[test]
+    fn a_locked_screen_leaves_only_harmless_looking_open() {
+        let locked = Limits {
+            locked: true,
+            see_screen: true,
+            ..Limits::default()
+        };
+        for tool in TOOLS.iter() {
+            let open = locked.closes(tool).is_none();
+            let harmless = tool.risk == Reads && !LOCKED_CLOSED.contains(&tool.name);
+            assert_eq!(open, harmless, "{}", tool.name);
+        }
+        // the harmless ones the person may expect
+        for name in ["battery", "network_status", "sound_status", "help"] {
+            assert!(locked.closes(find(name).unwrap()).is_none(), "{name}");
+        }
+        // acting and ending work stay closed, also the dangerous ones
+        for name in [
+            "wifi",
+            "set_volume",
+            "lock",
+            "power_off",
+            "close_app",
+            "open_app",
+        ] {
+            assert!(locked.closes(find(name).unwrap()).is_some(), "{name}");
+        }
+        // an unlocked screen is not affected
+        assert!(Limits::default().closes(find("wifi").unwrap()).is_none());
     }
 
     #[test]

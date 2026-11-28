@@ -42,6 +42,7 @@ args = [
     "--listen", "/run/ultar/log/volumed.sock=system.volumed", "--mode", "0660", "--group", "828",
     "--listen", "/run/ultar/log/mesh.sock=system.mesh", "--mode", "0660", "--group", "833",
     "--listen", "/run/ultar/log/agentd.sock=system.agentd", "--mode", "0660", "--group", "834",
+    "--listen", "/run/ultar/log/voiced.sock=system.voiced", "--mode", "0660", "--group", "841",
     "--listen", "/run/ultar/log/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835",
     "--listen", "/run/ultar/log/llmcloud.sock=system.llmcloud", "--mode", "0660", "--group", "837",
     # Standard output and error of the services, from ultar-init (root).
@@ -55,7 +56,7 @@ args = [
     "--fsync", "batch",
 ]
 user = 802
-groups = [801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833, 834, 835, 837]
+groups = [801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833, 834, 835, 837, 841]
 dirs = ["/data/ultar/log"]
 public_dirs = ["/run/ultar/log"]
 notify = true

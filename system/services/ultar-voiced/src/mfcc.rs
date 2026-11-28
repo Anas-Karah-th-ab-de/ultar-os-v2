@@ -88,11 +88,11 @@ fn filterbank() -> Vec<Vec<f32>> {
     let mut bank = vec![vec![0.0f32; bins]; FILTERS];
     for f in 0..FILTERS {
         let (lo, mid, hi) = (centres[f], centres[f + 1], centres[f + 2]);
-        for k in lo..mid {
-            bank[f][k] = (k - lo) as f32 / (mid - lo) as f32;
+        for (k, w) in bank[f].iter_mut().enumerate().take(mid).skip(lo) {
+            *w = (k - lo) as f32 / (mid - lo) as f32;
         }
-        for k in mid..hi {
-            bank[f][k] = (hi - k) as f32 / (hi - mid) as f32;
+        for (k, w) in bank[f].iter_mut().enumerate().take(hi).skip(mid) {
+            *w = (hi - k) as f32 / (hi - mid) as f32;
         }
     }
     bank
@@ -112,9 +112,7 @@ impl Default for Mfcc {
 impl Mfcc {
     /// Builds the filterbank.
     pub fn new() -> Self {
-        Self {
-            bank: filterbank(),
-        }
+        Self { bank: filterbank() }
     }
 
     /// The [`COEFFS`] coefficients of one [`FRAME`]-sample frame.
@@ -130,7 +128,7 @@ impl Mfcc {
         let mut im = vec![0.0f32; FFT];
         radix2(&mut re, &mut im);
         // Mel energies of the power spectrum.
-        let mut energies = vec![0.0f32; FILTERS];
+        let mut energies = [0.0f32; FILTERS];
         for (f, row) in self.bank.iter().enumerate() {
             let mut e = 0.0f32;
             for k in 0..row.len() {
@@ -188,13 +186,15 @@ mod tests {
         let low = mfcc.frames(&tone(200.0, 8_000));
         let high = mfcc.frames(&tone(2_000.0, 8_000));
         let mean = |frames: &[Vec<f32>]| {
-            let mut sum = vec![0.0f32; COEFFS];
+            let mut sum = [0.0f32; COEFFS];
             for f in frames {
                 for (i, v) in f.iter().enumerate() {
                     sum[i] += v;
                 }
             }
-            sum.iter().map(|s| s / frames.len() as f32).collect::<Vec<_>>()
+            sum.iter()
+                .map(|s| s / frames.len() as f32)
+                .collect::<Vec<_>>()
         };
         assert!(low.len() > 10 && high.len() > 10);
         // Distinct spectral envelopes: notable distance between the means.

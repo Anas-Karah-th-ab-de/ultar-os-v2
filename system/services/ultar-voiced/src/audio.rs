@@ -45,6 +45,27 @@ pub struct Wav {
     pub samples: Vec<i16>,
 }
 
+/// A data length at least this large means "unknown, to the end" (streamed WAV).
+const STREAMING_SIZE: usize = 0x7FFF_F000;
+
+/// The frames of interleaved 16-bit data as mono samples (channels averaged); a cut frame
+/// is dropped. `None` when there are no channels.
+fn mono(data: &[u8], channels: usize) -> Option<Vec<i16>> {
+    if channels == 0 {
+        return None;
+    }
+    let frame = channels * 2;
+    let mut samples = Vec::with_capacity(data.len() / frame);
+    for chunk in data.chunks_exact(frame) {
+        let sum: i32 = chunk
+            .chunks_exact(2)
+            .map(|b| i32::from(i16::from_le_bytes([b[0], b[1]])))
+            .sum();
+        samples.push((sum / channels as i32) as i16);
+    }
+    Some(samples)
+}
+
 /// Decodes a 16-bit PCM WAV into mono samples. Returns `None` for anything that is not a
 /// plain PCM WAV or has a format this service does not need.
 pub fn decode_wav(bytes: &[u8]) -> Option<Wav> {
@@ -53,13 +74,17 @@ pub fn decode_wav(bytes: &[u8]) -> Option<Wav> {
     }
     let mut channels = 0u16;
     let mut rate = 0u32;
-    let mut bits = 0u16;
     let mut samples = Vec::new();
     let mut pos = 12usize;
     while pos + 8 <= bytes.len() {
         let id = &bytes[pos..pos + 4];
-        let size = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
+        let mut size = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
         let body = pos + 8;
+        // A writer that streams to a pipe (espeak-ng --stdout) does not know the length and
+        // writes the largest one: the data then runs to the end of what came.
+        if id == b"data" && size >= STREAMING_SIZE {
+            size = bytes.len().saturating_sub(body);
+        }
         let end = body.checked_add(size)?;
         if end > bytes.len() {
             return None;
@@ -72,28 +97,12 @@ pub fn decode_wav(bytes: &[u8]) -> Option<Wav> {
                 let format = u16::from_le_bytes(bytes[body..body + 2].try_into().ok()?);
                 channels = u16::from_le_bytes(bytes[body + 2..body + 4].try_into().ok()?);
                 rate = u32::from_le_bytes(bytes[body + 4..body + 8].try_into().ok()?);
-                bits = u16::from_le_bytes(bytes[body + 14..body + 16].try_into().ok()?);
+                let bits = u16::from_le_bytes(bytes[body + 14..body + 16].try_into().ok()?);
                 if format != 1 || bits != 16 || channels == 0 {
                     return None;
                 }
             }
-            b"data" => {
-                let frames = size / 2;
-                let channels = usize::from(channels);
-                for i in (0..frames).step_by(channels) {
-                    let mut sum = 0i32;
-                    let mut n = 0i32;
-                    for c in 0..channels {
-                        let at = body + (i + c) * 2;
-                        if at + 2 > end {
-                            return None;
-                        }
-                        sum += i32::from(i16::from_le_bytes(bytes[at..at + 2].try_into().ok()?));
-                        n += 1;
-                    }
-                    samples.push((sum / n) as i16);
-                }
-            }
+            b"data" => samples = mono(&bytes[body..end], usize::from(channels))?,
             _ => {}
         }
         pos = end + (end % 2); // the chunks are word-aligned
@@ -146,12 +155,23 @@ mod tests {
 
     #[test]
     fn wav_writes_and_reads_back() {
-        let samples: Vec<i16> = (0..800).map(|i| ((i as i32 * 37) % 32000) as i16).collect();
+        let samples: Vec<i16> = (0..800).map(|i| ((i * 37) % 32000) as i16).collect();
         let bytes = encode_wav(16_000, &samples);
         let wav = decode_wav(&bytes).unwrap();
         assert_eq!(wav.rate, 16_000);
         assert_eq!(wav.channels, 1);
         assert_eq!(wav.samples, samples);
+    }
+
+    #[test]
+    fn a_streamed_wav_of_unknown_length_runs_to_the_end() {
+        // what espeak-ng --stdout writes into a pipe: the largest sizes in both headers
+        let samples: Vec<i16> = (0..800).map(|i| (i * 3) as i16).collect();
+        let mut bytes = encode_wav(22_050, &samples);
+        bytes[4..8].copy_from_slice(&0x7FFF_F024u32.to_le_bytes());
+        bytes[40..44].copy_from_slice(&0x7FFF_F000u32.to_le_bytes());
+        let wav = decode_wav(&bytes).unwrap();
+        assert_eq!((wav.rate, wav.samples), (22_050, samples));
     }
 
     #[test]
