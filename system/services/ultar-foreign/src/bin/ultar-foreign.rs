@@ -26,8 +26,13 @@ fn main() -> ExitCode {
         _ => {}
     }
     // mount: the cells' views; set_id: nobody in the inspection cell, root of the
-    // installation cell (without any other right, see cellrun.rs)
-    let rights = Some(RightSet::of(&[Right::Mount, Right::SetId]));
+    // installation cell; cell_chown: handed to the installation cell alone (owners of the
+    // packages' files on its writable area, see cellrun.rs)
+    let rights = Some(RightSet::of(&[
+        Right::Mount,
+        Right::SetId,
+        Right::CellChown,
+    ]));
     ultar_svckit::main("ultar-foreign", &["root", "sources"], rights, |args, _| {
         let root = args.required_path("root").map_err(|_| Msg::BadArguments)?;
         let helper = std::env::current_exe().map_err(|_| Msg::BadArguments)?;

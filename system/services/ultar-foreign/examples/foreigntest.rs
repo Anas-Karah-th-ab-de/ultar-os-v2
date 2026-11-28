@@ -20,7 +20,7 @@ use ultar_foreign::cellrun::{self, CellJob, Mode, SetupStep, INBOX_IN_CELL};
 use ultar_sys::cell::{self as sys_cell, BindMode, Namespaces};
 
 /// The raw checks, each in a child (`--check NAME`): name and what it needs.
-const RAW: [(&str, &str); 14] = [
+const RAW: [(&str, &str); 15] = [
     ("namespaces", "mount and pid namespaces"),
     (
         "network-namespace",
@@ -49,8 +49,12 @@ const RAW: [(&str, &str); 14] = [
         "root of the cell without rights writes the area's root-owned files",
     ),
     (
-        "root-chown",
-        "root of the cell without rights gives files to another owner (dpkg, apt's _apt)",
+        "chown-outside-cell",
+        "outside a cell, root without rights gives no file another owner (EPERM)",
+    ),
+    (
+        "network-guard",
+        "the barrier \"internet only\" in a network namespace of its own",
     ),
     ("tmpfs", "tmpfs for /run and /tmp"),
     ("proc-mount", "an own /proc"),
@@ -131,20 +135,37 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
                 Err(format!("euid {}", ultar_sys::euid()))
             }
         }
-        "root-writes-area" | "root-chown" => {
+        "root-writes-area" | "chown-outside-cell" => {
             let file = area.join("var/lib/dpkg").join(format!("ultar-{name}"));
             std::fs::write(&file, b"x").map_err(|e| format!("prepare {e}"))?;
-            if ultar_sys::ultar_rights().is_ok() {
+            let ultar = ultar_sys::ultar_rights().is_ok();
+            if ultar {
                 ultar_sys::ultar_drop_rights(u64::MAX).map_err(errno)?;
             }
             let result = if name == "root-writes-area" {
                 std::fs::write(&file, b"y").map_err(|e| e.to_string())
             } else {
-                rustix::fs::chown(&file, Some(rustix::fs::Uid::from_raw(42)), None)
-                    .map_err(|e| format!("{e:?}"))
+                match rustix::fs::chown(&file, Some(rustix::fs::Uid::from_raw(42)), None) {
+                    Err(rustix::io::Errno::PERM) => Ok(()),
+                    // Linux: root keeps CAP_CHOWN outside a cell (the cells cut it)
+                    Ok(()) if !ultar => Ok(()),
+                    other => Err(format!("{other:?} (expected EPERM)")),
+                }
             };
             let _ = std::fs::remove_file(&file);
             result
+        }
+        "network-guard" => {
+            sys_cell::unshare(Namespaces {
+                net: true,
+                ..Namespaces::default()
+            })
+            .map_err(|e| format!("namespace {e:?}"))?;
+            ultar_sys::ultar_net_guard().map_err(|e| format!("guard {e:?}"))?;
+            match ultar_sys::ultar_net_guarded() {
+                Ok(true) => Ok(()),
+                other => Err(format!("read back {other:?}")),
+            }
         }
         "tmpfs" => {
             private()?;
@@ -211,7 +232,11 @@ fn cell(
         Some(0) => Ok(out),
         Some(code) => match SetupStep::of_code(code) {
             Some(step) => Err(format!("cell step {step:?}")),
-            None => Err(format!("exit {code}: {}", out.lines().last().unwrap_or(""))),
+            None => {
+                let tail: Vec<&str> = out.lines().rev().take(20).collect();
+                let tail: Vec<&str> = tail.into_iter().rev().collect();
+                Err(format!("exit {code}:\n    {}", tail.join("\n    ")))
+            }
         },
         None => Err("killed or timed out".into()),
     }
@@ -255,11 +280,6 @@ fn main() {
         };
         report(name, result);
     }
-    // the kernel's barrier "internet only" (stage P0) has no interface yet
-    report(
-        "network-barrier",
-        Err("(internet only for an app with network: the kernel call of stage P0 does not exist yet)".into()),
-    );
     // the service's cells with the area's Ubuntu programs
     let inspected = cell(
         &helper,
@@ -293,6 +313,30 @@ fn main() {
         "installation-cell",
         installed.and_then(|o| if o.contains("dpkg") { Ok(()) } else { Err(o) }),
     );
+    // dpkg gives files their owners (apt's `_apt` is 42): in the installation cell, which
+    // keeps the right cell_chown, on the area; the set-id bits stay off
+    let chowned = cell(
+        &helper,
+        Mode::Install,
+        &area,
+        None,
+        &[
+            "/bin/sh",
+            "-c",
+            "f=/var/lib/dpkg/ultar-chown; touch $f && chmod 4755 $f && chown 42:42 $f && \
+             s=$(stat -c '%u:%g %a' $f) && rm -f $f && echo \"chown $s\"",
+        ],
+    );
+    report(
+        "cell-chown",
+        chowned.and_then(|o| {
+            if o.contains("chown 42:42 755") {
+                Ok(())
+            } else {
+                Err(o)
+            }
+        }),
+    );
     if let Some(deb) = arg(&words, "--deb") {
         let inbox = std::env::temp_dir().join("ft-inbox");
         let _ = std::fs::remove_dir_all(&inbox);
@@ -314,6 +358,8 @@ fn main() {
             Some(inbox.clone()),
             &[
                 "/usr/bin/apt-get",
+                "-o",
+                "APT::Sandbox::User=root",
                 "install",
                 "-y",
                 "--no-install-recommends",

@@ -22,8 +22,11 @@ groups = [836]
 public_dirs = ["/data/ultar/foreign"]
 # right mount: the namespaces and views of its two cells (inspection, installation)
 # right set_id: nobody in the inspection cell, root of the installation cell
-# Every right is dropped in the cells before a program of the area runs.
-rights = ["mount", "set_id"]
+# right cell_chown: only for the installation cell, which keeps it alone: dpkg gives the
+#   packages' files their owners – the kernel allows it only on the cell's own writable
+#   mounts (the Linux area), never elsewhere (docs/integration/zell-chown.md)
+# Every other right is dropped in the cells before a program of the area runs.
+rights = ["mount", "set_id", "cell_chown"]
 notify = true
 after = ["bus", "launcher"]
 restart = "always"

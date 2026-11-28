@@ -220,7 +220,12 @@ fn confirm(client: &Client, caller: &str, text: Text) -> Result<bool, Failure> {
 
 /// Runs the package manager in the installation cell.
 fn apt(ctx: &Ctx, inbox: Option<PathBuf>, args: &[&str]) -> Result<(), Failure> {
-    let mut program = vec!["/usr/bin/apt-get".to_owned()];
+    // the cell is apt's sandbox: no switch to `_apt` (no set-id in the cell)
+    let mut program = vec![
+        "/usr/bin/apt-get".to_owned(),
+        "-o".to_owned(),
+        "APT::Sandbox::User=root".to_owned(),
+    ];
     program.extend(args.iter().map(|a| (*a).to_owned()));
     let cell = CellJob {
         mode: Mode::Install,

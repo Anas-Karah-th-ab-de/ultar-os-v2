@@ -111,11 +111,17 @@ impl Dispatch<ZxdgToplevelDecorationV1, WlSurface> for State {
     }
 }
 
-/// At the initial commit: apps without a decoration object draw their own header.
+/// At the initial commit: apps without a decoration object draw their own header. An app
+/// with one gets the mode now (what it asked for, else the compositor's header): a client
+/// that waits for the decoration's first `configure` before drawing (Qt) is not left waiting.
 pub fn decide_decoration(state: &mut State, id: &ObjectId) {
-    let has = matches!(state.objects.surfaces.get(id).map(|s| &s.role), Some(Role::Toplevel(t)) if t.decoration.is_some());
-    if !has {
-        apply(state, id, true);
+    let current = match state.objects.surfaces.get(id).map(|s| &s.role) {
+        Some(Role::Toplevel(t)) => t.decoration.as_ref().map(|_| t.client_header),
+        _ => return,
+    };
+    match current {
+        None => apply(state, id, true),
+        Some(own) => apply(state, id, own),
     }
 }
 

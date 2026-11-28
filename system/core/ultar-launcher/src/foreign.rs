@@ -166,10 +166,12 @@ pub fn parse(bytes: &[u8]) -> Result<Manifest, ManifestError> {
     if raw.foreign.lan && !allowed {
         return Err(ManifestError::Permission);
     }
+    // every such app may draw its own title bar (GTK does); the network only when granted
+    let header = PermissionSet::EMPTY.with(Permission::UiClientHeader);
     let declared = if allowed {
-        PermissionSet::EMPTY.with(Permission::Network)
+        header.with(Permission::Network)
     } else {
-        PermissionSet::EMPTY
+        header
     };
     Ok(Manifest {
         id,
@@ -247,6 +249,10 @@ mod tests {
         let m = parse(GOOD.as_bytes()).unwrap();
         assert_eq!(m.id.as_str(), "foreign.deb-mousepad");
         assert!(m.network_allowed && m.declared.has(Permission::Network));
+        assert!(
+            m.declared.has(Permission::UiClientHeader),
+            "GTK draws its own title bar"
+        );
         assert!(m.bus.is_empty() && m.service.is_none() && m.kernel_rights == 0);
         assert_eq!(m.files, vec!["documents:rw".to_owned()]);
         assert!(!m.lan);

@@ -110,7 +110,12 @@ const SYSTEM: Profile = Profile {
 
 const FOREIGN: Profile = Profile {
     name: ProfileName::Foreign,
-    grantable: PermissionSet::EMPTY.with(Permission::Network),
+    // ui.client-header: programs that draw their own title bar (GTK) appear without a
+    // second one from the compositor; system dialogs carry the compositor's own mark,
+    // which an app's title bar cannot imitate (docs/integration/ultar-foreign.md)
+    grantable: PermissionSet::EMPTY
+        .with(Permission::Network)
+        .with(Permission::UiClientHeader),
     // the service for such apps installs only after the person confirmed with an
     // administrator's password what the app gets (`foreign.install`)
     granted_at_install: true,
@@ -237,11 +242,11 @@ mod tests {
     }
 
     #[test]
-    fn foreign_apps_get_the_network_at_most() {
+    fn foreign_apps_get_the_network_and_their_own_title_bar_at_most() {
         let p = ProfileName::Foreign.profile();
-        let m = manifest("[permissions]\nnetwork = \"allowed\"\n");
+        let m = manifest("[permissions]\nnetwork = \"allowed\"\nui = [\"ui.client-header\"]\n");
         assert_eq!(p.admit(&m), Ok(()));
-        assert_eq!(p.initial_grants(&m).names(), "network");
+        assert_eq!(p.initial_grants(&m).names(), "network,ui.client-header");
         for extra in [
             "[permissions]\nbackground = true\n",
             "[permissions]\nui = [\"ui.overlay\"]\n",

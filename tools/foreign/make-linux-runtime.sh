@@ -153,6 +153,8 @@ cat >"$TREE/etc/apt/apt.conf.d/99ultar" <<'APT'
 // Ultar Linux area (docs/integration/ultar-foreign.md)
 APT::Install-Recommends "false";
 APT::Install-Suggests "false";
+// the installation cell is the sandbox: no switch to _apt (no set-id in the cell)
+APT::Sandbox::User "root";
 DPkg::Post-Invoke { "find / -xdev -perm /6000 -type f -exec chmod ug-s {} + 2>/dev/null || true"; };
 APT
 # The cells have no network without the app's permission; with it, the kernel's barrier lets

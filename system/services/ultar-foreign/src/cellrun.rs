@@ -269,19 +269,20 @@ fn bind_writable(runtime: &Path) -> Result<(), ()> {
     .map_err(|_| ())
 }
 
+/// Only the harmless device nodes, each bound on its own (never the kernel's device tree;
+/// a kernel that cannot bind a single node builds no cell). Nodes the kernel lacks (the
+/// Ultar kernel has no `full`) are left out.
 fn devices(root: &Path) -> Result<(), ()> {
     let dev = mount_point(root, "/dev")?;
     sys_cell::mount_tmpfs(&dev, "size=65536,mode=0755").map_err(|_| ())?;
     for node in sys_cell::DEV_NODES {
         let source = Path::new(sys_cell::DEV).join(node);
+        if std::fs::symlink_metadata(&source).is_err() {
+            continue;
+        }
         let at = dev.join(node);
         std::fs::File::create(&at).map_err(|_| ())?;
-        if sys_cell::bind(&source, &at, BindMode::Device).is_err() {
-            // the Ultar kernel cannot bind a single node yet: its device tree, gated
-            // by modes and the right raw_device this cell does not have
-            sys_cell::detach(&dev).map_err(|_| ())?;
-            return sys_cell::mount_devtmpfs(&dev).map_err(|_| ());
-        }
+        sys_cell::bind(&source, &at, BindMode::Device).map_err(|_| ())?;
     }
     Ok(())
 }
@@ -337,12 +338,17 @@ fn build_view(job: &CellJob) -> Result<(), SetupStep> {
     Ok(())
 }
 
-/// Capabilities the installation cell keeps on Linux (file owners and modes of the
-/// packages, the package manager's own unprivileged user for downloads).
-fn install_caps() -> rustix::thread::CapabilitySet {
+/// Capabilities the installation cell keeps on Linux: owners and modes of the packages'
+/// files. No set-id: apt runs with `APT::Sandbox::User "root"` (the cell is its sandbox).
+pub fn install_caps() -> rustix::thread::CapabilitySet {
     use rustix::thread::CapabilitySet as C;
-    C::CHOWN | C::DAC_OVERRIDE | C::FOWNER | C::FSETID | C::SETUID | C::SETGID
+    C::CHOWN | C::DAC_OVERRIDE | C::FOWNER | C::FSETID
 }
+
+/// The Ultar kernel's right `cell_chown` (bit 14, `docs/integration/zell-chown.md`): owners
+/// of entries on the cell's own writable mounts only. The only right the installation
+/// cell keeps there.
+pub const CELL_CHOWN: u64 = 1 << 14;
 
 /// Linux: cuts the bounding set (and with it what any program started here can ever
 /// get) to `keep`. The Ultar kernel has no capabilities (it answers `EINVAL`): its
@@ -365,13 +371,18 @@ fn cut_capabilities(keep: rustix::thread::CapabilitySet) -> Result<(), ()> {
 /// Identity and rights of the cell's programs.
 fn confine(mode: Mode) -> Result<(), SetupStep> {
     use SetupStep as S;
-    match mode {
-        Mode::Install => cut_capabilities(install_caps()).map_err(|()| S::Capabilities)?,
-        Mode::Inspect => cut_capabilities(rustix::thread::CapabilitySet::empty())
-            .map_err(|()| S::Capabilities)?,
+    // The Ultar kernel has rights, not capabilities: there `PR_CAPBSET_DROP` takes the
+    // matching rights at once (CAP_SETUID would take `set_id` before the switch below), so
+    // the bounding set is cut on Linux only and the Ultar rights are dropped after the switch.
+    let ultar = ultar_sys::ultar_rights().is_ok();
+    if !ultar {
+        let keep = match mode {
+            Mode::Install => install_caps(),
+            Mode::Inspect => rustix::thread::CapabilitySet::empty(),
+        };
+        cut_capabilities(keep).map_err(|()| S::Capabilities)?;
     }
-    // inspection: nobody; installation: root of the cell (the area's files belong to
-    // root; without any kernel right root passes no permission check of the Ultar kernel)
+    // inspection: nobody; installation: root of the cell (the area's files belong to root)
     let id = if mode == Mode::Inspect { NOBODY } else { 0 };
     if ultar_sys::euid() != id {
         let identity = ultar_sys::Identity {
@@ -381,9 +392,11 @@ fn confine(mode: Mode) -> Result<(), SetupStep> {
         };
         ultar_sys::switch_identity(&identity).map_err(|_| S::Identity)?;
     }
-    if ultar_sys::ultar_rights().is_ok() {
-        ultar_sys::ultar_drop_rights(u64::MAX).map_err(|_| S::Rights)?;
-        if ultar_sys::ultar_rights().map_err(|_| S::Rights)? != 0 {
+    if ultar {
+        // every right but `cell_chown` in the installation cell; none in the inspection cell
+        let keep = if mode == Mode::Install { CELL_CHOWN } else { 0 };
+        ultar_sys::ultar_drop_rights(!keep).map_err(|_| S::Rights)?;
+        if ultar_sys::ultar_rights().map_err(|_| S::Rights)? & !keep != 0 {
             return Err(S::Rights);
         }
     }
@@ -416,6 +429,14 @@ pub fn stage_two(words: &[String]) -> i32 {
         return step.code();
     }
     let mut command = Command::new(&job.program[0]);
+    // the installation cell's messages (apt and dpkg write their errors there) go with its
+    // output; the inspection cell's output stays the fields alone
+    if job.mode == Mode::Install {
+        use std::os::fd::AsFd;
+        if let Ok(out) = std::io::stdout().as_fd().try_clone_to_owned() {
+            command.stderr(Stdio::from(out));
+        }
+    }
     command
         .args(&job.program[1..])
         .env_clear()

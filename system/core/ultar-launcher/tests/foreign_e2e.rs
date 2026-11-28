@@ -456,6 +456,14 @@ fn a_linux_program_goes_in_runs_in_its_cell_and_leaves_without_trace() {
         apps[0]
     );
     assert!(Path::new(&apps[0].icon).is_file());
+    // its own title bar (GTK): the compositor's right for exactly this app
+    let rights = std::fs::read_to_string(world.path("share/compositor-apps.toml")).unwrap();
+    assert!(
+        rights
+            .lines()
+            .any(|l| l.starts_with(&format!("{uid} ")) && l.contains("ui.client-header")),
+        "{rights}"
+    );
     println!("FOREIGN: installed ok");
 
     // 4. the app in its cell
@@ -587,7 +595,7 @@ fn a_linux_program_goes_in_runs_in_its_cell_and_leaves_without_trace() {
         "a script mounted"
     );
     let bounded = std::fs::read_to_string(runtime.join("var/tmp/evil-caps")).unwrap();
-    assert!(bounded.trim().ends_with("00000000000000db"), "{bounded}");
+    assert!(bounded.trim().ends_with("000000000000001b"), "{bounded}");
     let mode = std::fs::metadata(runtime.join("usr/bin/ultar-evil"))
         .unwrap()
         .permissions()
