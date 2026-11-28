@@ -32,6 +32,69 @@ const NOBODY: u32 = 65534;
 const MAX_OUTPUT: usize = 256 * 1024;
 /// Exit code of a stage that failed before the program ran.
 pub const SETUP_FAILED: i32 = 120;
+/// Exit codes `SETUP_STEP + n`: which step of building the cell failed (`Step` below), so
+/// that a kernel without a feature says which one.
+pub const SETUP_STEP: i32 = 140;
+
+/// The steps of building a cell, in order (exit code [`SETUP_STEP`] + the number).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum SetupStep {
+    /// New mount, pid and network namespaces (stage 1).
+    Namespaces = 0,
+    /// Mounts made private.
+    Private = 1,
+    /// The area bound (read-only, or writable without set-id and devices).
+    Area = 2,
+    /// `tmpfs` on `/run` and `/tmp`.
+    Tmpfs = 3,
+    /// Own `/proc`.
+    Proc = 4,
+    /// Kernel switches below `/proc` read-only.
+    ProcReadOnly = 5,
+    /// The harmless device nodes.
+    Devices = 6,
+    /// The inbox read-only.
+    Inbox = 7,
+    /// Root switch and the old root detached.
+    Root = 8,
+    /// Capabilities cut (Linux).
+    Capabilities = 9,
+    /// Identity (nobody, root of the cell).
+    Identity = 10,
+    /// Every kernel right dropped (Ultar kernel).
+    Rights = 11,
+    /// No new privileges.
+    NoNewPrivileges = 12,
+}
+
+impl SetupStep {
+    /// All steps.
+    pub const ALL: [SetupStep; 13] = [
+        Self::Namespaces,
+        Self::Private,
+        Self::Area,
+        Self::Tmpfs,
+        Self::Proc,
+        Self::ProcReadOnly,
+        Self::Devices,
+        Self::Inbox,
+        Self::Root,
+        Self::Capabilities,
+        Self::Identity,
+        Self::Rights,
+        Self::NoNewPrivileges,
+    ];
+
+    /// The step an exit code names.
+    pub fn of_code(code: i32) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| SETUP_STEP + *s as i32 == code)
+    }
+
+    const fn code(self) -> i32 {
+        SETUP_STEP + self as i32
+    }
+}
 
 /// Which cell.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -169,7 +232,7 @@ pub fn stage_one(words: &[String]) -> i32 {
         ipc: false,
     };
     if sys_cell::unshare(ns).is_err() {
-        return SETUP_FAILED;
+        return SetupStep::Namespaces.code();
     }
     let Ok(me) = std::env::current_exe() else {
         return SETUP_FAILED;
@@ -244,29 +307,30 @@ fn protect_proc(proc: &Path) -> Result<(), ()> {
 }
 
 /// Builds the view (stage 2, pid 1, own mount namespace) and switches into it.
-fn build_view(job: &CellJob) -> Result<(), ()> {
+fn build_view(job: &CellJob) -> Result<(), SetupStep> {
+    use SetupStep as S;
     let root = &job.runtime;
-    sys_cell::make_mounts_private().map_err(|_| ())?;
+    sys_cell::make_mounts_private().map_err(|_| S::Private)?;
     match job.mode {
-        Mode::Install => bind_writable(root)?,
-        Mode::Inspect => sys_cell::bind(root, root, BindMode::ReadOnly).map_err(|_| ())?,
+        Mode::Install => bind_writable(root).map_err(|()| S::Area)?,
+        Mode::Inspect => sys_cell::bind(root, root, BindMode::ReadOnly).map_err(|_| S::Area)?,
     }
-    let run = mount_point(root, "/run")?;
-    sys_cell::mount_tmpfs(&run, "size=8388608,mode=0755").map_err(|_| ())?;
-    let tmp = mount_point(root, "/tmp")?;
-    sys_cell::mount_tmpfs(&tmp, "size=268435456,mode=1777").map_err(|_| ())?;
-    let proc = mount_point(root, "/proc")?;
-    sys_cell::mount_proc(&proc).map_err(|_| ())?;
-    protect_proc(&proc)?;
-    devices(root)?;
+    let run = mount_point(root, "/run").map_err(|()| S::Tmpfs)?;
+    sys_cell::mount_tmpfs(&run, "size=8388608,mode=0755").map_err(|_| S::Tmpfs)?;
+    let tmp = mount_point(root, "/tmp").map_err(|()| S::Tmpfs)?;
+    sys_cell::mount_tmpfs(&tmp, "size=268435456,mode=1777").map_err(|_| S::Tmpfs)?;
+    let proc = mount_point(root, "/proc").map_err(|()| S::Proc)?;
+    sys_cell::mount_proc(&proc).map_err(|_| S::Proc)?;
+    protect_proc(&proc).map_err(|()| S::ProcReadOnly)?;
+    devices(root).map_err(|()| S::Devices)?;
     if let Some(inbox) = &job.inbox {
-        let at = mount_point(root, INBOX_IN_CELL)?;
-        sys_cell::bind(inbox, &at, BindMode::ReadOnly).map_err(|_| ())?;
+        let at = mount_point(root, INBOX_IN_CELL).map_err(|()| S::Inbox)?;
+        sys_cell::bind(inbox, &at, BindMode::ReadOnly).map_err(|_| S::Inbox)?;
     }
-    let old = mount_point(root, "/run/.old")?;
-    sys_cell::pivot_root(root, &old).map_err(|_| ())?;
-    std::env::set_current_dir("/").map_err(|_| ())?;
-    sys_cell::detach(Path::new("/run/.old")).map_err(|_| ())?;
+    let old = mount_point(root, "/run/.old").map_err(|()| S::Root)?;
+    sys_cell::pivot_root(root, &old).map_err(|_| S::Root)?;
+    std::env::set_current_dir("/").map_err(|_| S::Root)?;
+    sys_cell::detach(Path::new("/run/.old")).map_err(|_| S::Root)?;
     let _ = std::fs::remove_dir("/run/.old");
     Ok(())
 }
@@ -297,10 +361,13 @@ fn cut_capabilities(keep: rustix::thread::CapabilitySet) -> Result<(), ()> {
 }
 
 /// Identity and rights of the cell's programs.
-fn confine(mode: Mode) -> Result<(), ()> {
+fn confine(mode: Mode) -> Result<(), SetupStep> {
+    use SetupStep as S;
     match mode {
-        Mode::Install => cut_capabilities(install_caps())?,
-        Mode::Inspect => cut_capabilities(rustix::thread::CapabilitySet::empty())?,
+        Mode::Install => cut_capabilities(install_caps()).map_err(|()| S::Capabilities)?,
+        Mode::Inspect => {
+            cut_capabilities(rustix::thread::CapabilitySet::empty()).map_err(|()| S::Capabilities)?
+        }
     }
     // inspection: nobody; installation: root of the cell (the area's files belong to
     // root; without any kernel right root passes no permission check of the Ultar kernel)
@@ -311,17 +378,17 @@ fn confine(mode: Mode) -> Result<(), ()> {
             gid: id,
             groups: Vec::new(),
         };
-        ultar_sys::switch_identity(&identity).map_err(|_| ())?;
+        ultar_sys::switch_identity(&identity).map_err(|_| S::Identity)?;
     }
     if ultar_sys::ultar_rights().is_ok() {
-        ultar_sys::ultar_drop_rights(u64::MAX).map_err(|_| ())?;
-        if ultar_sys::ultar_rights().map_err(|_| ())? != 0 {
-            return Err(());
+        ultar_sys::ultar_drop_rights(u64::MAX).map_err(|_| S::Rights)?;
+        if ultar_sys::ultar_rights().map_err(|_| S::Rights)? != 0 {
+            return Err(S::Rights);
         }
     }
     match ultar_sys::set_no_new_privileges() {
         Ok(()) | Err(ultar_sys::Errno::ENOSYS | ultar_sys::Errno::EINVAL) => Ok(()),
-        Err(_) => Err(()),
+        Err(_) => Err(S::NoNewPrivileges),
     }
 }
 
@@ -344,8 +411,8 @@ pub fn stage_two(words: &[String]) -> i32 {
     let Some(job) = CellJob::parse(words) else {
         return SETUP_FAILED;
     };
-    if build_view(&job).is_err() || confine(job.mode).is_err() {
-        return SETUP_FAILED;
+    if let Err(step) = build_view(&job).and_then(|()| confine(job.mode)) {
+        return step.code();
     }
     let mut command = Command::new(&job.program[0]);
     command
