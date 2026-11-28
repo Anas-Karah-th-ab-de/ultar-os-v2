@@ -161,14 +161,14 @@ fn what_arrives_names_its_device_and_respects_a_locked_screen() {
         remote(false, "Samer", "secret"),
     ]);
     assert_eq!(locked.sender, "mesh");
-    assert_eq!(locked.post.title.key, "notify.mirror.locked");
+    assert_eq!(locked.post.title.key, "desk.note.mirror.locked");
     assert_eq!(locked.post.title.args, [TextArg::Verbatim("Anas phone".into())]);
     assert_eq!(locked.post.body, Body::Empty);
     assert!(!format!("{locked:?}").contains("secret"));
     assert_eq!(locked.post.urgency, Urgency::Normal, "it cannot alert");
     // The hidden one never shows up, even later.
     while let Ok(p) = posted.recv_timeout(Duration::from_millis(300)) {
-        assert_eq!(p.post.title.key, "notify.mirror.locked");
+        assert_eq!(p.post.title.key, "desk.note.mirror.locked");
     }
 
     // Signed in: the content appears, with the device named.
@@ -183,7 +183,7 @@ fn what_arrives_names_its_device_and_respects_a_locked_screen() {
     wait_until(WAIT, || {
         from_mesh.publish(&remote(true, "Samer", "hello")).unwrap();
         while let Ok(p) = posted.recv_timeout(Duration::from_millis(300)) {
-            if p.post.title.key == "notify.mirror.title" {
+            if p.post.title.key == "desk.note.mirror.title" {
                 shown = Some(p);
             }
         }

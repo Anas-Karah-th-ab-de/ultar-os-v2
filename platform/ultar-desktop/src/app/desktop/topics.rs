@@ -8,6 +8,7 @@ use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::calendar::Changed as CalendarChanged;
 use ultar_bus::messages::media::MediaState;
 use ultar_bus::messages::mesh::{HandoffProgress, MeshState};
+use ultar_bus::messages::mesh_calls::{CallIncoming, CallProgress, MeshCallState};
 use ultar_bus::messages::net::{NetState, WifiLink};
 use ultar_bus::messages::notify::Dismissed;
 use ultar_bus::messages::power::PowerActions;
@@ -33,6 +34,9 @@ pub struct ServiceTopics {
     handoff: Option<TypedSubscription<HandoffProgress>>,
     helper: Option<TypedSubscription<ultar_bus::messages::agent::AgentState>>,
     progress: Option<TypedSubscription<ultar_bus::messages::agent::Progress>>,
+    ringing: Option<TypedSubscription<CallIncoming>>,
+    ring_end: Option<TypedSubscription<CallProgress>>,
+    led: Option<TypedSubscription<MeshCallState>>,
 }
 
 /// Takes every waiting message of `sub`; `true` when there was one.
@@ -64,6 +68,9 @@ impl ServiceTopics {
             handoff: client.subscribe().ok(),
             helper: client.subscribe().ok(),
             progress: client.subscribe().ok(),
+            ringing: client.subscribe().ok(),
+            ring_end: client.subscribe().ok(),
+            led: client.subscribe().ok(),
         }
     }
 
@@ -101,6 +108,10 @@ impl ServiceTopics {
         any |= drain(&self.dismissed, |m| {
             notes.dismiss(m.id);
         });
+        any |= drain(&self.ringing, |m| crate::model::calls::incoming(d, m, now));
+        any |= drain(&self.ring_end, |m| crate::model::calls::progress(d, &m));
+        any |= drain(&self.led, |m| crate::model::calls::led(d, &m, now));
+        crate::model::calls::keep(d, now);
         let calendar = drain(&self.calendar, |_| {});
         follow_presence(d);
         (any || calendar, calendar)

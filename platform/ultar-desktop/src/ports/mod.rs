@@ -3,6 +3,7 @@
 //! authentication service.
 
 pub mod bus;
+mod bus_calls;
 mod bus_mesh;
 mod bus_services;
 pub mod services;

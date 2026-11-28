@@ -4,7 +4,7 @@ use ultar_bus::messages::mesh::{Grant, MeshState, PairCode, Peer};
 use ultar_bus::Text;
 
 /// The grants of a paired device in the order of the board *MeshDevice*.
-pub const GRANTS: [Grant; 8] = [
+pub const GRANTS: [Grant; 9] = [
     Grant::Handoff,
     Grant::Files,
     Grant::Clipboard,
@@ -13,6 +13,7 @@ pub const GRANTS: [Grant; 8] = [
     Grant::Audio,
     Grant::Compute,
     Grant::Model,
+    Grant::Call,
 ];
 
 /// What the page knows.

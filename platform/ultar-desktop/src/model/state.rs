@@ -189,6 +189,8 @@ pub struct Desktop {
     pub values: QuickValues,
     /// Notifications.
     pub notes: Notes,
+    /// Calls of the person's other devices (banner and controls).
+    pub calls: super::calls::Calls,
     /// What is open.
     pub open: Open,
     /// Month shown by the calendar and the selected day index.
@@ -216,6 +218,7 @@ impl Desktop {
                 ..QuickValues::default()
             },
             notes: Notes::default(),
+            calls: super::calls::Calls::default(),
             open: Open::None,
             calendar: None,
             overview: OverviewState::default(),

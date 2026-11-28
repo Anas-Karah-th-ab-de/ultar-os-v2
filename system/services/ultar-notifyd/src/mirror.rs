@@ -79,7 +79,7 @@ pub fn incoming(note: &NoteRemote, locked: bool) -> Option<Post> {
     }
     let from = TextArg::Verbatim(cut(&note.from_name, MAX_TITLE));
     let (title, body) = if locked {
-        (text_of("notify.mirror.locked", vec![from]), Body::Empty)
+        (text_of("desk.note.mirror.locked", vec![from]), Body::Empty)
     } else {
         let what = if note.title.is_empty() {
             note.app.clone()
@@ -93,7 +93,7 @@ pub fn incoming(note: &NoteRemote, locked: bool) -> Option<Post> {
         };
         (
             text_of(
-                "notify.mirror.title",
+                "desk.note.mirror.title",
                 vec![from, TextArg::Verbatim(cut(&what, MAX_TITLE))],
             ),
             body,
@@ -179,7 +179,7 @@ mod tests {
     fn a_mirrored_note_names_its_device_and_is_a_valid_post() {
         let p = incoming(&remote(false), false).unwrap();
         assert!(valid(&p));
-        assert_eq!(p.title.key, "notify.mirror.title");
+        assert_eq!(p.title.key, "desk.note.mirror.title");
         assert_eq!(
             p.title.args,
             vec![
@@ -197,7 +197,7 @@ mod tests {
         assert!(incoming(&remote(true), true).is_none());
         let p = incoming(&remote(false), true).unwrap();
         assert!(valid(&p));
-        assert_eq!(p.title.key, "notify.mirror.locked");
+        assert_eq!(p.title.key, "desk.note.mirror.locked");
         assert_eq!(p.body, Body::Empty);
         assert!(!format!("{p:?}").contains("hello") && !format!("{p:?}").contains("Samer"));
         assert!(incoming(&remote(true), false).is_some());
