@@ -16,7 +16,7 @@ if [ -z "$IMG" ]; then IMG=1 bash scripts/build-kern.sh >/dev/null; IMG=out/ulta
 if [ -z "${DESK_BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
     -p ultar-init -p ultar-busd -p ultar-logd -p ultar-devd -p ultar-auth -p ultar-compositor -p ultar-desktop \
-    --bins --examples
+    --features ultar-compositor/test-hooks --bins --examples
   DESK_BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT

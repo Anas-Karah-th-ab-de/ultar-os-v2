@@ -11,7 +11,7 @@ interface 0 with interrupt IN 0x81 (events, 16-octet packets), bulk IN 0x82 and 
 interface 1 with two isochronous endpoints (SCO, unused).
 
 The controller: every HCI command is answered with Command Complete, status 0 (Read BD_ADDR: C0:FF:EE:00:B7:01,
-Read Buffer Size: 1021 octets x 8, LE Read Buffer Size: 251 x 8); vendor command 0xFC77 first sends a vendor event
+Read Buffer Size: 1021 octets x 8, LE Read Buffer Size: 251 x 8); Read Local Supported Commands (0x1002) first sends a vendor event
 with 255 parameter octets (0..254), to cut an event over 17 interrupt packets. ACL data is sent back unchanged
 (loopback). Every command is written to the log as `BTEMU cmd 0xNNNN`, every ACL packet as `BTEMU acl <len>`.
 
@@ -113,7 +113,7 @@ class Dev:
         log("BTEMU cmd 0x%04x" % op)
         ret = {0x1009: ADDR, 0x1005: struct.pack("<HBHH", 1021, 0x40, 8, 0), 0x2002: struct.pack("<HB", 251, 8),
                0x1001: bytes([12, 0, 0, 12, 0x0a, 0, 0, 0]), 0x1003: bytes([0xff] * 8)}.get(op, b"")
-        if op == 0xFC77:
+        if op == 0x1002:
             self.event(0xFF, bytes(range(255)))
         if op in (0x0401, 0x0419):  # Inquiry, Remote Name Request: Command Status, results later
             self.event(0x0F, bytes([0, 1, pkt[0], pkt[1]]))

@@ -320,7 +320,9 @@ static void hci_test(void) {
     n = cmd(fd, 0x1009, b, sizeof b);
     const unsigned char addr[6] = {0x01, 0xB7, 0x00, 0xEE, 0xFF, 0xC0};
     check("Read BD_ADDR: C0:FF:EE:00:B7:01", n == 13 && b[6] == 0 && memcmp(b + 7, addr, 6) == 0);
-    unsigned char c[4] = {1, 0x77, 0xfc, 0};
+    unsigned char vendor[4] = {1, 0x77, 0xfc, 0};
+    check("Herstellerbefehl (OGF 0x3F): EPERM", write(fd, vendor, 4) < 0 && errno == EPERM);
+    unsigned char c[4] = {1, 0x02, 0x10, 0};
     int big = write(fd, c, 4) == 4 && rec(fd, b, sizeof b, 3000) == 258 && b[0] == 4 && b[1] == 0xff && b[2] == 255;
     for (int i = 0; big && i < 255; i++) big = b[3 + i] == i;
     check("Ereignis mit 255 Parametern über 17 USB-Pakete zusammengesetzt", big);
