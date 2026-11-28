@@ -59,11 +59,7 @@ fn place_fixed(p: &mut Proc, addr: u64, len: u64) -> Result<u64, i64> {
         return Err(-ENOMEM);
     }
     p.space().unmap_shared(addr, len);
-    let mut a = addr;
-    while a < addr + len {
-        p.space().unmap(a);
-        a += 4096;
-    }
+    p.space().unmap_range(addr, addr + len);
     Ok(addr)
 }
 

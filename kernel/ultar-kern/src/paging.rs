@@ -379,6 +379,27 @@ impl AddrSpace {
         }
     }
 
+    /// Unmaps every page of `[va, end)`; levels without own tables are skipped whole (a 64-GiB
+    /// reservation is gone in a few steps, not 16 million).
+    pub fn unmap_range(&self, va: u64, end: u64) {
+        let mut a = va;
+        'outer: while a < end {
+            let mut t = self.pml4;
+            for sh in [39u64, 30, 21] {
+                let e = tab(t)[((a >> sh) & 511) as usize];
+                if e & P == 0 || e & OWN == 0 || e & HUGE != 0 {
+                    a = ((a >> sh) + 1) << sh;
+                    continue 'outer;
+                }
+                t = e & ADDR;
+            }
+            if tab(t)[((a >> 12) & 511) as usize] & P != 0 {
+                self.unmap(a);
+            }
+            a += 4096;
+        }
+    }
+
     fn walk(&self, va: u64) -> Option<&'static mut u64> {
         let mut t = self.pml4;
         for sh in [39u64, 30, 21] {

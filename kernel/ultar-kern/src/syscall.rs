@@ -3364,11 +3364,7 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
         }
         crate::filemap::sync_range(p, addr, (len + 4095) & !4095);
         p.space().unmap_shared(addr, (len + 4095) & !4095);
-        let mut a = addr;
-        while a < addr + ((len + 4095) & !4095) {
-            p.space_mut().unmap(a);
-            a += 4096;
-        }
+        p.space().unmap_range(addr, addr + ((len + 4095) & !4095));
         // the freed pages must not stay reachable through another core's TLB
         if p.g.refs() > 1 {
             crate::apic::flush_tlb_others();
