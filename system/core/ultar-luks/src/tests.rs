@@ -67,6 +67,41 @@ fn xts_round_trip_depends_on_sector() {
 }
 
 #[test]
+fn start_info_travels_in_a_token() {
+    let info = StartInfo {
+        lang: "de".into(),
+        keyboard: "ar+us".into(),
+    };
+    let f = format_with(PASS, &Params::TEST, Some(&info)).unwrap();
+    let mut read = |at: u64, buf: &mut [u8]| {
+        let at = at as usize;
+        buf.copy_from_slice(
+            f.metadata
+                .get(at..at + buf.len())
+                .ok_or(Error::Header("short"))?,
+        );
+        Ok(())
+    };
+    assert_eq!(start_info(&mut read).unwrap(), Some(info));
+    assert!(
+        open_bytes(&f.metadata, PASS).is_ok(),
+        "the token does not disturb opening"
+    );
+    let plain = format(PASS, &Params::TEST).unwrap();
+    let mut read = |at: u64, buf: &mut [u8]| {
+        let at = at as usize;
+        buf.copy_from_slice(
+            plain
+                .metadata
+                .get(at..at + buf.len())
+                .ok_or(Error::Header("short"))?,
+        );
+        Ok(())
+    };
+    assert_eq!(start_info(&mut read).unwrap(), None);
+}
+
+#[test]
 fn af_split_merge() {
     let key = [3u8; 64];
     let s = af::split(&key, 10).unwrap();

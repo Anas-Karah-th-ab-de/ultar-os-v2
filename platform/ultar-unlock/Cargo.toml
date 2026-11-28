@@ -1,0 +1,32 @@
+[package]
+name = "ultar-unlock"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Graphical unlock screen of the encrypted data partition at start: drawn straight on the framebuffer with the UI toolkit before any service runs, keys from the input devices, the passphrase tried in every keyboard layout (platform)"
+
+[lib]
+name = "ultar_unlock"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-unlock"
+path = "src/bin/ultar-unlock.rs"
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-surface = { path = "../ultar-surface" }
+# the physical keyboard layouts (the same table the compositor uses for the installer's fields)
+ultar-compositor = { path = "../ultar-compositor" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+ultar-luks = { path = "../../system/core/ultar-luks" }
+ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-hal-gfx = { path = "../../system/hal/ultar-hal-gfx" }
+ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
+zeroize = "1"
+
+[dev-dependencies]
+# PNG encoding of the renders
+ultar-ui = { path = "../ultar-ui" }

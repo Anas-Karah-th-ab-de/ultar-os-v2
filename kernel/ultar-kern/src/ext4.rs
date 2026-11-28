@@ -603,15 +603,25 @@ impl Ext4 {
         for g in 0..self.groups(&sb) {
             let (db, o, mut dblk) = self.gd(g)?;
             let flags = le16(&dblk, o + 18);
-            if flags & 1 != 0 {
-                continue; // INODE_UNINIT
-            }
             let free = Self::gd_field(&dblk, o, 14, 0x2E, wide, 16);
             if free == 0 {
                 continue;
             }
             let bmb = Self::gd_field(&dblk, o, 4, 0x24, wide, 32);
-            let mut bm = self.block(bmb)?;
+            // INODE_UNINIT (a group a growth added): the bitmap on disk was never written – all
+            // inodes free, the bits past the group's inodes set; written below with the flag
+            // cleared. The inode table is not zeroed: every inode below `itable_unused` is
+            // written whole before it is used (new_inode).
+            let mut bm = if flags & 1 != 0 {
+                let mut b = alloc::vec![0u8; self.bs as usize];
+                for i in ipg..self.bs * 8 {
+                    b[(i / 8) as usize] |= 1 << (i % 8);
+                }
+                put16(&mut dblk, o + 18, flags & !1);
+                b
+            } else {
+                self.block(bmb)?
+            };
             for i in 0..ipg {
                 let ino = g * ipg + i + 1;
                 if ino < first_ino || bm[(i / 8) as usize] & (1 << (i % 8)) != 0 {
