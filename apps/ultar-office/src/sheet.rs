@@ -6,6 +6,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+use crate::style::CellStyle;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Empty,
@@ -80,6 +82,18 @@ pub fn fmt_num(n: f64) -> String {
     }
 }
 
+/// Heute als Excel-Serienzahl mit Tagesbruchteil (lokale Systemzeit, UTC-Tage seit dem
+/// 30.12.1899). Der Wert ändert sich mit jedem Aufruf – für deterministische Tests
+/// `value_at`/`eval_formula_at` mit festem `now` verwenden.
+pub fn excel_now() -> f64 {
+    const UNIX_TO_EXCEL: f64 = 25_569.0;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    UNIX_TO_EXCEL + secs / 86_400.0
+}
+
 // ------------------------------------------------------------------ Adressen
 
 /// Spaltennummer (0 = A) → Buchstaben
@@ -151,6 +165,12 @@ pub struct Sheet {
     pub cells: BTreeMap<(u32, u32), String>,
     /// Spaltenbreiten in Zeichen (optional)
     pub widths: BTreeMap<u32, f32>,
+    /// Zeilenhöhen in Punkten (optional)
+    pub heights: BTreeMap<u32, f32>,
+    /// Formatierung je Zelle
+    pub styles: BTreeMap<(u32, u32), CellStyle>,
+    /// Blatt läuft von rechts nach links (Spalte A rechts)
+    pub rtl: bool,
 }
 
 impl Sheet {
@@ -170,6 +190,26 @@ impl Sheet {
             self.cells.insert((r, c), raw.to_string());
         }
     }
+    /// The formatting of a cell (default when unset).
+    pub fn style(&self, r: u32, c: u32) -> CellStyle {
+        self.styles.get(&(r, c)).cloned().unwrap_or_default()
+    }
+    /// Sets the formatting of a cell; a default formatting is stored as nothing.
+    pub fn set_style(&mut self, r: u32, c: u32, style: CellStyle) {
+        if style.is_default() {
+            self.styles.remove(&(r, c));
+        } else {
+            self.styles.insert((r, c), style);
+        }
+    }
+    /// Die sichtbare Breite einer Spalte (Standard: 10 Zeichen).
+    pub fn width(&self, c: u32) -> f32 {
+        self.widths.get(&c).copied().unwrap_or(10.0)
+    }
+    /// Die sichtbare Höhe einer Zeile in Punkten (Standard: 20).
+    pub fn height(&self, r: u32) -> f32 {
+        self.heights.get(&r).copied().unwrap_or(20.0)
+    }
     /// Benutzter Bereich: (Zeilen, Spalten)
     pub fn extent(&self) -> (u32, u32) {
         let mut rows = 0;
@@ -185,6 +225,14 @@ impl Sheet {
         for ((r, c), v) in old {
             self.cells.insert((if r >= at { r + 1 } else { r }, c), v);
         }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            self.styles.insert((if r >= at { r + 1 } else { r }, c), v);
+        }
+        let old = std::mem::take(&mut self.heights);
+        for (r, v) in old {
+            self.heights.insert(if r >= at { r + 1 } else { r }, v);
+        }
     }
     pub fn delete_row(&mut self, at: u32) {
         let old = std::mem::take(&mut self.cells);
@@ -194,11 +242,33 @@ impl Sheet {
             }
             self.cells.insert((if r > at { r - 1 } else { r }, c), v);
         }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            if r == at {
+                continue;
+            }
+            self.styles.insert((if r > at { r - 1 } else { r }, c), v);
+        }
+        let old = std::mem::take(&mut self.heights);
+        for (r, v) in old {
+            if r == at {
+                continue;
+            }
+            self.heights.insert(if r > at { r - 1 } else { r }, v);
+        }
     }
     pub fn insert_col(&mut self, at: u32) {
         let old = std::mem::take(&mut self.cells);
         for ((r, c), v) in old {
             self.cells.insert((r, if c >= at { c + 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            self.styles.insert((r, if c >= at { c + 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.widths);
+        for (c, v) in old {
+            self.widths.insert(if c >= at { c + 1 } else { c }, v);
         }
     }
     pub fn delete_col(&mut self, at: u32) {
@@ -208,6 +278,20 @@ impl Sheet {
                 continue;
             }
             self.cells.insert((r, if c > at { c - 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            if c == at {
+                continue;
+            }
+            self.styles.insert((r, if c > at { c - 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.widths);
+        for (c, v) in old {
+            if c == at {
+                continue;
+            }
+            self.widths.insert(if c > at { c - 1 } else { c }, v);
         }
     }
 }
@@ -232,20 +316,32 @@ impl Workbook {
 
     /// Wert einer Zelle (Formeln werden berechnet)
     pub fn value(&self, sheet: usize, r: u32, c: u32) -> Value {
+        self.value_at(sheet, r, c, excel_now())
+    }
+
+    /// Wert einer Zelle zu einem festen Zeitpunkt (`now` = Excel-Serienzahl); für Tests.
+    pub fn value_at(&self, sheet: usize, r: u32, c: u32, now: f64) -> Value {
         let mut ev = Eval {
             wb: self,
             visiting: HashSet::new(),
             depth: 0,
+            now,
         };
         ev.cell(sheet, r, c)
     }
 
     /// Formel oder Ausdruck im Kontext eines Blatts auswerten (ohne Zelle zu verändern)
     pub fn eval_formula(&self, sheet: usize, f: &str) -> Value {
+        self.eval_formula_at(sheet, f, excel_now())
+    }
+
+    /// Formel zu einem festen Zeitpunkt auswerten (`now` = Excel-Serienzahl).
+    pub fn eval_formula_at(&self, sheet: usize, f: &str, now: f64) -> Value {
         let mut ev = Eval {
             wb: self,
             visiting: HashSet::new(),
             depth: 0,
+            now,
         };
         ev.formula(sheet, f.trim_start_matches('='))
     }
@@ -568,6 +664,8 @@ pub const FUNCTIONS: &[&str] = &[
     "POWER",
     "MOD",
     "PI",
+    "TODAY",
+    "NOW",
     "LEN",
     "UPPER",
     "LOWER",
@@ -598,6 +696,7 @@ struct Eval<'a> {
     wb: &'a Workbook,
     visiting: HashSet<(usize, u32, u32)>,
     depth: u32,
+    now: f64,
 }
 
 /// Argument: einzelner Wert oder Bereich (Zeilen × Spalten)
@@ -968,6 +1067,8 @@ impl Eval<'_> {
                 }
             }
             "PI" => Value::Num(std::f64::consts::PI),
+            "TODAY" => Value::Num(self.now.floor()),
+            "NOW" => Value::Num(self.now),
             "LEN" => {
                 need!(1);
                 Value::Num(txt!(0).chars().count() as f64)
@@ -1462,6 +1563,35 @@ mod tests {
         w.set_ref(0, "Kosten!A1", "100").unwrap();
         w.set_ref(0, "A1", "=Kosten!A1*2").unwrap();
         assert_eq!(w.value(0, 0, 0), Value::Num(200.0));
+    }
+
+    #[test]
+    fn heute_und_jetzt_mit_fester_uhr() {
+        let w = wb(&[("A1", "=TODAY()"), ("A2", "=NOW()")]);
+        assert_eq!(w.value_at(0, 0, 0, 45_291.5), Value::Num(45_291.0));
+        assert_eq!(w.value_at(0, 1, 0, 45_291.75), Value::Num(45_291.75));
+    }
+
+    #[test]
+    fn zellenformat_und_masse() {
+        let mut w = Workbook::new();
+        w.sheets[0].set_style(
+            0,
+            0,
+            CellStyle {
+                bold: true,
+                num_fmt: "0.00".into(),
+                ..CellStyle::default()
+            },
+        );
+        assert!(w.sheets[0].style(0, 0).bold);
+        assert_eq!(w.sheets[0].style(1, 0), CellStyle::default());
+        assert_eq!(w.sheets[0].width(0), 10.0);
+        w.sheets[0].widths.insert(0, 8.5);
+        assert_eq!(w.sheets[0].width(0), 8.5);
+        assert_eq!(w.sheets[0].height(0), 20.0);
+        w.sheets[0].heights.insert(0, 30.0);
+        assert_eq!(w.sheets[0].height(0), 30.0);
     }
 
     #[test]

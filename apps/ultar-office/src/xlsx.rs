@@ -5,8 +5,10 @@
 
 use crate::docx::{esc, read_zip_entry, zip_write};
 use crate::sheet::{cell_name, col_name, fmt_num, parse_cell, Sheet, Value, Workbook};
+use crate::style::{Align, CellStyle};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use std::collections::HashMap;
 
 fn local(name: &[u8]) -> &[u8] {
     match name.iter().position(|&c| c == b':') {
@@ -66,6 +68,235 @@ fn shared_strings(bytes: &[u8]) -> Vec<String> {
     out
 }
 
+/// `"FFRRGGBB"`/`"RRGGBB"` → 0xRRGGBB (the alpha byte is ignored).
+fn parse_rgb(s: &str) -> Option<u32> {
+    let t = s.trim().trim_start_matches('#');
+    let hex = if t.len() >= 6 { &t[t.len() - 6..] } else { t };
+    u32::from_str_radix(hex, 16).ok()
+}
+
+/// The custom number formats of `styles.xml` (id → code).
+fn styles_num_fmts(x: &[u8]) -> HashMap<u32, String> {
+    let mut r = Reader::from_reader(x);
+    let mut buf = Vec::new();
+    let mut map = HashMap::new();
+    loop {
+        match r.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e))
+                if local(e.name().as_ref()) == b"numFmt" =>
+            {
+                if let (Some(id), Some(code)) = (
+                    attr(e, b"numFmtId").and_then(|v| v.parse().ok()),
+                    attr(e, b"formatCode"),
+                ) {
+                    map.insert(id, code);
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    map
+}
+
+/// The fonts of `styles.xml`: (bold, italic, text colour 0xRRGGBB).
+fn styles_fonts(x: &[u8]) -> Vec<(bool, bool, Option<u32>)> {
+    let mut r = Reader::from_reader(x);
+    let mut buf = Vec::new();
+    let mut fonts: Vec<(bool, bool, Option<u32>)> = vec![(false, false, None)];
+    let mut in_fonts = false;
+    let mut cur = fonts[0];
+    let mut fresh = true;
+    loop {
+        match r.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => match local(e.name().as_ref()) {
+                b"fonts" => {
+                    in_fonts = true;
+                    fonts.clear();
+                }
+                b"font" if in_fonts => {
+                    cur = (false, false, None);
+                    fresh = true;
+                }
+                b"b" if in_fonts => cur.0 = true,
+                b"i" if in_fonts => cur.1 = true,
+                b"color" if in_fonts => cur.2 = attr(e, b"rgb").and_then(|v| parse_rgb(&v)),
+                _ => {}
+            },
+            Ok(Event::Empty(ref e)) => match local(e.name().as_ref()) {
+                b"font" if in_fonts => {
+                    fonts.push(cur);
+                    cur = (false, false, None);
+                    fresh = false;
+                }
+                b"b" if in_fonts => cur.0 = true,
+                b"i" if in_fonts => cur.1 = true,
+                b"color" if in_fonts => cur.2 = attr(e, b"rgb").and_then(|v| parse_rgb(&v)),
+                _ => {}
+            },
+            Ok(Event::End(ref e)) => match local(e.name().as_ref()) {
+                b"font" if in_fonts && fresh => fonts.push(cur),
+                b"fonts" => break,
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    if fonts.is_empty() {
+        fonts.push((false, false, None));
+    }
+    fonts
+}
+
+/// The solid fills of `styles.xml` (index → 0xRRGGBB; 0 = none, 1 = gray125 placeholder).
+fn styles_fills(x: &[u8]) -> Vec<Option<u32>> {
+    let mut r = Reader::from_reader(x);
+    let mut buf = Vec::new();
+    let mut fills: Vec<Option<u32>> = vec![];
+    let mut in_fills = false;
+    let mut cur: Option<u32> = None;
+    let mut fresh = true;
+    loop {
+        match r.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => match local(e.name().as_ref()) {
+                b"fills" => {
+                    in_fills = true;
+                    fills.clear();
+                }
+                b"fill" if in_fills => {
+                    cur = None;
+                    fresh = true;
+                }
+                b"fgColor" | b"bgColor" if in_fills => {
+                    cur = attr(e, b"rgb").and_then(|v| parse_rgb(&v)).or(cur);
+                }
+                _ => {}
+            },
+            Ok(Event::Empty(ref e)) => match local(e.name().as_ref()) {
+                b"fill" if in_fills => {
+                    fills.push(cur);
+                    cur = None;
+                    fresh = false;
+                }
+                b"fgColor" | b"bgColor" if in_fills => {
+                    cur = attr(e, b"rgb").and_then(|v| parse_rgb(&v)).or(cur);
+                }
+                _ => {}
+            },
+            Ok(Event::End(ref e)) => match local(e.name().as_ref()) {
+                b"fill" if in_fills && fresh => fills.push(cur),
+                b"fills" => break,
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    fills.resize(fills.len().max(2), None);
+    fills
+}
+
+/// The format code of a (possibly built-in) number format id.
+fn num_fmt_code(id: u32, custom: &HashMap<u32, String>) -> String {
+    if let Some(c) = custom.get(&id) {
+        return c.clone();
+    }
+    match id {
+        1 => "0".into(),
+        2 => "0.00".into(),
+        3 => "#,##0".into(),
+        4 => "#,##0.00".into(),
+        9 => "0%".into(),
+        10 => "0.00%".into(),
+        14 => "dd.mm.yyyy".into(),
+        22 => "yyyy-mm-dd".into(),
+        _ => String::new(),
+    }
+}
+
+/// The cell styles at their `cellXf` index, resolved from the tables above.
+fn styles_cell_xfs(
+    x: &[u8],
+    num_fmts: &HashMap<u32, String>,
+    fonts: &[(bool, bool, Option<u32>)],
+    fills: &[Option<u32>],
+) -> Vec<CellStyle> {
+    let mut r = Reader::from_reader(x);
+    let mut buf = Vec::new();
+    let mut out = vec![CellStyle::default()];
+    let mut in_cellxfs = false;
+    let (mut cur, mut fresh) = (CellStyle::default(), true);
+    loop {
+        match r.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => match local(e.name().as_ref()) {
+                b"cellXfs" => {
+                    in_cellxfs = true;
+                    out.clear();
+                }
+                b"xf" if in_cellxfs => {
+                    cur = CellStyle::default();
+                    fresh = true;
+                    let fid = attr(e, b"numFmtId").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    cur.num_fmt = num_fmt_code(fid, num_fmts);
+                    if let Some(i) = attr(e, b"fontId").and_then(|v| v.parse::<usize>().ok()) {
+                        if let Some(&(b, it, c)) = fonts.get(i) {
+                            cur.bold = b;
+                            cur.italic = it;
+                            cur.color = c;
+                        }
+                    }
+                    if let Some(i) = attr(e, b"fillId").and_then(|v| v.parse::<usize>().ok()) {
+                        cur.fill = fills.get(i).copied().flatten();
+                    }
+                }
+                b"alignment" if in_cellxfs => {
+                    cur.align = match attr(e, b"horizontal").as_deref() {
+                        Some("center") => Align::Center,
+                        Some("right") => Align::End,
+                        Some("left") => Align::Start,
+                        _ => Align::General,
+                    };
+                    cur.wrap = attr(e, b"wrapText").as_deref() == Some("1");
+                }
+                _ => {}
+            },
+            Ok(Event::Empty(ref e)) => {
+                if local(e.name().as_ref()) == b"xf" && in_cellxfs {
+                    out.push(std::mem::take(&mut cur));
+                    fresh = false;
+                }
+            }
+            Ok(Event::End(ref e)) => match local(e.name().as_ref()) {
+                b"xf" if in_cellxfs && fresh => out.push(std::mem::take(&mut cur)),
+                b"cellXfs" => break,
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    if out.is_empty() {
+        out.push(CellStyle::default());
+    }
+    out
+}
+
+/// Alle Zellformatstile einer Datei (Index = `s`-Attribut der Zellen).
+fn read_styles(bytes: &[u8]) -> Vec<CellStyle> {
+    let Ok(x) = read_zip_entry(bytes, "xl/styles.xml") else {
+        return vec![CellStyle::default()];
+    };
+    let num_fmts = styles_num_fmts(&x);
+    let fonts = styles_fonts(&x);
+    let fills = styles_fills(&x);
+    styles_cell_xfs(&x, &num_fmts, &fonts, &fills)
+}
+
 /// Blätter in Reihenfolge: (Name, Pfad im Archiv)
 fn sheet_list(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     let wb = read_zip_entry(bytes, "xl/workbook.xml")?;
@@ -119,7 +350,7 @@ fn sheet_list(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     Ok(out)
 }
 
-fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
+fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Sheet {
     let mut sh = Sheet::new(name);
     let mut r = Reader::from_reader(x);
     let mut buf = Vec::new();
@@ -130,6 +361,7 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
     let (mut in_v, mut in_f, mut in_is_t) = (false, false, false);
     let mut next_col = 0u32;
     let mut row_no = 0u32;
+    let mut style_idx: Option<u32> = None;
     loop {
         let ev = r.read_event_into(&mut buf);
         match ev {
@@ -142,6 +374,12 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                             .map(|v| v - 1)
                             .unwrap_or(row_no);
                         next_col = 0;
+                        if let Some(h) = attr(e, b"ht").and_then(|v| v.parse::<f32>().ok()) {
+                            sh.heights.insert(row_no, h);
+                        }
+                    }
+                    b"sheetView" => {
+                        sh.rtl = attr(e, b"rightToLeft").as_deref() == Some("1");
                     }
                     b"c" => {
                         let pos = attr(e, b"r")
@@ -149,6 +387,7 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                             .unwrap_or((row_no, next_col));
                         next_col = pos.1 + 1;
                         typ = attr(e, b"t").unwrap_or_default();
+                        style_idx = attr(e, b"s").and_then(|v| v.parse().ok());
                         val.clear();
                         formula = None;
                         cur = if empty { None } else { Some(pos) };
@@ -234,6 +473,13 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                             raw
                         };
                         sh.set(rr, cc, &raw);
+                        if let Some(i) = style_idx {
+                            if let Some(st) = styles.get(i as usize) {
+                                if !st.is_default() {
+                                    sh.styles.insert((rr, cc), st.clone());
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -249,10 +495,11 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
 /// .xlsx lesen
 pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     let ss = shared_strings(bytes);
+    let styles = read_styles(bytes);
     let mut wb = Workbook { sheets: Vec::new() };
     for (name, path) in sheet_list(bytes)? {
         let x = read_zip_entry(bytes, &path).unwrap_or_default();
-        wb.sheets.push(read_sheet(&x, &name, &ss));
+        wb.sheets.push(read_sheet(&x, &name, &ss, &styles));
     }
     if wb.sheets.is_empty() {
         wb.sheets.push(Sheet::new("Sheet1"));
@@ -260,7 +507,166 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     Ok(wb)
 }
 
-fn sheet_xml(wb: &Workbook, si: usize) -> String {
+struct StyleTables {
+    /// (numFmtId, fontId, fillId, style) in `cellXfs` order.
+    xfs: Vec<(u32, u32, u32, CellStyle)>,
+    /// Style → its `cellXfs` index.
+    index: HashMap<CellStyle, u32>,
+    /// Custom number formats (index 0 → id 164).
+    num_fmts: Vec<String>,
+    /// Fonts (index 0 is the default).
+    fonts: Vec<(bool, bool, Option<u32>)>,
+    /// Fills (index 0 none, 1 gray125).
+    fills: Vec<Option<u32>>,
+}
+
+fn build_style_tables(wb: &Workbook) -> StyleTables {
+    let mut index: HashMap<CellStyle, u32> = HashMap::new();
+    let mut styles: Vec<CellStyle> = Vec::new();
+    for sh in &wb.sheets {
+        for st in sh.styles.values() {
+            if !st.is_default() {
+                index.entry(st.clone()).or_insert_with(|| {
+                    styles.push(st.clone());
+                    (styles.len() - 1) as u32
+                });
+            }
+        }
+    }
+    let mut fonts: Vec<(bool, bool, Option<u32>)> = vec![(false, false, None)];
+    let mut font_index: HashMap<(bool, bool, Option<u32>), u32> = HashMap::new();
+    let mut fills: Vec<Option<u32>> = vec![None, None];
+    let mut fill_index: HashMap<u32, u32> = HashMap::new();
+    let mut num_fmts: Vec<String> = Vec::new();
+    let mut fmt_index: HashMap<String, u32> = HashMap::new();
+    let mut xfs = Vec::new();
+    for st in &styles {
+        let fid = if st.bold || st.italic || st.color.is_some() {
+            let key = (st.bold, st.italic, st.color);
+            *font_index.entry(key).or_insert_with(|| {
+                fonts.push(key);
+                (fonts.len() - 1) as u32
+            })
+        } else {
+            0
+        };
+        let flid = match st.fill {
+            Some(c) => *fill_index.entry(c).or_insert_with(|| {
+                fills.push(Some(c));
+                (fills.len() - 1) as u32
+            }),
+            None => 0,
+        };
+        let nid = if st.num_fmt.is_empty() || st.num_fmt.eq_ignore_ascii_case("general") {
+            0
+        } else {
+            *fmt_index.entry(st.num_fmt.clone()).or_insert_with(|| {
+                num_fmts.push(st.num_fmt.clone());
+                (164 + num_fmts.len() - 1) as u32
+            })
+        };
+        xfs.push((nid, fid, flid, st.clone()));
+    }
+    StyleTables {
+        xfs,
+        index,
+        num_fmts,
+        fonts,
+        fills,
+    }
+}
+
+fn argb(c: u32) -> String {
+    format!("FF{c:06X}")
+}
+
+fn styles_xml(t: &StyleTables) -> String {
+    let mut s = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="{}">"#,
+        t.num_fmts.len()
+    );
+    for (i, code) in t.num_fmts.iter().enumerate() {
+        s.push_str(&format!(
+            r#"<numFmt numFmtId="{}" formatCode="{}"/>"#,
+            164 + i,
+            esc(code)
+        ));
+    }
+    s.push_str(&format!(r#"</numFmts><fonts count="{}">"#, t.fonts.len()));
+    s.push_str(r#"<font><sz val="11"/><name val="Calibri"/></font>"#);
+    for (b, i, c) in t.fonts.iter().skip(1) {
+        s.push_str("<font>");
+        if *b {
+            s.push_str("<b/>");
+        }
+        if *i {
+            s.push_str("<i/>");
+        }
+        if let Some(col) = c {
+            s.push_str(&format!(r#"<color rgb="{}"/>"#, argb(*col)));
+        }
+        s.push_str(r#"<sz val="11"/><name val="Calibri"/></font>"#);
+    }
+    s.push_str(&format!(
+        r#"</fonts><fills count="{}"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>"#,
+        t.fills.len()
+    ));
+    for col in t.fills.iter().skip(2) {
+        if let Some(c) = col {
+            s.push_str(&format!(
+                r#"<fill><patternFill patternType="solid"><fgColor rgb="{}"/><bgColor indexed="64"/></patternFill></fill>"#,
+                argb(*c)
+            ));
+        } else {
+            s.push_str(r#"<fill><patternFill patternType="none"/></fill>"#);
+        }
+    }
+    s.push_str(r#"</fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>"#);
+    s.push_str(&format!(r#"<cellXfs count="{}">"#, t.xfs.len()));
+    for (nid, fid, flid, st) in &t.xfs {
+        let h = match st.align {
+            Align::Center => "center",
+            Align::End => "right",
+            Align::Start => "left",
+            Align::General => "",
+        };
+        let plain = st.align == Align::General && !st.wrap;
+        if plain {
+            s.push_str(&format!(
+                r#"<xf numFmtId="{nid}" fontId="{fid}" fillId="{flid}" borderId="0" xfId="0"/>"#
+            ));
+        } else {
+            let mut a = String::from("<alignment");
+            if !h.is_empty() {
+                a.push_str(&format!(r#" horizontal="{h}""#));
+            }
+            if st.wrap {
+                a.push_str(r#" wrapText="1""#);
+            }
+            a.push_str("/>");
+            s.push_str(&format!(
+                r#"<xf numFmtId="{nid}" fontId="{fid}" fillId="{flid}" borderId="0" xfId="0" applyAlignment="1">{a}</xf>"#
+            ));
+        }
+    }
+    s.push_str(
+        r#"</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#,
+    );
+    s
+}
+
+fn s_attr(index: &HashMap<CellStyle, u32>, st: &CellStyle) -> String {
+    if st.is_default() {
+        return String::new();
+    }
+    match index.get(st) {
+        Some(i) => format!(r#" s="{i}""#),
+        None => String::new(),
+    }
+}
+
+fn sheet_xml(wb: &Workbook, si: usize, t: &StyleTables) -> String {
     let sh = &wb.sheets[si];
     let (rows, cols) = sh.extent();
     let dim = if rows == 0 {
@@ -268,14 +674,11 @@ fn sheet_xml(wb: &Workbook, si: usize) -> String {
     } else {
         format!("A1:{}", cell_name(rows - 1, cols.saturating_sub(1)))
     };
+    let rtl = sh.rtl || sh.cells.values().any(|v| crate::doc::is_rtl(v));
     let mut s = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="{dim}"/><sheetViews><sheetView workbookViewId="0"{}/></sheetViews><sheetFormatPr defaultRowHeight="15"/>"#,
-        if sh.cells.values().any(|v| crate::doc::is_rtl(v)) {
-            r#" rightToLeft="1""#
-        } else {
-            ""
-        }
+        if rtl { r#" rightToLeft="1""# } else { "" }
     );
     if !sh.widths.is_empty() {
         s.push_str("<cols>");
@@ -295,13 +698,19 @@ fn sheet_xml(wb: &Workbook, si: usize) -> String {
             if cur_row.is_some() {
                 s.push_str("</row>");
             }
-            s.push_str(&format!(r#"<row r="{}">"#, r + 1));
+            let ht = sh
+                .heights
+                .get(&r)
+                .map(|h| format!(r#" ht="{h}" customHeight="1""#))
+                .unwrap_or_default();
+            s.push_str(&format!(r#"<row r="{rr}"{ht}>"#, rr = r + 1));
             cur_row = Some(r);
         }
         let rf = format!("{}{}", col_name(c), r + 1);
+        let sa = s_attr(&t.index, &sh.style(r, c));
         if let Some(f) = raw.strip_prefix('=') {
             let v = wb.value(si, r, c);
-            let (t, vv) = match &v {
+            let (ty, vv) = match &v {
                 Value::Num(n) => ("", fmt_num(*n)),
                 Value::Bool(b) => (r#" t="b""#, if *b { "1".into() } else { "0".into() }),
                 Value::Err(e) => (r#" t="e""#, e.clone()),
@@ -309,23 +718,27 @@ fn sheet_xml(wb: &Workbook, si: usize) -> String {
                 Value::Empty => (r#" t="str""#, String::new()),
             };
             s.push_str(&format!(
-                r#"<c r="{rf}"{t}><f>{}</f><v>{}</v></c>"#,
+                r#"<c r="{rf}"{sa}{ty}><f>{}</f><v>{}</v></c>"#,
                 esc(f),
                 esc(&vv)
             ));
         } else if let Some(text) = raw.strip_prefix('\'') {
             s.push_str(&format!(
-                r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+                r#"<c r="{rf}"{sa} t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
                 esc(text)
             ));
         } else {
             match crate::sheet::literal(raw) {
-                Value::Num(n) => s.push_str(&format!(r#"<c r="{rf}"><v>{}</v></c>"#, fmt_num(n))),
-                Value::Bool(b) => {
-                    s.push_str(&format!(r#"<c r="{rf}" t="b"><v>{}</v></c>"#, b as u8))
-                }
+                Value::Num(n) => s.push_str(&format!(
+                    r#"<c r="{rf}"{sa}><v>{}</v></c>"#,
+                    fmt_num(n)
+                )),
+                Value::Bool(b) => s.push_str(&format!(
+                    r#"<c r="{rf}"{sa} t="b"><v>{}</v></c>"#,
+                    b as u8
+                )),
                 _ => s.push_str(&format!(
-                    r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+                    r#"<c r="{rf}"{sa} t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
                     esc(raw)
                 )),
             }
@@ -338,11 +751,9 @@ fn sheet_xml(wb: &Workbook, si: usize) -> String {
     s
 }
 
-const STYLES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#;
-
 /// .xlsx schreiben
 pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
+    let tables = build_style_tables(wb);
     let n = wb.sheets.len().max(1);
     let mut ct = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -368,7 +779,7 @@ pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
             i + 1
         ));
         rels.push_str(&format!(r#"<Relationship Id="rId{0}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{0}.xml"/>"#, i + 1));
-        sheets_xml.push(sheet_xml(w, i));
+        sheets_xml.push(sheet_xml(w, i, &tables));
     }
     ct.push_str("</Types>");
     wbx.push_str(r#"</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>"#);
@@ -380,12 +791,13 @@ pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
     let names: Vec<String> = (1..=n)
         .map(|i| format!("xl/worksheets/sheet{i}.xml"))
         .collect();
+    let styles = styles_xml(&tables);
     let mut files: Vec<(&str, &[u8])> = vec![
         ("[Content_Types].xml", ct.as_bytes()),
         ("_rels/.rels", root_rels.as_bytes()),
         ("xl/workbook.xml", wbx.as_bytes()),
         ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
-        ("xl/styles.xml", STYLES.as_bytes()),
+        ("xl/styles.xml", styles.as_bytes()),
         ("docProps/core.xml", core.as_bytes()),
         ("docProps/app.xml", app.as_bytes()),
     ];
@@ -429,5 +841,49 @@ mod tests {
             String::from_utf8(read_zip_entry(&bytes, "xl/worksheets/sheet1.xml").unwrap()).unwrap();
         assert!(x.contains("<f>SUM(B2:B3)</f><v>2000.5</v>"));
         assert!(x.contains(r#"rightToLeft="1""#));
+    }
+
+    #[test]
+    fn format_hin_und_zurueck() {
+        let mut wb = Workbook::new();
+        wb.sheets[0].name = "Format".into();
+        wb.set_ref(0, "A1", "1234.5").unwrap();
+        wb.sheets[0].set_style(
+            0,
+            0,
+            CellStyle {
+                bold: true,
+                italic: true,
+                color: Some(0xFF0000),
+                fill: Some(0xFFFF00),
+                align: Align::Center,
+                wrap: false,
+                num_fmt: "0.00".into(),
+            },
+        );
+        wb.set_ref(0, "B2", "0.125").unwrap();
+        wb.sheets[0].set_style(
+            1,
+            1,
+            CellStyle {
+                num_fmt: "0%".into(),
+                ..CellStyle::default()
+            },
+        );
+        wb.sheets[0].heights.insert(0, 30.0);
+        wb.sheets[0].rtl = true;
+        let bytes = write(&wb).unwrap();
+        let back = read(&bytes).unwrap();
+        let st = back.sheets[0].style(0, 0);
+        assert!(st.bold && st.italic, "bold+italic round trip");
+        assert_eq!(st.color, Some(0xFF0000));
+        assert_eq!(st.fill, Some(0xFFFF00));
+        assert_eq!(st.align, Align::Center);
+        assert_eq!(st.num_fmt, "0.00");
+        assert_eq!(back.sheets[0].style(1, 1).num_fmt, "0%");
+        assert!((back.sheets[0].height(0) - 30.0).abs() < 0.5, "Zeile 30 pt");
+        assert!(back.sheets[0].rtl, "rightToLeft");
+        // die Standardzellen bleiben unformatiert
+        assert_eq!(back.sheets[0].style(2, 2), CellStyle::default());
     }
 }

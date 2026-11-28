@@ -16,6 +16,7 @@ pub mod doc;
 pub mod docx;
 pub mod pdf;
 pub mod sheet;
+pub mod style;
 pub mod xlsx;
 
 use std::path::Path;
