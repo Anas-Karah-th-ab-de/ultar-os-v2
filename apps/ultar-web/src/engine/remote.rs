@@ -48,7 +48,15 @@ pub struct HostConfig {
     pub user_agent: String,
     /// Compiled content-blocker list (`ultar-web-filter` output), if any.
     pub filter: Option<PathBuf>,
+    /// The only way out to the internet for the engine: the browser's Tor port for HTTP
+    /// `CONNECT` with its secret (`http://user:password@127.0.0.1:port`). An engine host given
+    /// a proxy sends nothing past it.
+    pub proxy: Option<String>,
 }
+
+/// The environment of the host (it starts with an empty one): the time zone every page sees
+/// (`privacy::persona`), never the device's.
+pub const HOST_ENV: [(&str, &str); 2] = [("TZ", "UTC"), ("LANG", "en_US.UTF-8")];
 
 impl HostConfig {
     /// The host's arguments.
@@ -64,6 +72,10 @@ impl HostConfig {
         if let Some(filter) = &self.filter {
             args.push("--filter".into());
             args.push(filter.clone().into_os_string());
+        }
+        if let Some(proxy) = &self.proxy {
+            args.push("--proxy".into());
+            args.push(proxy.into());
         }
         match &self.cell {
             Some(cell) => args.extend(cell.args()),
@@ -107,6 +119,7 @@ impl RemoteEngine {
         let child = Process::new(&config.program)
             .args(config.args())
             .env_clear()
+            .envs(HOST_ENV)
             .stdin(Stdio::from(theirs))
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())

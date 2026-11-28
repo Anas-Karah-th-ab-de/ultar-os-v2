@@ -9,7 +9,7 @@ devd.phase.failed = تعذّر تشغيله
 devd.phase.removed = أُزيل
 
 devd.reason.no-package = لا يوجد في المستودع تعريف يناسب هذا الجهاز.
-devd.reason.kernel-only = النواة تشغّل الجهاز بتعريفها «{a}»، لكن لا توجد حزمة تعريف له في المستودع.
+devd.reason.kernel-only = يعمل بتعريف النواة المدمج «{a}»؛ لا يحتاج إلى حزمة تعريف.
 devd.reason.not-loadable = حزمة التعريف تحتاج إلى تحميل وحدة في النواة، وهذه النواة لا تدعم ذلك بعد.
 devd.reason.not-bound = النواة لم تربط تعريفها «{a}» بهذا الجهاز عند الإقلاع، ولا يمكن تفعيله أثناء التشغيل.
 devd.reason.package-missing = ملف حزمة التعريف غير موجود على هذا النظام.
@@ -41,6 +41,7 @@ devd.error.bad-request = الطلب غير صالح.
 devd.notice.keys-missing = لا توجد مفاتيح موثوقة، لذلك لا يمكن التحقق من أي تعريف.
 devd.notice.keys-unreadable = تعذّرت قراءة ملف المفاتيح {a} وتم تجاهله.
 devd.notice.depot-unreadable = تعذّر استخدام مستودع التعريفات: {a}
+devd.notice.index-older = مستودع التعريفات أقدم من المستخدم حاليًا (الرقم {a}): لن يُستخدم.
 devd.notice.hardware-unreadable = تعذّرت قراءة قائمة الأجهزة: {a}
 devd.notice.state-recovered = ملف الحالة كان تالفًا ({a})؛ بدأت الخدمة بحالة فارغة واحتُفظ بالملف التالف.
 devd.notice.state-unavailable = تعذّر حفظ الاختيارات ({a})؛ تبقى سارية حتى إيقاف التشغيل.

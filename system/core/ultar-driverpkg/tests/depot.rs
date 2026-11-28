@@ -84,6 +84,8 @@ fn signed_index_on_disk() {
     let before = std::fs::read(dir.join(INDEX_NAME)).unwrap();
     write_signed_index(dir.path(), &key, &trusted, &Limits::default()).unwrap();
     assert_eq!(std::fs::read(dir.join(INDEX_NAME)).unwrap(), before);
+    assert!(built.serial() > 0, "a built index carries a serial");
+    assert_eq!(loaded.serial(), built.serial());
 }
 
 #[test]

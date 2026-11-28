@@ -4,3 +4,7 @@ target = "x86_64-unknown-uefi"
 [unstable]
 build-std = ["core", "compiler_builtins", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
+
+# software AES only: the kernel does not save SSE state (crypt.rs)
+[target.x86_64-unknown-uefi]
+rustflags = ["--cfg", "aes_force_soft"]

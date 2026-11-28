@@ -55,6 +55,8 @@ impl PartialEq for Secret {
     }
 }
 
+impl Eq for Secret {}
+
 impl std::fmt::Debug for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("<hidden>")

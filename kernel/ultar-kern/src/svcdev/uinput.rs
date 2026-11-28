@@ -133,6 +133,7 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
             if !st.caps.complete() {
                 return Some(-EINVAL);
             }
+            st.caps.creator = crate::cred::current().euid();
             match crate::input::virtual_added(st.caps.clone()) {
                 Some(n) => {
                     st.node = Some(n);

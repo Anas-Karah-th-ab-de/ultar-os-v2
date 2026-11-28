@@ -2,9 +2,8 @@
 //! (`{app, role, activation_token, uri, new_window}` → `{state, pid, already, opened}`), the
 //! launcher's own contract `ultar_bus::messages::launcher`.
 //!
-//! Review R2-4: the app id is the launcher's (`settings`, APP-RULES), not a reverse-DNS name,
-//! and no URI goes along – Settings declares no URI scheme yet, and the launcher refuses a URI
-//! of an undeclared scheme. Once Settings opens `settings://apps/<id>`, the URI comes back.
+//! Review R2-4: the app id is the launcher's (`settings`, APP-RULES), not a reverse-DNS name;
+//! the URI `settings://apps` (a scheme Settings declares) opens its Apps page.
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use std::time::Duration;
@@ -13,6 +12,8 @@ use ultar_bus::{BusError, Client};
 
 /// App id of Settings (its manifest, `apps/ultar-settings/ultar-app.toml`).
 pub const SETTINGS_APP: &str = "settings";
+/// Settings' Apps page, where the phone's permissions are.
+pub const PHONE_SETTINGS_URI: &str = "settings://apps/phone";
 
 /// The request that opens Settings.
 pub fn phone_settings(activation_token: Option<u64>) -> Start {
@@ -20,7 +21,7 @@ pub fn phone_settings(activation_token: Option<u64>) -> Start {
         app: SETTINGS_APP.into(),
         role: Role::Ui,
         activation_token,
-        uri: None,
+        uri: Some(PHONE_SETTINGS_URI.into()),
         new_window: false,
     }
 }
@@ -47,7 +48,7 @@ mod tests {
             ("launcher", "start", 2)
         );
         assert_eq!(decode::<Start>(&encode(&s).unwrap()).unwrap(), s);
-        assert_eq!(s.uri, None, "Settings declares no URI scheme yet");
+        assert_eq!(s.uri.as_deref(), Some("settings://apps/phone"));
         assert!(
             !SETTINGS_APP.contains('.'),
             "a system app id of the launcher has no dot"

@@ -88,10 +88,42 @@ fn present_packages(depot: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Loads keys and index. The index must carry a valid signature of a trusted key.
-pub fn load(depot: &Path, keys: &Path) -> DepotState {
+/// File in the state directory with the highest index serial seen.
+pub const SERIAL_FILE: &str = "index-serial";
+
+/// Whether `index` is not older than the newest one this device accepted (kept in `state`);
+/// a newer serial becomes the floor. An index without a serial (0) only passes where none
+/// with a serial was ever seen.
+fn fresh(index: &DriverIndex, state: &Path) -> bool {
+    let file = state.join(SERIAL_FILE);
+    let floor: u64 = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(0);
+    if index.serial() < floor {
+        return false;
+    }
+    if index.serial() > floor {
+        // written atomically: a torn file would lower the floor to 0
+        let temp = state.join(format!(".{SERIAL_FILE}.tmp"));
+        let _ = std::fs::write(&temp, format!("{}\n", index.serial()))
+            .and_then(|()| std::fs::rename(&temp, &file));
+    }
+    true
+}
+
+/// Loads keys and index. The index must carry a valid signature of a trusted key and must not
+/// be older than one this device already accepted (`state`: the daemon's state directory).
+pub fn load(depot: &Path, keys: &Path, state: &Path) -> DepotState {
     let (trusted, mut notices) = load_trusted_keys(keys);
     let index = match load_signed_index(depot, &trusted) {
+        Ok(index) if !fresh(&index, state) => {
+            notices.push(
+                Text::key("devd.notice.index-older")
+                    .with(TextArg::Verbatim(index.serial().to_string())),
+            );
+            DriverIndex::empty()
+        }
         Ok(index) => index.retain_files(&present_packages(depot)),
         Err(error) => {
             notices.push(
@@ -105,5 +137,33 @@ pub fn load(depot: &Path, keys: &Path) -> DepotState {
         trusted,
         index,
         notices,
+    }
+}
+
+#[cfg(test)]
+mod serial_tests {
+    use super::*;
+
+    /// An old, validly signed index cannot be replayed once a newer one was used.
+    #[test]
+    fn an_older_index_is_refused_after_a_newer_one() {
+        let dir = std::env::temp_dir().join(format!("devd-serial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let index = |n| DriverIndex::empty().with_serial(n);
+        assert!(
+            fresh(&index(0), &dir),
+            "nothing seen yet: an index without serial passes"
+        );
+        assert!(fresh(&index(100), &dir));
+        assert!(fresh(&index(100), &dir), "the same one again");
+        assert!(!fresh(&index(99), &dir), "older");
+        assert!(!fresh(&index(0), &dir), "no serial after one with a serial");
+        assert!(fresh(&index(200), &dir));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(SERIAL_FILE)).unwrap(),
+            "200\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

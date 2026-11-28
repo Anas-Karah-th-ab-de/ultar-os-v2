@@ -91,6 +91,47 @@ fn copy(
     Ok(())
 }
 
+/// The data partition as LUKS2 volume: header and keyslot written first (the rest of the
+/// metadata area zeroed), then the medium's data encrypted behind it, every chunk read back.
+#[allow(clippy::too_many_arguments)]
+fn copy_encrypted(
+    src: &mut dyn BlockDevice,
+    dst: &mut dyn BlockDevice,
+    t: &Target,
+    range: (u64, u64),
+    plan: &Plan,
+    pass: &crate::secret::Secret,
+    done: &mut u64,
+    total: u64,
+    progress: &mut dyn Progress,
+) -> Result<(), EngineError> {
+    let random = |_| EngineError::Io("luks", std::io::ErrorKind::Other);
+    let volume = ultar_luks::format(pass.expose().as_bytes(), &plan.luks).map_err(random)?;
+    let mut meta = volume.metadata;
+    meta.resize(ultar_luks::DATA_OFFSET as usize, 0);
+    write_verified(dst, t.first * 512, &meta, t.name)?;
+    let sectors = ultar_luks::Sectors::from_key(&volume.key);
+    let base = t.first * 512 + ultar_luks::DATA_OFFSET;
+    let bytes = (range.1 - range.0 + 1) * 512;
+    let mut buf = zeroize::Zeroizing::new(vec![0u8; CHUNK]);
+    let mut back = vec![0u8; CHUNK];
+    let mut off = 0u64;
+    while off < bytes {
+        let n = (bytes - off).min(CHUNK as u64) as usize;
+        src.read_at(range.0 * 512 + off, &mut buf[..n])?;
+        sectors.encrypt(off / 512, &mut buf[..n]);
+        dst.write_at(base + off, &buf[..n])?;
+        dst.read_at(base + off, &mut back[..n])?;
+        if back[..n] != buf[..n] {
+            return Err(EngineError::Verify(t.name));
+        }
+        off += n as u64;
+        *done += n as u64;
+        progress.step(*done, total);
+    }
+    Ok(())
+}
+
 fn bootctl(answers: &Answers) -> Vec<u8> {
     let mut img = vec![0u8; BOOTCTL_INSTALL_BYTES as usize];
     install::bootctl_image(&mut img);
@@ -141,13 +182,18 @@ fn write_parts(
     let total = plan.copy_bytes().max(1);
     let mut done = 0u64;
     for t in install::parts(&plan.layout) {
-        match t.fill {
-            Fill::Copy(range) => copy(src, dst, t, range, &mut done, total, progress)?,
-            Fill::Zero => {
+        match (t.fill, &plan.encrypt) {
+            (Fill::Copy(range), Some(pass)) if t.name == ultar_slots::layout::DATA_PART => {
+                copy_encrypted(src, dst, t, range, plan, pass, &mut done, total, progress)?
+            }
+            (Fill::Copy(range), _) => copy(src, dst, t, range, &mut done, total, progress)?,
+            (Fill::Zero, _) => {
                 let n = (t.sectors.min(MIB) * 512) as usize;
                 write_verified(dst, t.first * 512, &vec![0u8; n], t.name)?;
             }
-            Fill::BootCtl => write_verified(dst, t.first * 512, &bootctl(&plan.answers), t.name)?,
+            (Fill::BootCtl, _) => {
+                write_verified(dst, t.first * 512, &bootctl(&plan.answers), t.name)?
+            }
         }
     }
     Ok(())

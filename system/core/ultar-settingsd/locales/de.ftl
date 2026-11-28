@@ -798,6 +798,7 @@ settingsd.daemon.profile_rejected = Die Geräteprofil-Datei ist ungültig: {deta
 settingsd.daemon.schema_error = Das Einstellungsschema ist fehlerhaft: {detail}
 settingsd.daemon.store_error = Der Einstellungsordner konnte nicht geöffnet werden: {detail}
 settingsd.daemon.bus_error = Keine Verbindung zum Systembus: {detail}
+settingsd.daemon.already_running = Ein anderer Einstellungsdienst benutzt dieses Verzeichnis schon: {detail}
 settingsd.daemon.write_error = Die Einstellungen konnten nicht geschrieben werden: {detail}
 settingsd.daemon.ready = Einstellungsdienst bereit
 settingsd.daemon.stopped = Einstellungsdienst beendet
