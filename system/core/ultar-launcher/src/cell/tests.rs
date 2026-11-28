@@ -30,6 +30,9 @@ fn plan() -> CellPlan {
         tmp_bytes: 64 << 20,
         drop_rights: Some(u64::MAX),
         nproc: Some(64),
+        runtime: Some("/data/ultar/foreign/linux".into()),
+        bridge: Some("/usr/lib/ultar/foreign".into()),
+        net_barrier: Some(true),
         program: Program {
             exec: "/usr/bin/camera".into(),
             args: vec!["--".into(), "".into(), "--uid".into()],
@@ -53,11 +56,27 @@ fn a_plan_survives_its_command_line() {
         dev: DevMode::None,
         drop_rights: None,
         nproc: None,
+        runtime: None,
+        bridge: None,
+        net_barrier: None,
         ..p
     };
     let args = bare.to_args();
     assert!(args.contains(&"none".to_owned()));
     assert_eq!(CellPlan::parse(&args), Some(bare));
+}
+
+#[test]
+fn the_barrier_has_two_words_only() {
+    let mut p = plan();
+    p.net_barrier = Some(false);
+    let args = p.to_args();
+    assert!(args.contains(&"internet".to_owned()));
+    assert_eq!(CellPlan::parse(&args), Some(p));
+    let mut bad = plan().to_args();
+    let at = bad.iter().position(|w| w == "lan").unwrap();
+    bad[at] = "all".into();
+    assert_eq!(CellPlan::parse(&bad), None);
 }
 
 #[test]

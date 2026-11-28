@@ -17,7 +17,9 @@
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
-//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` | calls | – | `ultar-launcher` |
+//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` / `install_foreign` | calls | – | `ultar-launcher` |
+//! | `foreign.inspect` / `install` / `list` / `set_choices` / `remove` / `runtime_state` / `runtime_update` | calls | – | service for apps from other systems (`ultar-foreign`) |
+//! | `foreign.progress` / `foreign.changed` | topics | no | `ultar-foreign` |
 //! | `auth.users` / `verify` / `set_secret` | calls | – | `ultar-authd` |
 //! | `sysdialog.permission` / `authenticate` | calls | – | `ultar-sysdialog` |
 //! | `display.outputs` | topic | yes | display service (`ultar-displayd`) |
@@ -90,6 +92,7 @@ pub mod capture;
 pub mod device_service;
 pub mod devices;
 pub mod display_service;
+pub mod foreign;
 pub mod init;
 pub mod launcher;
 pub mod llm;
@@ -222,6 +225,16 @@ mod tests {
         check_call::<super::audio::SetMute>();
         check_call::<super::audio::Outputs>();
         check_call::<super::audio::SetOutput>();
+        check_call::<super::foreign::Inspect>();
+        check_call::<super::foreign::Install>();
+        check_call::<super::foreign::List>();
+        check_call::<super::foreign::SetChoices>();
+        check_call::<super::foreign::Remove>();
+        check_call::<super::foreign::RuntimeState>();
+        check_call::<super::foreign::RuntimeUpdate>();
+        check_topic::<super::foreign::Progress>();
+        check_topic::<super::foreign::Changed>();
+        check_call::<super::launcher::InstallForeign>();
         check_call::<super::calendar::Day>();
         check_call::<super::calendar::Add>();
         check_call::<super::calendar::Remove>();

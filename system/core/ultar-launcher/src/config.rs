@@ -86,6 +86,8 @@ struct RawPaths {
     bus_apps: Option<String>,
     areas_root: Option<String>,
     publish_root: Option<String>,
+    foreign_runtime: Option<String>,
+    foreign_bridge: Option<String>,
 }
 
 impl RawPaths {
@@ -105,6 +107,8 @@ impl RawPaths {
             bus_apps: optional("bus_apps", self.bus_apps)?,
             areas_root: optional("areas_root", self.areas_root)?,
             publish_root: optional("publish_root", self.publish_root)?,
+            foreign_runtime: optional("foreign_runtime", self.foreign_runtime)?,
+            foreign_bridge: optional("foreign_bridge", self.foreign_bridge)?,
         })
     }
 }
@@ -143,6 +147,12 @@ pub struct Paths {
     /// Where apps named in `publishers` publish for the system (`<publish_root>/<id>`, `0755`,
     /// owned by the app; the root is the launcher's own `0755` directory).
     pub publish_root: Option<PathBuf>,
+    /// Root of the Linux area for apps from other systems (`foreign.rs`): what their cells
+    /// see as `/`, read-only. `None`: such apps do not start.
+    pub foreign_runtime: Option<PathBuf>,
+    /// Directory holding the Wayland bridge (`ultar-wayland`, static), bound read-only at
+    /// `/.ultar` in their cells. `None`: they start without a window.
+    pub foreign_bridge: Option<PathBuf>,
 }
 
 /// The configuration.

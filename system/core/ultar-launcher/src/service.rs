@@ -6,6 +6,9 @@
 //! `launcher.admin` in the same policy file (read at start and on
 //! `SIGHUP`), so a policy line that opens them by mistake – or a pattern
 //! like `launcher.*` for the shell – does not make the caller an installer.
+//! `install_foreign` needs the pseudo method `launcher.foreign` the same way (the
+//! service for apps from other systems); with it a caller may also uninstall apps from
+//! other systems – never any other app.
 
 use crate::error::LaunchError;
 use crate::launcher::{lock, Launcher};
@@ -14,9 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ultar_bus::messages::launcher::{
-    Candidates, CandidatesReply, Grant, Install, List, ListReply, Permissions, Resolve,
-    ResolveReply, Revoke, Start, StartReplyV1, StartV1, Stop, Uninstall, UninstallReply,
-    ADMIN_METHOD, SERVICE,
+    Candidates, CandidatesReply, Grant, Install, InstallForeign, List, ListReply, Permissions,
+    Resolve, ResolveReply, Revoke, Start, StartReplyV1, StartV1, Stop, Uninstall,
+    UninstallReply, ADMIN_METHOD, FOREIGN_METHOD, SERVICE,
 };
 use ultar_bus::Message;
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
@@ -97,10 +100,39 @@ impl Admins {
 
     /// Whether `identity` holds `launcher.admin`.
     pub fn allows(&self, identity: &str) -> bool {
+        self.holds(identity, ADMIN_METHOD)
+    }
+
+    /// Whether `identity` holds `launcher.foreign` (apps from other systems only).
+    pub fn allows_foreign(&self, identity: &str) -> bool {
+        self.holds(identity, FOREIGN_METHOD)
+    }
+
+    fn holds(&self, identity: &str, pseudo: &str) -> bool {
         let Some(policy) = &self.policy else {
             return false;
         };
-        Identity::new(identity).is_ok_and(|id| policy.may_call(&id, SERVICE, ADMIN_METHOD))
+        Identity::new(identity).is_ok_and(|id| policy.may_call(&id, SERVICE, pseudo))
+    }
+}
+
+/// Whether the caller of `request` may do what it asks: `install` needs
+/// `launcher.admin`, `install_foreign` needs `launcher.foreign`, `uninstall` needs
+/// either – the second only for an app from another system.
+fn permitted(request: &IncomingRequest, admins: &Admins) -> bool {
+    let caller = request.caller();
+    match request.method() {
+        "install" => admins.allows(caller),
+        "install_foreign" => admins.allows_foreign(caller),
+        "uninstall" => {
+            admins.allows(caller)
+                || (admins.allows_foreign(caller)
+                    && request.decode::<Uninstall>().is_ok_and(|u| {
+                        crate::appid::AppId::new(&u.app)
+                            .is_ok_and(|id| crate::foreign::is_foreign_id(&id))
+                    }))
+        }
+        _ => true,
     }
 }
 
@@ -137,8 +169,7 @@ fn start(request: IncomingRequest, launcher: &Arc<Launcher>) -> Result<(), ultar
 
 /// Answers one request.
 pub fn answer(request: IncomingRequest, launcher: &Arc<Launcher>, admins: &Mutex<Admins>) {
-    let admin_call = matches!(request.method(), "install" | "uninstall");
-    if admin_call && !lock(admins).allows(request.caller()) {
+    if !permitted(&request, &lock(admins)) {
         launcher.refused(request.caller());
         let _ = request.fail(ErrorCode::PermissionDenied);
         return;
@@ -175,6 +206,9 @@ pub fn answer(request: IncomingRequest, launcher: &Arc<Launcher>, admins: &Mutex
                 .map_err(code)
         }),
         "install" => request.respond::<Install>(|i| launcher.install(&i.package).map_err(code)),
+        "install_foreign" => request.respond::<InstallForeign>(|i| {
+            launcher.install_foreign(&i.manifest).map_err(code)
+        }),
         "uninstall" => request.respond::<Uninstall>(|u| {
             launcher
                 .uninstall(&u.app, u.keep_data)

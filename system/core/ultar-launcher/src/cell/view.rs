@@ -34,6 +34,38 @@ fn mount_point(root: &Path, path: &Path) -> Result<PathBuf, CellFailure> {
     Ok(target)
 }
 
+/// A top-level link of the Linux area (merged `/usr`: `bin -> usr/bin`): only a
+/// relative target that stays inside the area is made again; anything else is left out.
+fn safe_link_target(target: &Path) -> bool {
+    target.is_relative()
+        && target.components().next().is_some()
+        && target.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+        && target.as_os_str().len() <= 64
+}
+
+/// An app from another system: the entries of the Linux area at `runtime` become the
+/// cell's `/usr`, `/etc` … – directories bound read-only (`nosuid`, `nodev`), top-level
+/// links made again as links. Nothing of the host's own system is bound.
+fn bind_runtime(root: &Path, runtime: &Path) -> Result<(), CellFailure> {
+    for entry in crate::foreign::RUNTIME_ENTRIES {
+        let host = runtime.join(entry);
+        let Ok(meta) = std::fs::symlink_metadata(&host) else {
+            continue; // not in this area (e.g. lib32)
+        };
+        let at = root.join(entry);
+        if meta.file_type().is_symlink() {
+            let target = std::fs::read_link(&host).map_err(|_| CellFailure::Mounts)?;
+            if safe_link_target(&target) {
+                std::os::unix::fs::symlink(&target, &at).map_err(|_| CellFailure::Mounts)?;
+            }
+        } else if meta.is_dir() {
+            std::fs::create_dir_all(&at).map_err(|_| CellFailure::Mounts)?;
+            sys_cell::bind(&host, &at, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
+        }
+    }
+    Ok(())
+}
+
 /// Binds each existing host directory of `dirs` read-only.
 fn bind_dirs(root: &Path, dirs: &[PathBuf]) -> Result<(), CellFailure> {
     for (n, dir) in dirs.iter().enumerate() {
@@ -88,7 +120,14 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
     // the private /tmp first: a view directory below /tmp stays visible
     let tmp = mount_point(root, Path::new(TMP))?;
     sys_cell::mount_tmpfs(&tmp, &tmp_options(plan)).map_err(|_| CellFailure::Mounts)?;
-    bind_dirs(root, &plan.view)?;
+    match &plan.runtime {
+        Some(runtime) => bind_runtime(root, runtime)?,
+        None => bind_dirs(root, &plan.view)?,
+    }
+    if let Some(bridge) = plan.bridge.as_ref().filter(|b| b.is_dir()) {
+        let target = mount_point(root, Path::new(crate::foreign::BRIDGE_IN_CELL))?;
+        sys_cell::bind(bridge, &target, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
+    }
     let data = mount_point(root, Path::new(DATA))?;
     sys_cell::bind(&plan.data, &data, BindMode::WritableNoExec).map_err(|_| CellFailure::Mounts)?;
     if plan.namespaces.pid {
@@ -150,6 +189,9 @@ mod tests {
             tmp_bytes: 64 << 20,
             drop_rights: None,
             nproc: None,
+            runtime: None,
+            bridge: None,
+            net_barrier: None,
             program: Program {
                 exec: "/bin/x".into(),
                 args: Vec::new(),
@@ -164,5 +206,13 @@ mod tests {
         assert_eq!(tmp_options(&plan), "size=65536,mode=0700");
         // nothing to do without a /dev
         assert_eq!(devices(Path::new("/nonexistent"), DevMode::None), Ok(()));
+    }
+
+    #[test]
+    fn only_inner_links_of_the_linux_area_are_made() {
+        assert!(safe_link_target(Path::new("usr/bin")));
+        for bad in ["/usr/bin", "../usr", "usr/../../etc", "./usr", ""] {
+            assert!(!safe_link_target(Path::new(bad)), "{bad}");
+        }
     }
 }

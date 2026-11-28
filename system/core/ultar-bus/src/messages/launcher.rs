@@ -288,6 +288,22 @@ pub struct InstallReply {
     pub declared: Vec<PermissionState>,
 }
 
+/// Pseudo method: who holds `launcher.foreign` may register apps from other
+/// systems ([`InstallForeign`]) and uninstall them (never other apps).
+pub const FOREIGN_METHOD: &str = "foreign";
+/// Largest manifest of an app from another system in bytes.
+pub const MAX_FOREIGN_MANIFEST: usize = 16 * 1024;
+
+/// `launcher.install_foreign` – registers an app from another system
+/// (`docs/FREMD-APPS.md`): the service for such apps sends the manifest it made
+/// (kind `compat-deb` …); the app gets the profile `app.foreign`, its own user and
+/// data directory. Only callers that hold `launcher.foreign`.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct InstallForeign {
+    /// The manifest (TOML, at most [`MAX_FOREIGN_MANIFEST`] bytes).
+    pub manifest: String,
+}
+
 /// `launcher.uninstall` – remove an app: its instances are stopped, its
 /// data removed (unless kept); its user id stays reserved for it.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -510,6 +526,7 @@ messages!(
     Revoke,
     PermissionReply,
     Install,
+    InstallForeign,
     InstallReply,
     Uninstall,
     UninstallReply,
@@ -537,6 +554,7 @@ calls!(
     Grant => "grant", PermissionReply;
     Revoke => "revoke", PermissionReply;
     Install => "install", InstallReply;
+    InstallForeign => "install_foreign", InstallReply;
     Uninstall => "uninstall", UninstallReply;
     Resolve => "resolve", ResolveReply;
     Candidates => "candidates", CandidatesReply

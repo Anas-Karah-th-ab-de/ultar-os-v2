@@ -8,6 +8,8 @@
 //! | `cell` | mount + pid namespaces, the root switch | a helper that tries `unshare` (`--probe`) |
 //! | `groups` | memory and process limits | a group tree with `cgroup.procs` at the configured root |
 //! | `net` | no network without the permission | the helper tries a network namespace |
+//! | `net-barrier` | apps from other systems with the network: internet only | the kernel's barrier (stage P0, `docs/FREMD-APPS.md`; not probed yet: absent) |
+//! | `device-binds` | apps from other systems: only the harmless device nodes | the helper binds one node |
 //!
 //! Also detected: whether single device nodes can be bound into a cell
 //! (else the Ultar kernel's device tree, gated by modes and the right
@@ -27,11 +29,22 @@ pub enum Feature {
     Groups,
     /// Network namespaces.
     Net,
+    /// The kernel's barrier "internet only" (apps from other systems).
+    NetBarrier,
+    /// Single device nodes bound into a cell (apps from other systems).
+    DeviceBinds,
 }
 
 impl Feature {
     /// Every feature.
-    pub const ALL: [Feature; 4] = [Self::Ids, Self::Cell, Self::Groups, Self::Net];
+    pub const ALL: [Feature; 6] = [
+        Self::Ids,
+        Self::Cell,
+        Self::Groups,
+        Self::Net,
+        Self::NetBarrier,
+        Self::DeviceBinds,
+    ];
 
     /// Word in the configuration and in records.
     pub const fn word(self) -> &'static str {
@@ -40,6 +53,8 @@ impl Feature {
             Self::Cell => "cell",
             Self::Groups => "groups",
             Self::Net => "net",
+            Self::NetBarrier => "net-barrier",
+            Self::DeviceBinds => "device-binds",
         }
     }
 
@@ -77,6 +92,10 @@ pub struct Platform {
     pub file_binds: bool,
     /// A group tree exists at the configured root.
     pub groups: bool,
+    /// The kernel's barrier "internet only" can be set for a cell. Stage P0
+    /// (`docs/FREMD-APPS.md`) provides the kernel call and its probe; until then it is
+    /// absent and apps from other systems start only without the network.
+    pub net_barrier: bool,
 }
 
 /// The `set_id` right of the Ultar kernel.
@@ -96,6 +115,7 @@ impl Platform {
             ipc: bits & PROBE_IPC != 0,
             file_binds: bits & PROBE_FILE_BIND != 0,
             groups,
+            net_barrier: false,
         }
     }
 
@@ -126,6 +146,18 @@ impl Platform {
             Feature::Cell => self.cell,
             Feature::Groups => self.groups,
             Feature::Net => self.net,
+            Feature::NetBarrier => self.net_barrier,
+            Feature::DeviceBinds => self.file_binds,
+        }
+    }
+
+    /// Whether `feature` is there – for apps from other systems, where nothing missing is
+    /// ever accepted (`accept_missing` does not count). `Err` names the feature.
+    pub fn require_strictly(&self, feature: Feature) -> Result<(), Feature> {
+        if self.has(feature) {
+            Ok(())
+        } else {
+            Err(feature)
         }
     }
 

@@ -248,6 +248,9 @@ pub struct Manifest {
     /// a start with `<scheme>://<page>[/...]` appends `<page_arg> <page>` to its program's
     /// arguments (see `open::page`); the URI itself is still handed over as data.
     pub open_page_arg: Option<String>,
+    /// An app from another system that may also reach the local network
+    /// (`[foreign] lan`, `foreign.rs`); always `false` for native apps.
+    pub lan: bool,
 }
 
 /// Whether `path` is absolute and normalised (no `.`/`..`/empty part).
@@ -389,6 +392,7 @@ impl Manifest {
                 Some(_) => return Err(ManifestError::Permission),
                 None => None,
             },
+            lan: false,
         })
     }
 }

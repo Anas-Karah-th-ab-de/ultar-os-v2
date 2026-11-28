@@ -165,6 +165,10 @@ pub fn stage_one(words: &[String]) -> i32 {
 
 /// Ids, limits, rights and signals of stage 2 (after the view is built).
 fn confine(plan: &CellPlan) -> Result<(), CellFailure> {
+    // before anything else: the barrier is inherited and never taken back
+    if let Some(lan) = plan.net_barrier {
+        crate::foreign::set_net_barrier(lan).map_err(|_| CellFailure::Rights)?;
+    }
     ultar_sys::set_umask(0o077);
     ultar_sys::set_limit(Resource::Core, 0, 0).map_err(|_| CellFailure::Setup)?;
     // The limit counts every process and thread of the user. An app gets a user of its own

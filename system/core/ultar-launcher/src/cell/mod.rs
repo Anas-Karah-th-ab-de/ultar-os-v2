@@ -161,6 +161,14 @@ pub struct CellPlan {
     pub drop_rights: Option<u64>,
     /// Process limit of the app's user.
     pub nproc: Option<u64>,
+    /// An app from another system: the Linux area's root on the host; its entries
+    /// (`foreign::RUNTIME_ENTRIES`) replace [`CellPlan::view`] in the cell, read-only.
+    pub runtime: Option<PathBuf>,
+    /// The directory of the Wayland bridge, bound read-only at `/.ultar`.
+    pub bridge: Option<PathBuf>,
+    /// The kernel's barrier "internet only" for the cell (`Some(true)`: the local
+    /// network as well).
+    pub net_barrier: Option<bool>,
     /// The program.
     pub program: Program,
 }
@@ -276,6 +284,16 @@ impl CellPlan {
         if let Some(n) = self.nproc {
             args.extend(["--nproc".into(), n.to_string()]);
         }
+        if let Some(dir) = &self.runtime {
+            args.extend(["--runtime".into(), text(dir)]);
+        }
+        if let Some(dir) = &self.bridge {
+            args.extend(["--bridge".into(), text(dir)]);
+        }
+        if let Some(lan) = self.net_barrier {
+            let word = if lan { "lan" } else { "internet" };
+            args.extend(["--net-barrier".into(), word.into()]);
+        }
         args.push("--".into());
         args.push(self.program.exec.clone());
         args.extend(self.program.args.iter().cloned());
@@ -299,6 +317,9 @@ impl CellPlan {
             tmp_bytes: 0,
             drop_rights: None,
             nproc: None,
+            runtime: None,
+            bridge: None,
+            net_barrier: None,
             program: Program {
                 exec: String::new(),
                 args: Vec::new(),
@@ -329,6 +350,15 @@ impl CellPlan {
                 "--tmp" => plan.tmp_bytes = value.parse().ok()?,
                 "--drop" => plan.drop_rights = Some(u64::from_str_radix(value, 16).ok()?),
                 "--nproc" => plan.nproc = Some(value.parse().ok()?),
+                "--runtime" => plan.runtime = Some(path()?),
+                "--bridge" => plan.bridge = Some(path()?),
+                "--net-barrier" => {
+                    plan.net_barrier = Some(match value.as_str() {
+                        "lan" => true,
+                        "internet" => false,
+                        _ => return None,
+                    })
+                }
                 _ => return None,
             }
         }

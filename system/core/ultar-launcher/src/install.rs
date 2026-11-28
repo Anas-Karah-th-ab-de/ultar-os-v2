@@ -42,6 +42,12 @@ fn verify(config: &Config, package: &Path) -> Result<(SignedManifest, ProfileNam
         .map_err(|_| PackageError::Signature)
 }
 
+/// The signer every app from another system is recorded with (`launcher.install_foreign`):
+/// the SHA-256 of a fixed text, so no key of a package can ever be it.
+pub fn foreign_signer() -> String {
+    crate::store::digest(b"ultar.launcher.install_foreign.v1")
+}
+
 /// Whether the id fits who signed the package.
 pub fn id_fits_signer(
     id: &AppId,
@@ -52,13 +58,16 @@ pub fn id_fits_signer(
     match profile {
         ProfileName::System => !id.as_str().contains('.'),
         ProfileName::Standard => {
-            let key_ok = AppId::new(key_name).is_ok_and(|k| !k.as_str().contains('.'));
+            // no store key may be named like the apps of other systems
+            let key_ok = AppId::new(key_name)
+                .is_ok_and(|k| !k.as_str().contains('.') && k.as_str() != crate::foreign::PREFIX);
             let prefix_ok = id
                 .as_str()
                 .split_once('.')
                 .is_some_and(|(p, _)| p == key_name);
             key_ok && prefix_ok && publisher.is_none_or(|p| p == key_name)
         }
+        ProfileName::Foreign => crate::foreign::is_foreign_id(id) && key_name.is_empty(),
     }
 }
 
@@ -108,6 +117,28 @@ impl Launcher {
         self.register(&manifest, &signed, profile_name)
     }
 
+    /// Registers an app from another system (`launcher.install_foreign`, only callers
+    /// that hold `launcher.foreign`): its manifest, made by the service for such apps after
+    /// the person confirmed, gets the profile `app.foreign`.
+    pub fn install_foreign(&self, manifest: &str) -> Result<InstallReply, LaunchError> {
+        let bytes = manifest.as_bytes();
+        let parsed = crate::foreign::parse(bytes)
+            .map_err(|e| LaunchError::Package(PackageError::Manifest(e)))?;
+        let profile = ProfileName::Foreign;
+        profile
+            .profile()
+            .admit(&parsed)
+            .map_err(|e| LaunchError::Package(PackageError::Profile(e)))?;
+        let fingerprint = foreign_signer();
+        let signed = SignedManifest {
+            bytes: bytes.to_vec(),
+            key_id: fingerprint[..16].to_owned(),
+            key_name: String::new(),
+            key_fingerprint: fingerprint,
+        };
+        self.register(&parsed, &signed, profile)
+    }
+
     fn register(
         &self,
         manifest: &Manifest,
@@ -121,7 +152,17 @@ impl Launcher {
         let id = manifest.id.clone();
         let previous = core.store.state.get(&id).cloned();
         if let Some(previous) = &previous {
-            may_replace(previous, &signed.key_fingerprint, &manifest.version)
+            // an app of one profile never takes over the id of another profile's app
+            if previous.profile != profile_name {
+                return Err(LaunchError::Package(PackageError::Signer));
+            }
+            // apps from other systems follow their package manager's versions
+            let version = if profile_name == ProfileName::Foreign {
+                &previous.version
+            } else {
+                &manifest.version
+            };
+            may_replace(previous, &signed.key_fingerprint, version)
                 .map_err(LaunchError::Package)?;
         }
         let uid = core.store.state.uid_for(&id)?;

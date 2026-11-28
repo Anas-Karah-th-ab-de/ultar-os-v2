@@ -79,7 +79,17 @@ impl Core {
 
     pub(crate) fn manifest(&self, id: &AppId) -> Result<Manifest, LaunchError> {
         let bytes = self.store.load_manifest(id)?;
-        Manifest::parse(&bytes).map_err(|e| LaunchError::Package(PackageError::Manifest(e)))
+        let foreign = self
+            .store
+            .state
+            .get(id)
+            .is_some_and(|e| e.profile == crate::profile::ProfileName::Foreign);
+        let parsed = if foreign {
+            crate::foreign::parse(&bytes)
+        } else {
+            Manifest::parse(&bytes)
+        };
+        parsed.map_err(|e| LaunchError::Package(PackageError::Manifest(e)))
     }
 
     /// Owner of the app's files, if ids can be switched (else `None`, only

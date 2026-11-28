@@ -23,6 +23,8 @@ pub enum ProfileName {
     Standard,
     /// System apps of KM Code Craft.
     System,
+    /// Programs of other systems (Linux, later Windows and Android).
+    Foreign,
 }
 
 impl ProfileName {
@@ -31,12 +33,13 @@ impl ProfileName {
         match self {
             Self::Standard => "app.standard",
             Self::System => "app.system",
+            Self::Foreign => "app.foreign",
         }
     }
 
     /// The profile called `word`.
     pub fn from_word(word: &str) -> Option<Self> {
-        [Self::Standard, Self::System]
+        [Self::Standard, Self::System, Self::Foreign]
             .into_iter()
             .find(|p| p.word() == word)
     }
@@ -46,6 +49,7 @@ impl ProfileName {
         match self {
             Self::Standard => STANDARD,
             Self::System => SYSTEM,
+            Self::Foreign => FOREIGN,
         }
     }
 }
@@ -102,6 +106,20 @@ const SYSTEM: Profile = Profile {
     // sound card's streams, nothing else. A sound service that mixes several apps and keeps
     // recording apart will take this over.
     kernel_rights: crate::perm::KERNEL_SOUND,
+};
+
+const FOREIGN: Profile = Profile {
+    name: ProfileName::Foreign,
+    grantable: PermissionSet::EMPTY.with(Permission::Network),
+    // the service for such apps installs only after the person confirmed with an
+    // administrator's password what the app gets (`foreign.install`)
+    granted_at_install: true,
+    memory_default_mb: 1024,
+    memory_max_mb: 4096,
+    pids_default: 256,
+    pids_max: 1024,
+    tmp_mb: 256,
+    kernel_rights: 0,
 };
 
 /// The limits an app's cell gets.
@@ -219,6 +237,22 @@ mod tests {
     }
 
     #[test]
+    fn foreign_apps_get_the_network_at_most() {
+        let p = ProfileName::Foreign.profile();
+        let m = manifest("[permissions]\nnetwork = \"allowed\"\n");
+        assert_eq!(p.admit(&m), Ok(()));
+        assert_eq!(p.initial_grants(&m).names(), "network");
+        for extra in [
+            "[permissions]\nbackground = true\n",
+            "[permissions]\nui = [\"ui.overlay\"]\n",
+            "[permissions]\nkernel = [\"sound\"]\n",
+            "[limits]\nmemory_mb = 8192\n",
+        ] {
+            assert!(p.admit(&manifest(extra)).is_err(), "{extra}");
+        }
+    }
+
+    #[test]
     fn limits_are_filled_and_capped() {
         let p = ProfileName::Standard.profile();
         let l = p.limits(&Requested::default()).unwrap();
@@ -243,7 +277,11 @@ mod tests {
 
     #[test]
     fn names_round_trip() {
-        for name in [ProfileName::Standard, ProfileName::System] {
+        for name in [
+            ProfileName::Standard,
+            ProfileName::System,
+            ProfileName::Foreign,
+        ] {
             assert_eq!(ProfileName::from_word(name.word()), Some(name));
             assert_eq!(name.profile().name, name);
         }
