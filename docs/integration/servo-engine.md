@@ -87,7 +87,13 @@ bringt seine eigenen Bibliotheken, siehe offen). Ziel-Ordner `TARGET` (Standard 
    es eine GStreamer-Tonausgabe nach `/dev/ultar/pcm` (Anfang im Branch `wip/servobundle`: `src/pcm.rs`,
    `src/media.rs`) und GStreamer als eigene Pakete. YouTube & Co. brauchen MSE, das Servo nicht hat.
    Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).
-6. Wikipedia-Symbole (CSS `mask-image`) zeichnet Servo als schwarze Flächen – Grenze von Servo 0.8.
 4. Auswahllisten (`<select>`), Datei-Auswahl, Dialoge (`alert`), Kontextmenüs der Seite: der Host
    beantwortet sie noch mit dem Standard; der Browser braucht dafür eigene Protokoll-Nachrichten.
 5. Downloads, Zähler des Tracking-Schutzes, Zwischenablage, Schriften für CJK im Bündel.
+6. Wikipedia-Symbole (CSS `mask-image`) zeichnet Servo als schwarze Flächen – Grenze von Servo 0.8.
+
+Plan für 1 (Paket `servocell`, angefangen, Branch `wip/servocell`): `ultar-tor` bekommt den CONNECT-Port
+zusätzlich als Unix-Socket; der Host baut seine Zelle mit eigenem Netz-Namensraum (nur privates Loopback)
+und leitet darin einen Loopback-Port an den Socket weiter. Befund dabei: der Ultar-Kern lehnt
+`unshare(CLONE_NEWNET)` mit `EINVAL` ab – er braucht dafür erst Netz-Namensräume (oder das Recht „kein
+Netz außer Loopback“).
