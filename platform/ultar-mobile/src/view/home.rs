@@ -154,7 +154,7 @@ pub fn cell_rows(b: &mut Builder<'_>, parent: NodeId, apps: &[App]) -> Result<()
                     icon: app.icon,
                     open: false,
                 },
-                app_label(app),
+                super::grid_label(app),
             );
             b.click(row, cell, Sizing::grow(1), Click::App(app.id.clone()))?;
         }

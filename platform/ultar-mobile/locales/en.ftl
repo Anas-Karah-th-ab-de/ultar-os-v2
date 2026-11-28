@@ -168,3 +168,7 @@ mobile.dialog.view.title = {name} wants to see and control this screen
 mobile.dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
 mobile.dialog.view.accept = Allow
 mobile.dialog.view.decline = Deny
+mobile.app.source.linux = {name} · Linux
+mobile.app.source.windows = {name} · Windows
+mobile.app.source.android = {name} · Android
+mobile.app.source.other = {name} · another system

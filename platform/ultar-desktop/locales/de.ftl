@@ -508,3 +508,9 @@ dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
 dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
 dialog.view.accept = Erlauben
 dialog.view.decline = Ablehnen
+
+## Apps from other systems: where a grid cell comes from (docs/FREMD-APPS.md)
+desk.apps.source.linux = {name} · Linux
+desk.apps.source.windows = {name} · Windows
+desk.apps.source.android = {name} · Android
+desk.apps.source.other = {name} · anderes System

@@ -508,3 +508,9 @@ dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم 
 dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
 dialog.view.accept = سماح
 dialog.view.decline = رفض
+
+## Apps from other systems: where a grid cell comes from (docs/FREMD-APPS.md)
+desk.apps.source.linux = {name} · لينكس
+desk.apps.source.windows = {name} · ويندوز
+desk.apps.source.android = {name} · أندرويد
+desk.apps.source.other = {name} · نظام آخر

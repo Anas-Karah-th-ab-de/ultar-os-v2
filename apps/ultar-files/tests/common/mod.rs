@@ -109,6 +109,21 @@ impl ultar_files::service::LauncherPort for Shared {
     ) -> Result<(), ultar_files::service::PortError> {
         self.0.borrow_mut().open(app, uri, t)
     }
+    fn start(&mut self, app: &str) -> Result<(), ultar_files::service::PortError> {
+        self.0.borrow_mut().start(app)
+    }
+}
+
+impl ultar_files::service::ForeignPort for Shared {
+    fn inspect(&mut self, path: &str) {
+        self.0.borrow_mut().inspect(path)
+    }
+    fn install(&mut self, path: &str, choices: ultar_bus::messages::foreign::Choices) {
+        self.0.borrow_mut().install(path, choices)
+    }
+    fn poll(&mut self) -> Vec<ultar_files::service::ForeignEvent> {
+        self.0.borrow_mut().poll()
+    }
 }
 
 impl ultar_files::service::VolumesPort for Shared {
@@ -140,6 +155,7 @@ pub fn app(
     let ports = Ports {
         launcher: Box::new(Shared(fake.clone())),
         volumes: Box::new(Shared(fake.clone())),
+        foreign: Box::new(Shared(fake.clone())),
     };
     let size = if mode == Mode::Desk {
         Size::new(1440.0, 844.0)

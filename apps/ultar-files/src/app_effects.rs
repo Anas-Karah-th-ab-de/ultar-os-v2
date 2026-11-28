@@ -39,6 +39,13 @@ impl App {
                 Effect::NewFolder(folder) => self.new_folder(&folder),
                 Effect::Rename(loc, name) => self.rename(&loc, &name),
                 Effect::FocusItems => {}
+                Effect::ForeignInspect(path) => self.ports.foreign.inspect(&path),
+                Effect::ForeignInstall => self.foreign_install(),
+                Effect::StartApp(app) => {
+                    if self.ports.launcher.start(&app).is_err() {
+                        self.state.notice = Some(update::notice_of("files.notice.open_failed", &app));
+                    }
+                }
             }
         }
     }
@@ -65,6 +72,24 @@ impl App {
             self.state.selected = vec![name];
         }
         update::command(&mut self.state, cmd)
+    }
+
+    /// Hands the open sheet's file and choices to the service.
+    fn foreign_install(&mut self) {
+        if let Some(Dialog::Foreign(sheet)) = &self.state.dialog {
+            let (path, choices) = (sheet.path.clone(), sheet.choices.clone());
+            self.ports.foreign.install(&path, choices);
+        }
+    }
+
+    /// Takes the answers of the service for apps from other systems; `true` when the window
+    /// changes.
+    fn poll_foreign(&mut self) -> bool {
+        let mut changed = false;
+        for e in self.ports.foreign.poll() {
+            changed |= update::foreign_event(&mut self.state, e);
+        }
+        changed
     }
 
     /// Opens a file with its default app: the launcher resolves the URI through
@@ -174,6 +199,7 @@ impl App {
     pub fn poll(&mut self) -> Result<(), UiError> {
         let mut changed = self.poll_drives();
         changed |= self.poll_job();
+        changed |= self.poll_foreign();
         if let Some(rx) = self.thumbs.take() {
             let mut open = true;
             loop {

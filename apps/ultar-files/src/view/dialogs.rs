@@ -1,5 +1,6 @@
 //! Dialogs over the window: rename, confirm (empty trash, delete for good), properties,
-//! name conflicts, a busy drive and failures (permission errors said plainly).
+//! name conflicts, a busy drive, failures (permission errors said plainly) and the install
+//! sheet for apps from other systems ([`super::foreign`]).
 
 use super::Built;
 use crate::action::Target;
@@ -40,6 +41,7 @@ pub fn build(ui: &mut Ui, b: &mut Built, s: &State, fs: &Fs) -> Result<(), UiErr
         ),
         D::DriveBusy(_) => (Label::key("files.busy.title"), true),
         D::Failed(e, n) => (Label::key_count(e.key(), "count", *n as i64), true),
+        D::Foreign(sheet) => (super::foreign::title(sheet), false),
     };
     let mut dialog = Dialog::new(title);
     if alert {
@@ -97,6 +99,7 @@ fn body(ui: &mut Ui, b: &mut Built, id: NodeId, s: &State, d: &D, fs: &Fs) -> Re
             text(ui, id, Label::key(hint(*e)))?;
         }
         D::Properties(loc) => properties(ui, id, fs, loc, s)?,
+        D::Foreign(sheet) => super::foreign::body(ui, b, id, sheet)?,
     }
     Ok(())
 }
@@ -190,6 +193,10 @@ fn buttons(ui: &mut Ui, b: &mut Built, id: NodeId, d: &D) -> Result<Option<NodeI
             true,
         ),
         D::DriveBusy(_) => (Some("files.cancel"), None, Some("files.busy.retry"), false),
+        D::Foreign(sheet) => {
+            let (close, ok) = super::foreign::buttons(sheet);
+            (Some(close), None, ok, false)
+        }
     };
     let mut add = |key: &str, target: Target, variant: ButtonVariant| -> Result<NodeId, UiError> {
         let id = ui.add(row, Button::new(Label::key(key)).variant(variant))?;

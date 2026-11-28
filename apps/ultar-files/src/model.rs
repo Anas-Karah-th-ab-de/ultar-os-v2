@@ -126,6 +126,8 @@ pub enum Dialog {
     DriveBusy(String),
     /// Something failed: the message key and how many items.
     Failed(FsError, usize),
+    /// Install an app from another system (`.deb`, `.exe`, `.msi`, `.apk`).
+    Foreign(Box<crate::foreign::Sheet>),
 }
 
 /// A short message at the bottom (toast), optionally with Undo.
@@ -174,6 +176,9 @@ pub struct State {
     pub notice: Option<Notice>,
     /// Clipboard and undo steps.
     pub edit: Edit,
+    /// An installation that goes on after its sheet was closed: the job and the file's name
+    /// (its end is said in a notice).
+    pub foreign_job: Option<(u64, String)>,
 }
 
 /// How the items are shown.
@@ -216,6 +221,7 @@ impl State {
             job: None,
             notice: None,
             edit: Edit::default(),
+            foreign_job: None,
         }
     }
 

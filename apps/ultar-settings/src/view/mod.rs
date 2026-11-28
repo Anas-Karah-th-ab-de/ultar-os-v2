@@ -12,6 +12,7 @@ mod dialog;
 mod display;
 mod display_rows;
 mod drivers;
+pub mod foreign;
 pub mod helper;
 pub mod mesh;
 pub mod metrics;
@@ -139,6 +140,8 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
         }
         (PageKind::NoService, _) => panel::no_service(cx, content),
         (PageKind::Status(kind), _) => status::build(cx, content, kind),
+        (PageKind::Foreign, SubPage::ForeignApp) => foreign::app(cx, content),
+        (PageKind::Foreign, _) => foreign::build(cx, content),
         (PageKind::Mesh, SubPage::MeshDevice) => mesh::device(cx, content),
         (PageKind::Mesh, _) => mesh::build(cx, content),
         (PageKind::About, _) => about::build(cx, content),

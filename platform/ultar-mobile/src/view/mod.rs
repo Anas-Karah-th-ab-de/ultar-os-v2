@@ -153,6 +153,27 @@ pub fn app_label(app: &App) -> Label {
     }
 }
 
+/// Where an app from another system comes from (`foreign.<source>-<name>`, contract
+/// `ultar_bus::messages::foreign`): the i18n key of its grid name, `None` for Ultar apps.
+pub fn foreign_source(id: &str) -> Option<&'static str> {
+    let rest = id.strip_prefix("foreign.")?;
+    Some(match rest.split('-').next()? {
+        "deb" => "mobile.app.source.linux",
+        "exe" | "msi" => "mobile.app.source.windows",
+        "apk" => "mobile.app.source.android",
+        _ => "mobile.app.source.other",
+    })
+}
+
+/// The name of a grid cell: an app from another system says where it comes from, so it
+/// is never mistaken for an Ultar app (docs/FREMD-APPS.md, the source mark).
+pub fn grid_label(app: &App) -> Label {
+    match (foreign_source(&app.id), &app.key) {
+        (Some(source), None) => Label::key_with(source, &[("name", &app.name)]),
+        _ => app_label(app),
+    }
+}
+
 /// The name of `app` as shown in the current language.
 pub fn app_name(app: &App, ui: &Ui) -> String {
     match &app.key {
@@ -294,3 +315,26 @@ fn paint_clocks(ui: &mut Ui, built: &Built) -> Result<(), UiError> {
 
 /// Smallest touch target (points).
 pub const TOUCH: f32 = size::TARGET_TOUCH_MIN;
+
+#[cfg(test)]
+mod foreign_tests {
+    use super::{foreign_source, grid_label};
+    use crate::model::apps::App;
+    use ultar_ui::icon::IconId;
+    use ultar_ui::widgets::Label;
+
+    #[test]
+    fn apps_from_other_systems_say_where_they_come_from() {
+        assert_eq!(foreign_source("foreign.deb-mousepad"), Some("mobile.app.source.linux"));
+        assert_eq!(foreign_source("foreign.exe-notepad"), Some("mobile.app.source.windows"));
+        assert_eq!(foreign_source("foreign.apk-notes"), Some("mobile.app.source.android"));
+        assert_eq!(foreign_source("org.ultar.files"), None);
+        let app = App::named("foreign.deb-mousepad", "Mousepad", IconId::Package);
+        assert_eq!(
+            grid_label(&app),
+            Label::key_with("mobile.app.source.linux", &[("name", "Mousepad")])
+        );
+        let files = App::system("org.ultar.files", "files", IconId::Package);
+        assert_eq!(grid_label(&files), Label::key("mobile.app.files"));
+    }
+}

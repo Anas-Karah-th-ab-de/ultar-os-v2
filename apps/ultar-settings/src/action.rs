@@ -149,6 +149,22 @@ pub enum Act {
     MeshGrant(usize),
     /// Unpair the open device.
     MeshUnpair,
+    /// Apps from other systems: open the page of app `n`.
+    ForeignApp(usize),
+    /// Back from an app's page.
+    ForeignBack,
+    /// The open app's internet.
+    ForeignInternet,
+    /// The open app's local network.
+    ForeignLan,
+    /// The open app's folder `n` ([`crate::state::foreign::FOLDERS`]).
+    ForeignFolder(usize),
+    /// Keep the open app's data when it is removed.
+    ForeignKeep,
+    /// Remove the open app.
+    ForeignRemove,
+    /// Update the Linux area.
+    ForeignUpdate,
     /// A row of a generic settingsd panel (index into the shown items).
     PanelItem(usize),
     /// Users: "Add user".
@@ -226,6 +242,14 @@ impl Act {
             Act::MeshBack => "mesh.back",
             Act::MeshGrant(_) => "mesh.right",
             Act::MeshUnpair => "mesh.unpair",
+            Act::ForeignApp(_) => "foreign.app",
+            Act::ForeignBack => "foreign.back",
+            Act::ForeignInternet => "foreign.internet",
+            Act::ForeignLan => "foreign.lan",
+            Act::ForeignFolder(_) => "foreign.folder",
+            Act::ForeignKeep => "foreign.keep",
+            Act::ForeignRemove => "foreign.remove",
+            Act::ForeignUpdate => "foreign.update",
             _ => return None,
         })
     }

@@ -168,3 +168,7 @@ mobile.dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
 mobile.dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
 mobile.dialog.view.accept = Erlauben
 mobile.dialog.view.decline = Ablehnen
+mobile.app.source.linux = {name} · Linux
+mobile.app.source.windows = {name} · Windows
+mobile.app.source.android = {name} · Android
+mobile.app.source.other = {name} · anderes System

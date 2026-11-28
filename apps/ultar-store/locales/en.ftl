@@ -33,6 +33,8 @@ store.aria.open = Open {name}
 store.aria.details = {name}: details
 store.publisher.verified = {publisher} · verified
 store.publisher.unverified = {publisher} · not verified
+store.publisher.verified_from = {publisher} · {source} · verified
+store.publisher.unverified_from = {publisher} · {source} · not verified
 store.note.sizes = — = size computed at run time; the specification defines no value.
 store.note.discover = — = size comes from the catalogue at run time; the specification defines no value. Install and Remove are on the app page.
 store.size.unknown = —

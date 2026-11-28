@@ -106,6 +106,45 @@ pid namespaces, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`
 | `chown` by root of a cell without rights | `EPERM` | dpkg/apt cannot give files to other owners (packages with non-root files, apt's `_apt` sandbox) – needs a right scoped to the area, not `file_admin` |
 | network barrier "internet only" | – | stage P0: apps with network do not start; the installation cell cannot reach the sources (archive installs and area updates answer `Failure::Network`) |
 
+## Stage P3: the surfaces (branch `feat/fa-p3-ui`, not in main)
+
+Every surface says plainly that a file from another system is **not checked**, and every permission
+starts **off**, whatever the file suggests.
+
+* **Files** (`apps/ultar-files/src/foreign.rs`, `view/foreign.rs`): opening, double-clicking or
+  "Install" in the context menu of one `.deb`/`.exe`/`.msi`/`.apk` (also on the desktop icon) asks
+  `foreign.inspect` and shows a sheet: warning bar "Not checked", kind, name, version, size and the
+  publisher "as the file says, not checked"; what the app may use – internet (with a LAN switch only
+  when internet is on), each folder on its own (documents, downloads, pictures, music, videos, desktop,
+  home) – all off. "Install" sends `foreign.install` (`InstallFrom::File`, host path below
+  `/data/ultar/areas` or `/run/ultar/media`); the service still asks for an administrator in the system
+  dialog. The sheet follows `foreign.progress` (step, percent), ends with "Open"; closing it while
+  running lets the job finish and says its end in a notice. Kinds the service cannot install yet
+  (`NotYet`), a missing Linux area, a refused package and a missing service answer with their own text.
+* **Settings › Apps from other systems** (area `foreign`, group apps; `update/foreign.rs`,
+  `view/foreign.rs`): the Linux area (installed, version, size, "Update" → `foreign.runtime_update`),
+  the list of apps with their source; the page of one app: warning "not checked", internet / LAN /
+  each folder as switches (more asks the administrator – the page waits for the job, less applies at
+  once), "Keep data" and "Remove" (confirmation dialog, `foreign.remove` with `keep_data`). Errors of
+  the service are shown on the page.
+* **Desktop grid** (`platform/ultar-desktop/src/view/apps.rs`): a foreign app's name says its system
+  (`Mousepad · Linux`); "Details" and "Uninstall" open the Settings page (removal only through the
+  service, never the launcher directly). **Mobile**: the grid carries the same source mark; the system
+  dialog loads the `foreign` confirmation texts.
+* **Store**: the publisher line of programs from other systems names the system
+  (`KM Code Craft · Linux · verified`); the app page already showed "Source".
+* **Bus policy**: unchanged from P2 – `app.files` calls `foreign.inspect`/`foreign.install` and
+  subscribes `foreign.progress`; `app.settings` calls `foreign.list`/`set_choices`/`remove`/
+  `runtime_state`/`runtime_update` and subscribes `foreign.changed`/`foreign.progress`. Nothing else.
+* Texts: ar (first), en, de for every new key; digits 0–9; start/end layout; light and dark.
+
+Tests: `apps/ultar-files/tests/foreign.rs` (7: nothing granted until clicked, LAN only with internet,
+running job closed, `NotYet`, no service, context menu, desktop icon, pictures),
+`apps/ultar-settings/tests/foreign.rs` (5: no service/area, more asks and less applies, removal keeps
+data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pictures:
+`ULTAR_FILES_SHOTS=<dir>` / `ULTAR_SETTINGS_SHOTS=<dir>` (`files-foreign-{ready,choices,running,done,not-yet}-*`,
+`settings-foreign-{,app-,remove-,empty-}{ar,en}-{dark,light}`).
+
 ## Open points
 
 * Stage P0: the barrier (`ultar_launcher::foreign::set_net_barrier` is a placeholder returning `ENOSYS`;
@@ -115,6 +154,8 @@ pid namespaces, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`
   (`tools/vm/make-vmware.sh` `SERVICES_UP`).
 * Linux hosts: without a seccomp filter a cell can create a user namespace (all app cells, not only these;
   reported by the end to end). The Ultar kernel has no user namespaces.
-* The mobile system dialog does not yet load the `foreign` texts (the desktop's does).
-* UI: Files and Settings do not call `foreign.*` yet (policy and contract are ready).
 * Folders (`files` areas) for foreign apps are wired through the launcher but not covered by the end to end.
+* P3: the surfaces ran in the click and picture tests only, not on the Ultar kernel (settings-e2e and
+  launcher-e2e do not cover `foreign.*`); on the phone a foreign app is removed in Settings (the grid has
+  no menu); "Install" of a file the person picks is offered by Files, not by the Store (the Store shows
+  the source of its own catalogue entries).

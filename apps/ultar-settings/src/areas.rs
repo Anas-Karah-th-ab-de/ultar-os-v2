@@ -18,6 +18,8 @@ pub enum PageKind {
     Status(StatusKind),
     /// Boards *SettingsMesh* and *MeshDevice*.
     Mesh,
+    /// Apps from other systems (Linux, Windows, Android; `docs/FREMD-APPS.md`).
+    Foreign,
     /// About this system (BRAND.md §4): product, version, build, company, developer, website,
     /// contact, licences.
     About,
@@ -61,7 +63,7 @@ const fn a(id: &'static str, icon: IconId, page: PageKind) -> Area {
 use PageKind::Panel as P;
 
 /// Every area in board order.
-pub const AREAS: [Area; 33] = [
+pub const AREAS: [Area; 34] = [
     a("wifi", IconId::Wifi, PageKind::Status(StatusKind::Network)),
     a("cellular", IconId::Cell, P("mobile")),
     a(
@@ -103,6 +105,8 @@ pub const AREAS: [Area; 33] = [
     a("cells", IconId::Cells, P("cells")),
     a("emergency", IconId::Sos, P("emergency")),
     a("about", IconId::Device, PageKind::About),
+    // after the board's 33 (indices of the others stay); shown under "Apps" in the sidebar
+    a("foreign", IconId::Package, PageKind::Foreign),
 ];
 
 /// A heading of the wide sidebar and the areas under it.
@@ -154,7 +158,7 @@ pub const GROUPS: [Group; 6] = [
     },
     Group {
         id: "apps",
-        areas: &["apps", "accounts", "users", "assistant"],
+        areas: &["apps", "foreign", "accounts", "users", "assistant"],
     },
     Group {
         id: "security",
@@ -232,9 +236,9 @@ mod tests {
         assert_eq!(index_of("displays"), Some(4));
         assert_eq!(index_of_page(PageKind::Drivers), Some(25));
         assert_eq!(index_of_page(PageKind::Account), Some(20));
-        assert_eq!(wide().len(), 33);
+        assert_eq!(wide().len(), 34);
         let c = compact();
-        assert_eq!(c.len(), 33);
+        assert_eq!(c.len(), 34);
         assert_eq!(AREAS[c[1]].id, "cellular");
         assert_eq!(index_of("nope"), None);
         assert_eq!(AREAS[0].label_key(), "app.settings.area.wifi");

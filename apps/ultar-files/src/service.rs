@@ -1,6 +1,7 @@
-//! The services behind Files, as ports: the app launcher (open a file with its app) and the
-//! drive service (mounted drives, eject). [`bus`] is the only place with bus calls; tests
-//! use [`Fake`].
+//! The services behind Files, as ports: the app launcher (open a file with its app), the
+//! drive service (mounted drives, eject) and the service for apps from other systems
+//! (install a `.deb`, `.exe`, `.msi` or `.apk`). [`bus`] is the only place with bus calls;
+//! tests use [`Fake`].
 
 pub mod bus;
 
@@ -59,6 +60,30 @@ pub trait LauncherPort {
         uri: &str,
         activation_token: Option<u64>,
     ) -> Result<(), PortError>;
+    /// Starts `app` without anything to open (an app just installed).
+    fn start(&mut self, app: &str) -> Result<(), PortError>;
+}
+
+/// What the service for apps from other systems answered (it works in the background:
+/// reading a file and installing take longer than a frame).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ForeignEvent {
+    /// The answer to [`ForeignPort::inspect`].
+    Inspected(Result<ultar_bus::messages::foreign::InspectOutcome, PortError>),
+    /// The answer to [`ForeignPort::install`].
+    Started(Result<ultar_bus::messages::foreign::InstallOutcome, PortError>),
+    /// A step of a job (`foreign.progress`).
+    Progress(ultar_bus::messages::foreign::Progress),
+}
+
+/// The service for apps from other systems (`foreign`): asks only, never waits.
+pub trait ForeignPort {
+    /// Asks what the file at `path` (as the device sees it) is.
+    fn inspect(&mut self, path: &str);
+    /// Asks to install the file at `path` with what the person granted.
+    fn install(&mut self, path: &str, choices: ultar_bus::messages::foreign::Choices);
+    /// The answers and job steps that arrived since the last call.
+    fn poll(&mut self) -> Vec<ForeignEvent>;
 }
 
 /// The drive service (`volumes`).
@@ -85,6 +110,16 @@ pub struct Fake {
     /// The default app of each kind (as `apps.default.*` names them), which `resolve`
     /// follows; a test changes these to see the opened app change.
     pub defaults: Vec<(ultar_bus::messages::launcher::Kind, String)>,
+    /// Paths given to `foreign.inspect`.
+    pub inspected: Vec<String>,
+    /// `(path, choices)` of every `foreign.install`.
+    pub installs: Vec<(String, ultar_bus::messages::foreign::Choices)>,
+    /// What `foreign.inspect` answers (`None`: the service is not there).
+    pub inspect_answer: Option<ultar_bus::messages::foreign::InspectOutcome>,
+    /// What `foreign.install` answers.
+    pub install_answer: ultar_bus::messages::foreign::InstallOutcome,
+    /// Events still to deliver, oldest first (a test adds job steps here).
+    pub foreign_events: VecDeque<ForeignEvent>,
 }
 
 impl Default for Fake {
@@ -106,7 +141,31 @@ impl Default for Fake {
                 app(Kind::Photos, "org.ultar.images"),
                 app(Kind::Documents, "org.ultar.office"),
             ],
+            inspected: Vec::new(),
+            installs: Vec::new(),
+            inspect_answer: None,
+            install_answer: ultar_bus::messages::foreign::InstallOutcome::Started(1),
+            foreign_events: VecDeque::new(),
         }
+    }
+}
+
+impl ForeignPort for Fake {
+    fn inspect(&mut self, path: &str) {
+        self.inspected.push(path.to_owned());
+        let answer = self.inspect_answer.clone().ok_or(PortError::Unavailable);
+        self.foreign_events
+            .push_back(ForeignEvent::Inspected(answer));
+    }
+
+    fn install(&mut self, path: &str, choices: ultar_bus::messages::foreign::Choices) {
+        self.installs.push((path.to_owned(), choices));
+        self.foreign_events
+            .push_back(ForeignEvent::Started(Ok(self.install_answer)));
+    }
+
+    fn poll(&mut self) -> Vec<ForeignEvent> {
+        self.foreign_events.drain(..).collect()
     }
 }
 
@@ -128,6 +187,10 @@ impl LauncherPort for Fake {
         }
         self.opened.push((app.to_owned(), uri.to_owned()));
         Ok(())
+    }
+
+    fn start(&mut self, app: &str) -> Result<(), PortError> {
+        self.open(app, "", None)
     }
 }
 

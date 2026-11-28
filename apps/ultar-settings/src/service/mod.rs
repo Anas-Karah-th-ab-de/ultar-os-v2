@@ -4,6 +4,7 @@
 pub mod bus;
 pub mod cloud;
 pub mod fake;
+pub mod foreign;
 pub mod mesh;
 pub mod system;
 pub mod update_contract;
@@ -204,6 +205,8 @@ pub struct Ports {
     pub status: Box<dyn StatusPort>,
     /// The device mesh.
     pub mesh: Box<dyn mesh::MeshPort>,
+    /// Apps from other systems.
+    pub foreign: Box<dyn foreign::ForeignPort>,
     /// The cloud model (the helper's last way to think).
     pub cloud: Box<dyn cloud::CloudPort>,
     /// Voice control ("Hey KM").

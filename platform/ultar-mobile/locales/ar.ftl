@@ -176,3 +176,7 @@ mobile.dialog.view.title = يريد {name} رؤية هذه الشاشة والت
 mobile.dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
 mobile.dialog.view.accept = سماح
 mobile.dialog.view.decline = رفض
+mobile.app.source.linux = {name} · لينكس
+mobile.app.source.windows = {name} · ويندوز
+mobile.app.source.android = {name} · أندرويد
+mobile.app.source.other = {name} · نظام آخر

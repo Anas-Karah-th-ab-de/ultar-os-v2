@@ -3,6 +3,10 @@
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
 ## Fremde Apps, Stufe P1: Wayland-Brücke (28.11.2026, Zweig feat/fa-p1-wayland)
+## Apps aus anderen Systemen, Stufe P3 Oberfläche (28.11.2026, Zweig `feat/fa-p3-ui`, nicht in main)
+
+Dateien: `.deb/.exe/.msi/.apk` öffnen, doppelklicken oder „Installieren“ im Kontextmenü (auch am Schreibtisch-Symbol) → Blatt mit Warnung „Nicht geprüft“, Angaben laut Datei, Rechten (Internet, LAN nur mit Internet, jeder Ordner einzeln) – alle aus –, Fortschritt und „Öffnen“; Einstellungen › „Apps aus anderen Systemen“ (Linux-Bereich + Aktualisieren, App-Seite mit Rechten, Daten behalten, Entfernen über den Dienst); Herkunftszeichen im App-Raster (Desktop, Handy) und in der Store-Herausgeberzeile; ar/en/de, hell/dunkel (docs/integration/ultar-foreign.md, Abschnitt P3). Geprüft: Klick-/Bildtests `apps/ultar-files/tests/foreign.rs`, `apps/ultar-settings/tests/foreign.rs` und die Crate-Tests von Dateien, Einstellungen, Bus, busd, Desktop, Mobil, Store, Dialogkern auf .8; nicht im Ultar-Kern gelaufen.
+
 ## Apps aus anderen Systemen, Stufe P2 Linux (28.11.2026, Zweig `feat/fa-p2-linux`, nicht in main)
 
 `.deb`-Programme laufen als eigene Apps (`app.foreign`, eigene uid, Linux-Bereich Ubuntu 26.04 schreibgeschützt als Wurzel, kein Bus, kein Netz ohne Erlaubnis); Installation nur nach Administrator-Bestätigung in den Zellen von `ultar-foreign` (docs/integration/ultar-foreign.md). Geprüft: `tools/foreign/linux-e2e.sh` → `FOREIGN-LINUX-E2E: ALLES OK` (Linux, echte Zellen, feindliches Paket); Ultar-Kern in QEMU (`tools/kern-test/foreign-e2e.sh`): Ubuntu-Programme laufen, es fehlen Netz-Namensraum, Einzeldatei-Bind, `chown` ohne Rechte und die Netzsperre (P0).

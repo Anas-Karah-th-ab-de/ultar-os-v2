@@ -212,6 +212,11 @@ impl App {
             self.follow_access();
         }
         update::load_page_light(&mut self.state, &mut self.ports);
+        if let Some(out) = update::poll_foreign(&mut self.state, &mut self.ports) {
+            if self.state.dialog.is_none() {
+                self.apply(out)?;
+            }
+        }
         let after = (
             self.state.display.clone(),
             self.state.drivers.firmware.clone(),

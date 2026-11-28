@@ -3,12 +3,15 @@
 //! Uses the launcher's `launcher.start` (version 2) and the drive service's `volumes.*`
 //! contracts of `ultar_bus::messages` (the mirrored copy of the files branch is gone).
 
-use super::{LauncherPort, Mounted, PortError, VolumesPort};
+use super::{ForeignEvent, ForeignPort, LauncherPort, Mounted, PortError, VolumesPort};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 use ultar_bus::{BusError, Client, ErrorCode, TypedSubscription};
 
 /// Timeout of every call.
 pub const TIMEOUT: Duration = Duration::from_secs(5);
+/// Timeout of `foreign.inspect`: the service reads the file in a cell of its own.
+pub const INSPECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Store app (offers to install a missing app).
 pub const STORE: &str = "org.ultar.store";
 
@@ -17,6 +20,7 @@ pub mod contract {
     pub use ultar_bus::messages::launcher::{
         launcher_id, Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP,
     };
+    pub use ultar_bus::messages::foreign::{Choices, Inspect, Install, InstallFrom, Progress};
     pub use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
 }
 
@@ -69,6 +73,84 @@ impl LauncherPort for BusLauncher {
             .call(&start, TIMEOUT)
             .map(|_| ())
             .map_err(|e| port_error(&e))
+    }
+
+    fn start(&mut self, app: &str) -> Result<(), PortError> {
+        let start = contract::Start {
+            app: contract::launcher_id(app).to_owned(),
+            role: contract::Role::Ui,
+            activation_token: None,
+            uri: None,
+            new_window: false,
+        };
+        self.0
+            .call(&start, TIMEOUT)
+            .map(|_| ())
+            .map_err(|e| port_error(&e))
+    }
+}
+
+/// The service for apps from other systems over the bus: every call runs on a thread of
+/// its own (reading a file takes seconds), job steps come from `foreign.progress`.
+pub struct BusForeign {
+    bus: Client,
+    tx: Sender<ForeignEvent>,
+    rx: Receiver<ForeignEvent>,
+    progress: Option<TypedSubscription<contract::Progress>>,
+}
+
+impl BusForeign {
+    /// Follows `foreign.progress` (subscribed before the first install, so no step is missed).
+    pub fn new(bus: Client) -> BusForeign {
+        let progress = bus.subscribe().ok();
+        let (tx, rx) = channel();
+        BusForeign {
+            bus,
+            tx,
+            rx,
+            progress,
+        }
+    }
+}
+
+impl ForeignPort for BusForeign {
+    fn inspect(&mut self, path: &str) {
+        let (bus, tx) = (self.bus.clone(), self.tx.clone());
+        let ask = contract::Inspect {
+            path: path.to_owned(),
+        };
+        std::thread::spawn(move || {
+            let answer = bus
+                .call(&ask, INSPECT_TIMEOUT)
+                .map(|r| r.outcome)
+                .map_err(|e| port_error(&e));
+            let _ = tx.send(ForeignEvent::Inspected(answer));
+        });
+    }
+
+    fn install(&mut self, path: &str, choices: contract::Choices) {
+        let (bus, tx) = (self.bus.clone(), self.tx.clone());
+        let ask = contract::Install {
+            from: contract::InstallFrom::File(path.to_owned()),
+            choices,
+        };
+        std::thread::spawn(move || {
+            let answer = bus
+                .call(&ask, TIMEOUT)
+                .map(|r| r.outcome)
+                .map_err(|e| port_error(&e));
+            let _ = tx.send(ForeignEvent::Started(answer));
+        });
+    }
+
+    fn poll(&mut self) -> Vec<ForeignEvent> {
+        let mut out: Vec<ForeignEvent> = self.rx.try_iter().collect();
+        if let Some(sub) = &self.progress {
+            while let Ok(Some(p)) = sub.try_recv() {
+                out.push(ForeignEvent::Progress(p));
+            }
+        }
+        out
     }
 }
 

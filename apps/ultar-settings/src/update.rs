@@ -6,6 +6,7 @@ mod bluetooth;
 mod cloud;
 mod display;
 mod drivers;
+mod foreign;
 mod mesh;
 mod more;
 mod panel;
@@ -92,6 +93,7 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
         PageKind::Drivers => drivers::load(state, ports),
         PageKind::Account => account::load(state, ports),
         PageKind::Mesh => mesh::load(state, ports),
+        PageKind::Foreign => foreign::load(state, ports),
         PageKind::Status(kind) => load_status(state, ports, kind),
         PageKind::Panel(id) => {
             more::load(state, ports, id);
@@ -153,6 +155,15 @@ pub fn load_page_light(state: &mut State, ports: &mut Ports) {
     }
 }
 
+/// Job steps and changes of the apps from other systems while their page is open; `Some`
+/// when the page must be redrawn (with the message of a finished job).
+pub fn poll_foreign(state: &mut State, ports: &mut Ports) -> Option<Outcome> {
+    if state.page() != PageKind::Foreign {
+        return None;
+    }
+    foreign::poll(state, ports)
+}
+
 /// Reads every settingsd panel (generic pages, search, Displays).
 pub fn load_panels(state: &mut State, ports: &mut Ports) {
     match ports.settings.list(None) {
@@ -200,6 +211,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         a if account::owns(a) => account::handle(c, a, node, kind),
         a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
         a if mesh::owns(a) => mesh::handle(c, a, kind),
+        a if foreign::owns(a) => foreign::handle(c, a, kind),
         a if cloud::owns(a) => cloud::handle(c, a, kind),
         a if voice::owns(a) => voice::handle(c, a, kind),
         _ => Outcome::default(),
@@ -322,6 +334,7 @@ fn dialog(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         DialogPurpose::ChangePassword
         | DialogPurpose::DeleteAccount
         | DialogPurpose::RemoveDevice(_) => account::dialog_ok(c, purpose),
+        DialogPurpose::ForeignRemove => foreign::dialog_ok(c),
     }
 }
 

@@ -16,6 +16,13 @@ pub fn translator(lang: Lang) -> Result<Translator, ParseError> {
     for (each, source) in SOURCES {
         tr.add_source(each, source)?;
     }
+    // The confirmation of apps from other systems is asked by the system dialog; its texts
+    // come with the contract (like on the desktop).
+    for (tag, source) in ultar_bus::messages::foreign::LOCALES {
+        if let Some(each) = Lang::parse(tag) {
+            tr.add_source(each, source)?;
+        }
+    }
     Ok(tr)
 }
 
@@ -37,6 +44,15 @@ mod tests {
             .collect();
         keys.sort_unstable();
         keys
+    }
+
+    #[test]
+    fn the_confirmation_of_apps_from_other_systems_is_in_every_language() {
+        for lang in [Lang::Ar, Lang::En, Lang::De] {
+            let tr = translator(lang).unwrap();
+            let text = tr.t("foreign.confirm.install");
+            assert_ne!(text, "foreign.confirm.install", "{lang:?}");
+        }
     }
 
     #[test]

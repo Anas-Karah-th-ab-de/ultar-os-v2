@@ -508,3 +508,9 @@ dialog.view.title = {name} wants to see and control this screen
 dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
 dialog.view.accept = Allow
 dialog.view.decline = Deny
+
+## Apps from other systems: where a grid cell comes from (docs/FREMD-APPS.md)
+desk.apps.source.linux = {name} · Linux
+desk.apps.source.windows = {name} · Windows
+desk.apps.source.android = {name} · Android
+desk.apps.source.other = {name} · another system

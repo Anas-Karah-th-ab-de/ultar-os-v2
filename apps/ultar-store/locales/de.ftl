@@ -33,6 +33,8 @@ store.aria.open = {name} öffnen
 store.aria.details = {name}: Details
 store.publisher.verified = {publisher} · geprüft
 store.publisher.unverified = {publisher} · ungeprüft
+store.publisher.verified_from = {publisher} · {source} · geprüft
+store.publisher.unverified_from = {publisher} · {source} · ungeprüft
 store.note.sizes = — = Größe läuft zur Laufzeit; die Spezifikation nennt keinen Wert.
 store.note.discover = — = Größe kommt zur Laufzeit aus dem Katalog; die Spezifikation nennt keinen Wert. Installieren und Entfernen stehen auf der App-Seite.
 store.size.unknown = —

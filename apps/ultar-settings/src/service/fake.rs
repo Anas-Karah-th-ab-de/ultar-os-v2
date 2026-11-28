@@ -307,6 +307,8 @@ pub struct SystemWorld {
     pub drives: Option<Vec<Drive>>,
     /// The device mesh (`None`: service down).
     pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
+    /// Apps from other systems (`None`: service down).
+    pub foreign: Option<super::foreign::ForeignWorld>,
     /// The cloud model (`None`: no such service).
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
     /// What the helper did (`None`: no helper).
@@ -409,6 +411,7 @@ pub fn ports(world: &Shared) -> Ports {
         account: f(),
         status: f(),
         mesh: Box::new(super::mesh::FakeMesh(world.clone())),
+        foreign: Box::new(super::foreign::FakeForeign(world.clone())),
         cloud: Box::new(super::cloud::FakeCloud(world.clone())),
         voice: Box::new(super::voice::FakeVoice(world.clone())),
         system: f(),
