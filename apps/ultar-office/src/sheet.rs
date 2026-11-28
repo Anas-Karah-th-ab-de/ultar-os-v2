@@ -171,6 +171,10 @@ pub struct Sheet {
     pub styles: BTreeMap<(u32, u32), CellStyle>,
     /// Blatt läuft von rechts nach links (Spalte A rechts)
     pub rtl: bool,
+    /// Frozen header rows (stay visible while scrolling).
+    pub frozen_rows: u32,
+    /// Frozen header columns.
+    pub frozen_cols: u32,
 }
 
 impl Sheet {
@@ -321,13 +325,7 @@ impl Workbook {
 
     /// Wert einer Zelle zu einem festen Zeitpunkt (`now` = Excel-Serienzahl); für Tests.
     pub fn value_at(&self, sheet: usize, r: u32, c: u32, now: f64) -> Value {
-        let mut ev = Eval {
-            wb: self,
-            visiting: HashSet::new(),
-            depth: 0,
-            now,
-        };
-        ev.cell(sheet, r, c)
+        Eval::new(self, now, None).cell(sheet, r, c)
     }
 
     /// Formel oder Ausdruck im Kontext eines Blatts auswerten (ohne Zelle zu verändern)
@@ -337,13 +335,7 @@ impl Workbook {
 
     /// Formel zu einem festen Zeitpunkt auswerten (`now` = Excel-Serienzahl).
     pub fn eval_formula_at(&self, sheet: usize, f: &str, now: f64) -> Value {
-        let mut ev = Eval {
-            wb: self,
-            visiting: HashSet::new(),
-            depth: 0,
-            now,
-        };
-        ev.formula(sheet, f.trim_start_matches('='))
+        Eval::new(self, now, None).formula(sheet, f.trim_start_matches('='))
     }
 
     /// Zelle per Text setzen: "Blatt!B3" oder "B3" (dann erstes/angegebenes Blatt)
@@ -388,6 +380,8 @@ enum Tok {
     Str(String),
     Ref(String),
     Ident(String),
+    /// An error literal such as `#REF!`.
+    Err(String),
     Op(&'static str),
     LParen,
     RParen,
@@ -421,6 +415,16 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
             }
             let t: String = ch[st..i].iter().collect();
             out.push(Tok::Num(t.parse().map_err(|_| "#VALUE!".to_string())?));
+            continue;
+        }
+        if c == '#' {
+            let rest: String = ch[i..].iter().collect();
+            let known = ["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#CIRC!"];
+            let Some(e) = known.iter().find(|e| rest.starts_with(**e)) else {
+                return Err(format!("#NAME? ({c})"));
+            };
+            out.push(Tok::Err((*e).to_string()));
+            i += e.chars().count();
             continue;
         }
         if c == '"' {
@@ -510,10 +514,11 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
 }
 
 #[derive(Clone, Debug)]
-enum Ast {
+pub(crate) enum Ast {
     Num(f64),
     Str(String),
     Bool(bool),
+    Err(String),
     Ref(Option<String>, (u32, u32), (u32, u32), bool),
     Un(&'static str, Box<Ast>),
     Bin(&'static str, Box<Ast>, Box<Ast>),
@@ -583,6 +588,7 @@ impl Parser {
         match self.next() {
             Some(Tok::Num(n)) => Ok(Ast::Num(n)),
             Some(Tok::Str(s)) => Ok(Ast::Str(s)),
+            Some(Tok::Err(e)) => Ok(Ast::Err(e)),
             Some(Tok::LParen) => {
                 let e = self.expr(1)?;
                 match self.next() {
@@ -624,7 +630,7 @@ impl Parser {
     }
 }
 
-fn parse(f: &str) -> Result<Ast, String> {
+pub(crate) fn parse(f: &str) -> Result<Ast, String> {
     let t = lex(f)?;
     let mut p = Parser { t, i: 0 };
     let e = p.expr(1)?;
@@ -690,13 +696,20 @@ pub const FUNCTIONS: &[&str] = &[
     "TEXT",
     "STDEV",
     "VAR",
+    "ISERROR",
+    "DATE",
+    "YEAR",
+    "MONTH",
+    "DAY",
 ];
 
-struct Eval<'a> {
-    wb: &'a Workbook,
-    visiting: HashSet<(usize, u32, u32)>,
+/// The evaluator; `memo` (when set) holds the values of formula cells already calculated.
+pub(crate) struct Eval<'a> {
+    pub(crate) wb: &'a Workbook,
+    pub(crate) visiting: HashSet<(usize, u32, u32)>,
     depth: u32,
     now: f64,
+    memo: Option<&'a crate::calc::Memo>,
 }
 
 /// Argument: einzelner Wert oder Bereich (Zeilen × Spalten)
@@ -789,8 +802,27 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
     }
 }
 
-impl Eval<'_> {
-    fn cell(&mut self, sheet: usize, r: u32, c: u32) -> Value {
+impl<'a> Eval<'a> {
+    pub(crate) fn new(
+        wb: &'a Workbook,
+        now: f64,
+        memo: Option<&'a crate::calc::Memo>,
+    ) -> Eval<'a> {
+        Eval {
+            wb,
+            visiting: HashSet::new(),
+            depth: 0,
+            now,
+            memo,
+        }
+    }
+
+    /// The value of a parsed formula in `sheet`.
+    pub(crate) fn ast(&mut self, sheet: usize, a: &Ast) -> Value {
+        self.eval(sheet, a).one()
+    }
+
+    pub(crate) fn cell(&mut self, sheet: usize, r: u32, c: u32) -> Value {
         let Some(sh) = self.wb.sheets.get(sheet) else {
             return verr("#REF!");
         };
@@ -799,6 +831,9 @@ impl Eval<'_> {
             return Value::Empty;
         }
         if let Some(f) = raw.strip_prefix('=') {
+            if let Some(v) = self.memo.and_then(|m| m.borrow().get(&(sheet, r, c)).cloned()) {
+                return v;
+            }
             if !self.visiting.insert((sheet, r, c)) || self.depth > 200 {
                 return verr("#CIRC!");
             }
@@ -806,6 +841,9 @@ impl Eval<'_> {
             let v = self.formula(sheet, f);
             self.depth -= 1;
             self.visiting.remove(&(sheet, r, c));
+            if let Some(m) = self.memo {
+                m.borrow_mut().insert((sheet, r, c), v.clone());
+            }
             return v;
         }
         literal(raw)
@@ -830,6 +868,7 @@ impl Eval<'_> {
             Ast::Num(n) => Arg::One(Value::Num(*n)),
             Ast::Str(s) => Arg::One(Value::Text(s.clone())),
             Ast::Bool(b) => Arg::One(Value::Bool(*b)),
+            Ast::Err(e) => Arg::One(verr(e)),
             Ast::Ref(sh, p, q, is_range) => {
                 let Some(si) = self.sheet_of(sheet, sh) else {
                     return Arg::One(verr("#REF!"));
@@ -1230,6 +1269,33 @@ impl Eval<'_> {
                 match v.iter().position(|x| eq_val(x, &key)) {
                     Some(i) => Value::Num((i + 1) as f64),
                     None => verr("#N/A"),
+                }
+            }
+            "ISERROR" => {
+                need!(1);
+                Value::Bool(self.eval(sheet, &args[0]).one().is_err())
+            }
+            "DATE" => {
+                need!(3);
+                let (y, m, d) = (num!(0), num!(1), num!(2));
+                // months and days roll over like in Excel (DATE(2024;14;1) = 1.2.2025)
+                let months = y as i64 * 12 + (m as i64 - 1);
+                let (yy, mm) = (months.div_euclid(12) as i32, months.rem_euclid(12) as u32 + 1);
+                if !(1900..=9999).contains(&yy) {
+                    return verr("#NUM!");
+                }
+                Value::Num(crate::style::to_excel_date(yy, mm, 1) + d.trunc() - 1.0)
+            }
+            "YEAR" | "MONTH" | "DAY" => {
+                need!(1);
+                let n = num!(0);
+                match crate::style::excel_date(n) {
+                    Some((y, m, d)) => Value::Num(match name {
+                        "YEAR" => y as f64,
+                        "MONTH" => m as f64,
+                        _ => d as f64,
+                    }),
+                    None => verr("#NUM!"),
                 }
             }
             "ISNUMBER" => {

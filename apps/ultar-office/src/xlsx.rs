@@ -3,7 +3,33 @@
 //! Formeln und Spaltenbreiten. Geschrieben werden Formeln mitsamt berechnetem Ergebnis, damit auch Programme ohne
 //! Neuberechnung (Vorschau, Handy) die Werte zeigen.
 
-use crate::docx::{esc, read_zip_entry, zip_write};
+use crate::docx::{esc, zip_write};
+use std::io::Read;
+
+/// Largest decompressed part of an .xlsx that is read (a zip bomb stops here).
+pub const MAX_PART_BYTES: u64 = 256 << 20;
+/// Most cells of one sheet that are read; more is TOO_LARGE.
+pub const MAX_CELLS: usize = 4_000_000;
+/// The error of a workbook that is too large to open.
+pub const TOO_LARGE: &str = "too large";
+
+/// One part of the zip file, at most [MAX_PART_BYTES] big.
+fn read_zip_entry(bytes: &[u8], name: &str) -> Result<Vec<u8>, String> {
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("not a zip/office file: {e}"))?;
+    let f = z.by_name(name).map_err(|_| format!("{name} missing"))?;
+    if f.size() > MAX_PART_BYTES {
+        return Err(TOO_LARGE.into());
+    }
+    let mut v = Vec::new();
+    f.take(MAX_PART_BYTES + 1)
+        .read_to_end(&mut v)
+        .map_err(|e| e.to_string())?;
+    if v.len() as u64 > MAX_PART_BYTES {
+        return Err(TOO_LARGE.into());
+    }
+    Ok(v)
+}
 use crate::sheet::{cell_name, col_name, fmt_num, parse_cell, Sheet, Value, Workbook};
 use crate::style::{Align, CellStyle};
 use quick_xml::events::Event;
@@ -24,7 +50,11 @@ fn attr(e: &quick_xml::events::BytesStart, key: &[u8]) -> Option<String> {
             a.key.as_ref() == key
                 || local(a.key.as_ref()) == key && !a.key.as_ref().starts_with(b"xmlns")
         })
-        .map(|a| String::from_utf8_lossy(&a.value).into_owned())
+        .map(|a| {
+            a.unescape_value()
+                .map(|v| v.into_owned())
+                .unwrap_or_else(|_| String::from_utf8_lossy(&a.value).into_owned())
+        })
 }
 
 fn shared_strings(bytes: &[u8]) -> Vec<String> {
@@ -231,8 +261,9 @@ fn styles_cell_xfs(
     let mut in_cellxfs = false;
     let (mut cur, mut fresh) = (CellStyle::default(), true);
     loop {
-        match r.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) => match local(e.name().as_ref()) {
+        let ev = r.read_event_into(&mut buf);
+        match ev {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => match local(e.name().as_ref()) {
                 b"cellXfs" => {
                     in_cellxfs = true;
                     out.clear();
@@ -252,6 +283,10 @@ fn styles_cell_xfs(
                     if let Some(i) = attr(e, b"fillId").and_then(|v| v.parse::<usize>().ok()) {
                         cur.fill = fills.get(i).copied().flatten();
                     }
+                    if matches!(ev, Ok(Event::Empty(_))) {
+                        out.push(std::mem::take(&mut cur));
+                        fresh = false;
+                    }
                 }
                 b"alignment" if in_cellxfs => {
                     cur.align = match attr(e, b"horizontal").as_deref() {
@@ -260,16 +295,10 @@ fn styles_cell_xfs(
                         Some("left") => Align::Start,
                         _ => Align::General,
                     };
-                    cur.wrap = attr(e, b"wrapText").as_deref() == Some("1");
+                    cur.wrap = matches!(attr(e, b"wrapText").as_deref(), Some("1") | Some("true"));
                 }
                 _ => {}
             },
-            Ok(Event::Empty(ref e)) => {
-                if local(e.name().as_ref()) == b"xf" && in_cellxfs {
-                    out.push(std::mem::take(&mut cur));
-                    fresh = false;
-                }
-            }
             Ok(Event::End(ref e)) => match local(e.name().as_ref()) {
                 b"xf" if in_cellxfs && fresh => out.push(std::mem::take(&mut cur)),
                 b"cellXfs" => break,
@@ -350,7 +379,7 @@ fn sheet_list(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     Ok(out)
 }
 
-fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Sheet {
+fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Result<Sheet, String> {
     let mut sh = Sheet::new(name);
     let mut r = Reader::from_reader(x);
     let mut buf = Vec::new();
@@ -379,7 +408,12 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Shee
                         }
                     }
                     b"sheetView" => {
-                        sh.rtl = attr(e, b"rightToLeft").as_deref() == Some("1");
+                        sh.rtl = matches!(attr(e, b"rightToLeft").as_deref(), Some("1") | Some("true"));
+                    }
+                    b"pane" if attr(e, b"state").as_deref() == Some("frozen") => {
+                        let n = |k: &[u8]| attr(e, k).and_then(|v| v.parse::<f64>().ok()).map_or(0, |v| v as u32);
+                        sh.frozen_cols = n(b"xSplit");
+                        sh.frozen_rows = n(b"ySplit");
                     }
                     b"c" => {
                         let pos = attr(e, b"r")
@@ -455,7 +489,8 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Shee
                                 }
                             }
                             (_, "str") | (_, "inlineStr") => val.clone(),
-                            (_, "e") => val.clone(),
+                            // an error value typed into a cell: kept as the error it is
+                            (_, "e") => format!("={}", val.trim()),
                             _ => match val.trim().parse::<f64>() {
                                 Ok(n) => fmt_num(n),
                                 Err(_) => val.clone(),
@@ -473,6 +508,9 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Shee
                             raw
                         };
                         sh.set(rr, cc, &raw);
+                        if sh.cells.len() > MAX_CELLS {
+                            return Err(TOO_LARGE.into());
+                        }
                         if let Some(i) = style_idx {
                             if let Some(st) = styles.get(i as usize) {
                                 if !st.is_default() {
@@ -484,12 +522,13 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String], styles: &[CellStyle]) -> Shee
                 }
                 _ => {}
             },
-            Ok(Event::Eof) | Err(_) => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(format!("{name}: {e}")),
             _ => {}
         }
         buf.clear();
     }
-    sh
+    Ok(sh)
 }
 
 /// .xlsx lesen
@@ -498,8 +537,12 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     let styles = read_styles(bytes);
     let mut wb = Workbook { sheets: Vec::new() };
     for (name, path) in sheet_list(bytes)? {
-        let x = read_zip_entry(bytes, &path).unwrap_or_default();
-        wb.sheets.push(read_sheet(&x, &name, &ss, &styles));
+        let x = match read_zip_entry(bytes, &path) {
+            Ok(x) => x,
+            Err(e) if e == TOO_LARGE => return Err(e),
+            Err(_) => Vec::new(),
+        };
+        wb.sheets.push(read_sheet(&x, &name, &ss, &styles)?);
     }
     if wb.sheets.is_empty() {
         wb.sheets.push(Sheet::new("Sheet1"));
@@ -666,7 +709,7 @@ fn s_attr(index: &HashMap<CellStyle, u32>, st: &CellStyle) -> String {
     }
 }
 
-fn sheet_xml(wb: &Workbook, si: usize, t: &StyleTables) -> String {
+fn sheet_xml(wb: &Workbook, si: usize, t: &StyleTables, calc: &mut crate::calc::Calc) -> String {
     let sh = &wb.sheets[si];
     let (rows, cols) = sh.extent();
     let dim = if rows == 0 {
@@ -674,11 +717,24 @@ fn sheet_xml(wb: &Workbook, si: usize, t: &StyleTables) -> String {
     } else {
         format!("A1:{}", cell_name(rows - 1, cols.saturating_sub(1)))
     };
-    let rtl = sh.rtl || sh.cells.values().any(|v| crate::doc::is_rtl(v));
+    let pane = if sh.frozen_rows > 0 || sh.frozen_cols > 0 {
+        let corner = cell_name(sh.frozen_rows, sh.frozen_cols);
+        let (active, x, y) = match (sh.frozen_cols > 0, sh.frozen_rows > 0) {
+            (true, true) => ("bottomRight", format!(r#" xSplit="{}""#, sh.frozen_cols), format!(r#" ySplit="{}""#, sh.frozen_rows)),
+            (true, false) => ("topRight", format!(r#" xSplit="{}""#, sh.frozen_cols), String::new()),
+            _ => ("bottomLeft", String::new(), format!(r#" ySplit="{}""#, sh.frozen_rows)),
+        };
+        format!(r#"<pane{x}{y} topLeftCell="{corner}" activePane="{active}" state="frozen"/>"#)
+    } else {
+        String::new()
+    };
+    let view = format!(
+        r#"<sheetView workbookViewId="0"{}>{pane}</sheetView>"#,
+        if sh.rtl { r#" rightToLeft="1""# } else { "" }
+    );
     let mut s = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="{dim}"/><sheetViews><sheetView workbookViewId="0"{}/></sheetViews><sheetFormatPr defaultRowHeight="15"/>"#,
-        if rtl { r#" rightToLeft="1""# } else { "" }
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="{dim}"/><sheetViews>{view}</sheetViews><sheetFormatPr defaultRowHeight="15"/>"#
     );
     if !sh.widths.is_empty() {
         s.push_str("<cols>");
@@ -709,7 +765,7 @@ fn sheet_xml(wb: &Workbook, si: usize, t: &StyleTables) -> String {
         let rf = format!("{}{}", col_name(c), r + 1);
         let sa = s_attr(&t.index, &sh.style(r, c));
         if let Some(f) = raw.strip_prefix('=') {
-            let v = wb.value(si, r, c);
+            let v = calc.value(wb, si, r, c);
             let (ty, vv) = match &v {
                 Value::Num(n) => ("", fmt_num(*n)),
                 Value::Bool(b) => (r#" t="b""#, if *b { "1".into() } else { "0".into() }),
@@ -768,6 +824,7 @@ pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
     );
     let mut sheets_xml = Vec::new();
+    let mut calc = crate::calc::Calc::new(crate::sheet::excel_now());
     let empty = Workbook::new();
     let w = if wb.sheets.is_empty() { &empty } else { wb };
     for i in 0..n {
@@ -779,7 +836,7 @@ pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
             i + 1
         ));
         rels.push_str(&format!(r#"<Relationship Id="rId{0}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{0}.xml"/>"#, i + 1));
-        sheets_xml.push(sheet_xml(w, i, &tables));
+        sheets_xml.push(sheet_xml(w, i, &tables, &mut calc));
     }
     ct.push_str("</Types>");
     wbx.push_str(r#"</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>"#);
@@ -825,6 +882,7 @@ mod tests {
         wb.set_ref(0, "C1", "TRUE").unwrap();
         wb.set_ref(0, "D1", "'00123").unwrap();
         wb.set_ref(0, "Kosten!A1", "=Umsatz!B4/2").unwrap();
+        wb.sheets[0].rtl = true;
         let bytes = write(&wb).unwrap();
         let back = read(&bytes).unwrap();
         assert_eq!(back.sheets.len(), 2);
