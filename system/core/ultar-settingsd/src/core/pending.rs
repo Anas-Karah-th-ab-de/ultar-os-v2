@@ -22,6 +22,9 @@ impl Core {
     /// Keeps the provisional value of `key`, or of every pending key.
     /// Returns how many changes were kept.
     pub fn confirm(&mut self, key: Option<&str>) -> Result<u32, SettingsError> {
+        // a change whose deadline passed is taken back first, even when the tick has not run
+        // yet: a late "Keep" never keeps it
+        self.revert_due()?;
         let keys = self.pending_selection(key)?;
         let registry = Arc::clone(&self.registry);
         let mut kept = 0;
@@ -117,6 +120,15 @@ impl Core {
     /// whose deadline passed and writes waiting changes to disk. Everything
     /// due is done even when one step fails; the first failure is returned.
     pub fn tick(&mut self) -> Result<(), SettingsError> {
+        let reverted = self.revert_due();
+        let written = self.store.tick();
+        reverted?;
+        written?;
+        Ok(())
+    }
+
+    /// Takes back the provisional values whose deadline passed.
+    fn revert_due(&mut self) -> Result<u32, SettingsError> {
         let now = self.clock.now();
         let expired: Vec<String> = self
             .pending
@@ -124,15 +136,10 @@ impl Core {
             .filter(|(_, pending)| pending.deadline <= now)
             .map(|(key, _)| key.clone())
             .collect();
-        let reverted = if expired.is_empty() {
-            Ok(0)
-        } else {
-            self.revert_keys(&expired, PendingOutcome::TimedOut)
-        };
-        let written = self.store.tick();
-        reverted?;
-        written?;
-        Ok(())
+        if expired.is_empty() {
+            return Ok(0);
+        }
+        self.revert_keys(&expired, PendingOutcome::TimedOut)
     }
 
     /// When [`Core::tick`] has to run next, if anything is waiting.

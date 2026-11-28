@@ -14,6 +14,9 @@ args = [
     # other: the check stays, fail closed).
     "--seat-group", "812",
     "--seat-state", "/run/ultar/seat/modes",
+    # Bluetooth keyboards and mice: the uinput devices made by ultar-btd (827), named
+    # by the kernel (review S-4: no other software device joins the seat).
+    "--allow-virtual-owner", "827",
     # ui.* permissions of apps: every app has its own user id (20000-49999,
     # ultar-launcher), so per-uid limits are per app; the launcher writes
     # their granted rights here (owner 805, not writable by others).

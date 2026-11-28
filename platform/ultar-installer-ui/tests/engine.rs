@@ -71,6 +71,46 @@ fn installs_onto_an_image_file() {
 }
 
 #[test]
+fn installs_encrypted_data_as_luks2() {
+    use ultar_installer_ui::secret::Secret;
+    use ultar_installer_ui::wizard::Encryption;
+    let dir = scratch("luks");
+    let src = medium(&dir);
+    let tgt = target(&dir, 300 * MIB);
+    let mut w = wizard_at(&src, vec![disk_info(&tgt, "Disk")], Step::Summary);
+    let pass = "ein-langes-datenpasswort";
+    w.encryption = Encryption::Passphrase;
+    w.secrets.passphrase = [Secret::new(pass), Secret::new(pass)];
+    w.replan();
+    w.erase_confirmed = true;
+    let (confirm, mut plan) = w.confirm_install().expect("confirm");
+    plan.luks = ultar_luks::Params::TEST;
+    write::execute(&plan, &confirm, &mut |_d: u64, _t: u64| {}).unwrap();
+    let data = plan.layout.iter().find(|t| t.name == "ultar-data").unwrap();
+    let Fill::Copy((f, l)) = data.fill else {
+        panic!("data is copied")
+    };
+    assert!(data.sectors >= (l - f + 1) + ultar_installer_ui::engine::LUKS_RESERVE);
+    let mut dst = FileDevice::open_read(&tgt).unwrap();
+    let mut meta = vec![0u8; ultar_luks::DATA_OFFSET as usize];
+    dst.read_at(data.first * 512, &mut meta).unwrap();
+    assert!(ultar_luks::open_bytes(&meta, b"falsch").is_err());
+    let opened = ultar_luks::open_bytes(&meta, pass.as_bytes()).expect("opens with the passphrase");
+    let n = ((l - f + 1) * 512) as usize;
+    let (mut plain, mut sealed) = (vec![0u8; n], vec![0u8; n]);
+    FileDevice::open_read(&src)
+        .unwrap()
+        .read_at(f * 512, &mut plain)
+        .unwrap();
+    dst.read_at(data.first * 512 + opened.offset, &mut sealed)
+        .unwrap();
+    assert!(sealed != plain, "data on the disk is encrypted");
+    ultar_luks::Sectors::from_key(&opened.key).decrypt(0, &mut sealed);
+    assert!(sealed == plain, "decrypts to the medium's data");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn installs_onto_a_loop_device() {
     let dir = scratch("loop");
     let src = medium(&dir);

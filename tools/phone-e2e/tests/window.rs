@@ -206,10 +206,11 @@ fn settings_open_through_the_launcher() {
         Step::Running
     );
     let start = seen.recv_timeout(Duration::from_secs(20)).unwrap();
-    assert_eq!(start.app, "org.ultar.settings");
+    // The phone asks for the Settings manifest id with its own page (R2-4).
+    assert_eq!(start.app, ultar_phone::launch::SETTINGS_APP);
     assert_eq!(
         start.uri.as_deref(),
-        Some("settings://apps/org.ultar.phone")
+        Some(ultar_phone::launch::PHONE_SETTINGS_URI)
     );
     fake.join().unwrap();
     assert_eq!(win.app().toast_key(), None);

@@ -18,11 +18,10 @@
 
 use crate::access::{AdminAccess, AllowAll};
 use crate::builtin::Builtin;
-use crate::bus::convert::{device_info, reason, refusal, refuse, unserved_phase};
+use crate::bus::convert::{device_info, reason, refusal, refuse, served, unserved_phase};
 use crate::bus::{BusSink, Publisher, UnservedDevice};
 use crate::caps::hardware_hint;
 use crate::depot;
-use crate::fsm::Phase;
 use crate::manager::{Config, DeviceManager};
 use crate::ops::QuarantineFilter;
 use crate::store::file::{FileStore, StoreEvent};
@@ -132,7 +131,7 @@ impl Daemon {
             Some(abi) => abi.clone(),
             None => kernel_abi(&config.root)?.ok_or(StartError::UnknownKernel)?,
         };
-        let depot = depot::load(&config.depot, &config.keys);
+        let depot = depot::load(&config.depot, &config.keys, &config.state);
         let builtin = Builtin::new(reader.clone(), &config.depot, depot.trusted)?;
         let sink = BusSink::new(publisher);
         let manager = DeviceManager::new(
@@ -227,7 +226,7 @@ impl Daemon {
             .manager
             .devices()
             .iter()
-            .filter(|view| view.phase != Phase::Active)
+            .filter(|view| !served(view, &self.builtin))
             .map(|view| UnservedDevice {
                 address: view.device.address.clone(),
                 hint: hardware_hint(&view.device.primary),
@@ -424,7 +423,7 @@ impl Daemon {
     }
 
     fn reload(&mut self) -> Result<ScanResult, Refusal> {
-        let depot = depot::load(&self.config.depot, &self.config.keys);
+        let depot = depot::load(&self.config.depot, &self.config.keys, &self.config.state);
         self.depot_notices = depot.notices;
         self.builtin.set_trusted(depot.trusted);
         self.manager.replace_index(depot.index);

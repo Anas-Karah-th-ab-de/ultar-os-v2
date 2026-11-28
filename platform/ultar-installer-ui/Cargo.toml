@@ -29,6 +29,8 @@ ultar-surface = { path = "../ultar-surface" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-slots = { path = "../../system/core/ultar-slots" }
+# data encryption: LUKS2 header and aes-xts-plain64 (reviewed RustCrypto libraries)
+ultar-luks = { path = "../../system/core/ultar-luks" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
 # First start: the choices become settings in the settings service's own store format
 ultar-settingsd = { path = "../../system/core/ultar-settingsd" }

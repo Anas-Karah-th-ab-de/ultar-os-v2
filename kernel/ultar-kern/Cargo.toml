@@ -30,6 +30,9 @@ ultar-intel-gt = { path = "../../drivers/kernel/intel-gt" }
 ultar-intel-npu = { path = "../../drivers/kernel/intel-npu" }
 # product and company identity: names, brand texts (one no_std source for every program)
 ultar-brand = { path = "../../system/core/ultar-brand" }
+# data partition decryption (crypt.rs): reviewed RustCrypto ciphers, software AES (aes_force_soft)
+aes = { version = "0.8", default-features = false }
+xts-mode = { version = "0.5", default-features = false }
 
 [features]
 # Remote hardware test without anyone at the machine: a deadline restarts the computer if the

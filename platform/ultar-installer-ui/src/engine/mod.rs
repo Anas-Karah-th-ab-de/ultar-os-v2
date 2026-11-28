@@ -255,9 +255,47 @@ pub struct Plan {
     pub keep: Option<Vec<Existing>>,
     /// Partitions of the disk that the installation removes (manual partitioning).
     pub removed: Vec<Existing>,
+    /// Passphrase of the data encryption (LUKS2, see [`Plan::encrypted`]); `None`: plain data.
+    pub encrypt: Option<crate::secret::Secret>,
+    /// Cost of the LUKS2 key derivation (tests use [`ultar_luks::Params::TEST`]).
+    pub luks: ultar_luks::Params,
 }
 
+/// Sectors the LUKS2 metadata takes in front of the encrypted data.
+pub const LUKS_RESERVE: u64 = ultar_luks::DATA_OFFSET / 512;
+
 impl Plan {
+    /// The data partition encrypted with `pass` (LUKS2): it gets room for the metadata in
+    /// front of the copied data – on a whole disk it grows, beside another system or in a
+    /// manual layout it must already have the room ([`EngineError::TooSmall`] otherwise).
+    pub fn encrypted(mut self, pass: crate::secret::Secret) -> Result<Plan, EngineError> {
+        if self.encrypt.is_none() {
+            let i = self
+                .layout
+                .iter()
+                .position(|t| t.name == ultar_slots::layout::DATA_PART)
+                .ok_or(EngineError::Gpt)?;
+            let install::Fill::Copy((first, last)) = self.layout[i].fill else {
+                return Err(EngineError::Gpt);
+            };
+            let need = install::align(last - first + 1) + LUKS_RESERVE;
+            if self.keep.is_none() {
+                self.layout[i].sectors = self.layout[i].sectors.max(need);
+                let total = install::needed(&self.layout) * 512;
+                if self.target_bytes < total {
+                    return Err(EngineError::TooSmall(total, self.target_bytes));
+                }
+            } else if self.layout[i].sectors < need {
+                return Err(EngineError::TooSmall(
+                    need * 512,
+                    self.layout[i].sectors * 512,
+                ));
+            }
+        }
+        self.encrypt = Some(pass);
+        Ok(self)
+    }
+
     /// Plans the installation of `source` onto `target` (both only read).
     pub fn new(
         source: &Path,
@@ -281,6 +319,8 @@ impl Plan {
             answers,
             keep: None,
             removed: Vec::new(),
+            encrypt: None,
+            luks: ultar_luks::Params::INSTALL,
         })
     }
 
@@ -309,6 +349,8 @@ impl Plan {
             answers,
             keep: Some(table.clone()),
             removed: Vec::new(),
+            encrypt: None,
+            luks: ultar_luks::Params::INSTALL,
         })
     }
 
@@ -359,6 +401,8 @@ impl Plan {
             answers,
             keep: Some(kept),
             removed,
+            encrypt: None,
+            luks: ultar_luks::Params::INSTALL,
         })
     }
 

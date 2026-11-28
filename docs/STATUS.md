@@ -33,7 +33,9 @@ plus S9-Direktstart, NVMe-Schreibtest, VT-d/SD auf echter HW. `scripts/build-pc-
 | Kern: Unix-Sockel | Verbindungen in der Warteschlange eines verschwundenen Lauschers lesen Dateiende (vorher ewiges Warten); `SO_RCVTIMEO` gilt für read/recvfrom/recvmsg – beides hielt ultar-init beim Herunterfahren fest |
 | Kern: AVX | XSAVE: CR4.OSXSAVE, XCR0 = x87/SSE/AVX; YMM-Register bleiben über Planerwechsel, Signale und fork erhalten (`avxtest`). Programme (glibc, Graviola-TLS, llama.cpp) sehen AVX jetzt als nutzbar |
 
-Offen bleiben: Verschlüsselung im Installer (Regel „keine eigene Krypto“: braucht geprüften LUKS2-Schreiber + XTS im Kern),
+Datenverschlüsselung (2026-11-28): Installer schreibt LUKS2 (ultar-luks, nur RustCrypto), der Kern entschlüsselt
+`ultar-data` (aes-xts-plain64), ultar-init fragt beim Start nach dem Passwort; geprüft gegen cryptsetup/dm-crypt.
+Offen bleiben: grafische Passwortabfrage beim Start, Wachsen des ext4 im verschlüsselten Bereich, TPM,
 WLAN-Treiber, Anzeige über die Intel-Grafik (Rendern/PRIME), Bluetooth/Ton/Touchpad auf echter Hardware, Start direkt
 auf dem Beelink. Details: `docs/integration/installer-boot.md`, `docs/integration/kernel-xsave-unix-sockets.md`.
 

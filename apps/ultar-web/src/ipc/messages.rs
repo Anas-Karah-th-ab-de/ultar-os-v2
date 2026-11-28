@@ -86,6 +86,70 @@ impl Command {
         }
         .finish()
     }
+
+    /// Decodes the payload of command `kind` (the engine host's side of [`Command::encode`]).
+    pub fn decode(kind: u8, payload: &[u8]) -> Result<Command, DecodeError> {
+        let mut r = Reader::new(payload);
+        let command = match kind {
+            1..=12 | 15 => decode_tab_command(kind, TabId(r.u32()?), &mut r)?,
+            13 => Command::Permission(RequestId(r.u32()?), r.flag()?),
+            14 => Command::CancelDownload(DownloadId(r.u32()?)),
+            16 => Command::Quit,
+            k => return Err(DecodeError::UnknownKind(k)),
+        };
+        r.end()?;
+        Ok(command)
+    }
+}
+
+fn decode_pointer(r: &mut Reader<'_>) -> Result<PointerInput, DecodeError> {
+    let (kind, button) = (r.u8()?, r.u8()?);
+    let (x, y, dx, dy) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?);
+    Ok(match kind {
+        0 => PointerInput::Move { x, y },
+        1 => PointerInput::Down { x, y, button },
+        2 => PointerInput::Up { x, y, button },
+        3 => PointerInput::Scroll { x, y, dx, dy },
+        _ => return Err(DecodeError::BadValue),
+    })
+}
+
+/// Commands 1–12 and 15: those that name a tab first.
+fn decode_tab_command(kind: u8, t: TabId, r: &mut Reader<'_>) -> Result<Command, DecodeError> {
+    Ok(match kind {
+        1 => Command::CreateTab(t, r.flag()?),
+        2 => Command::CloseTab(t),
+        3 => Command::Load(t, r.str()?),
+        4 => Command::Back(t),
+        5 => Command::Forward(t),
+        6 => Command::Reload(t),
+        7 => Command::Stop(t),
+        8 => {
+            let (w, h, s) = (r.u32()?, r.u32()?, r.f32()?);
+            // 0 × 0 is a hidden window; the host keeps the last size then
+            let valid = w <= MAX_SIDE && h <= MAX_SIDE && s > 0.0 && s <= 8.0;
+            if !valid {
+                return Err(DecodeError::BadValue);
+            }
+            Command::Resize(t, w, h, s)
+        }
+        9 => Command::Visible(t, r.flag()?),
+        10 => Command::Pointer(t, decode_pointer(r)?),
+        11 => {
+            let (code, character, modifiers) = (r.u16()?, r.u32()?, r.u8()?);
+            Command::Key(
+                t,
+                KeyInput {
+                    code,
+                    character,
+                    modifiers,
+                    pressed: r.flag()?,
+                },
+            )
+        }
+        12 => Command::Protection(t, r.flag()?),
+        _ => Command::FrameDone(t),
+    })
 }
 
 /// An event from the host.
