@@ -86,6 +86,9 @@ PROGRAMS="ultar-init uinit ultar-luks ultar-unlock ultar-busd ultar-logd ulog ul
 PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-voiced ultar-llm-bus ultar-llm-cloud ultar-displayd ultar-accountd ultar-calld ultar-screend"
 # apps from other systems (docs/FREMD-APPS.md): the service; its Wayland bridge goes to its own directory below
 PROGRAMS="$PROGRAMS ultar-foreign"
+# developer access (SSH, docs/integration/ssh.md): the kernel starts it at boot only when switched on
+# (/data/ultar/entwickler/an) and it opens the port only with an allowed key (the installer's account step)
+PROGRAMS="$PROGRAMS ultar-sshd"
 # the system apps (installed as signed packages through the launcher, step 2)
 PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web ultar-editor ultar-pdf ultar-doc ultar-sheet ultar-terminal ultar-remote"
 INSTALLER_IMG=${INSTALLER_IMG:-}
@@ -106,7 +109,7 @@ if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
     -p ultar-init -p ultar-luks -p ultar-unlock -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
-    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-voiced -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-screend -p ultar-pkg -p ultar-foreign -p ultar-wayland \
+    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-voiced -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-screend -p ultar-pkg -p ultar-foreign -p ultar-wayland -p ultar-sshd \
     -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-pdf -p ultar-doc -p ultar-sheet -p ultar-terminal -p ultar-remote -p ultar-update ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"

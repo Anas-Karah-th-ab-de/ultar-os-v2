@@ -31,6 +31,10 @@ Weiterleitungen – über Ethernet oder USB-C (`docs/integration/usb-net.md`).
   - die Web-Verwaltung → SSH-Schlüssel (`system/services/ultar-admin`);
   - `ultar-sshd schluessel "<öffentlicher Schlüssel>"` (auch RSA).
 - Nur Schlüssel, kein Kennwort, keine Tastatur-Abfrage; Weiterleitung nur zu 127.0.0.1.
+- **Installationsabbild** (`tools/vm/make-vmware.sh`, Desktop): enthält `ultar-sshd` seit 0.9. Der Kern startet es
+  beim Hochfahren nur, wenn `/data/ultar/entwickler/an` (bzw. `/etc/ultar/entwickler`) da ist, und öffnet dann den
+  Port in der Brandmauer; ohne Schalter bleibt alles zu. Vorher fehlte das Programm im Abbild: der Schlüssel aus
+  dem Installer wurde eingetragen, aber es gab keinen Dienst.
 
 ## Vom PC verbinden
 
