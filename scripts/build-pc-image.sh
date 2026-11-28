@@ -40,6 +40,16 @@ INITRD=$OUT/initramfs-$EDITION/ultar-initramfs-$ARCH.cpio.zst
 for fw in 'iwlwifi-QuZ-a0-hr-b0-*.ucode*' 'iwlwifi-gl-c0-fm-c0-*.ucode*' 'iwlwifi-gl-c0-fm-c0.pnvm*'; do
   [ -n "$(find "$CROOT/lib/firmware" -maxdepth 1 -name "$fw" | head -1)" ] || echo "WARNUNG: WLAN-Firmware $fw fehlt (linux-firmware-intel-wireless) – WLAN bleibt auf diesem Gerät aus"
 done
+# Bluetooth-Firmware für Intel-Controller (BE200 am Beelink: ibt-0040-0041): der Ultar-Kern liest sie
+# unkomprimiert über fs::read_all, darum .zst nach /lib/firmware/intel/ entpacken (Linux-Treiber nutzt .zst).
+if [ -d "$CROOT/lib/firmware/intel" ]; then
+  mkdir -p "$CROOT/lib/firmware/intel"
+  for z in "$CROOT"/lib/firmware/intel/ibt-*.sfi.zst "$CROOT"/lib/firmware/intel/ibt-*.ddc.zst; do
+    [ -f "$z" ] || continue
+    out="${z%.zst}"
+    [ -f "$out" ] || zstd -q -d -f "$z" -o "$out" 2>/dev/null || echo "WARNUNG: BT-Firmware $z nicht entpackt (zstd fehlt?) – Bluetooth bleibt im Bootloader"
+  done
+fi
 
 # 3) EFI-Systempartition
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
