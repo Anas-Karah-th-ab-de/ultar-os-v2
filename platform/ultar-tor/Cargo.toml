@@ -17,7 +17,17 @@ arti-client = { version = "0.48", default-features = false, features = ["tokio",
 tor-rtcompat = { version = "0.48", default-features = false, features = ["tokio", "rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync"] }
 getrandom = "0.4"
+# Arti's TLS needs a process-wide crypto provider: Graviola where the CPU and the kernel offer its
+# instructions, else RustCrypto (both pure Rust, as the browser's reader uses them)
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+rustls-graviola = "0.4"
+rustls-rustcrypto = "0.0.2-alpha"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
 ureq = { version = "3", default-features = false, features = ["socks-proxy"] }
+
+[[bin]]
+# development tool: the Tor ports for builders (scripts/build-servo-engine.sh --shot)
+name = "ultar-tor-port"
+path = "src/bin/ultar-tor-port.rs"

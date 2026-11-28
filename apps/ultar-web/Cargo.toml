@@ -13,6 +13,15 @@ path = "src/lib.rs"
 [[bin]]
 name = "ultar-web"
 path = "src/bin/ultar-web.rs"
+required-features = ["tor"]
+
+[features]
+default = ["tor"]
+# The browser program runs the Tor client (Arti). The library alone (used by the Servo engine
+# host in external/servo-host) carries no Tor: Arti's derive_more features would otherwise leak
+# into Servo's WebRender through feature unification (derive_more's PartialEq replaces the
+# built-in one there and breaks constants in patterns).
+tor = ["dep:ultar-tor"]
 
 [[bin]]
 name = "ultar-web-filter"
@@ -34,7 +43,7 @@ encoding_rs = "0.8"
 # Sound and video of pages (media::): audio decoders in pure Rust (MP3, AAC, FLAC, Vorbis, WAV in
 # MP4/M4A, Ogg, Matroska/WebM, WAV), the MP4 container in pure Rust, H.264 by OpenH264 (BSD,
 # built from source and linked statically).
-ultar-tor = { path = "../../platform/ultar-tor" }
+ultar-tor = { path = "../../platform/ultar-tor", optional = true }
 ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "mkv"] }
 mp4 = "0.14"

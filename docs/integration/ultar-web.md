@@ -70,9 +70,10 @@ findings that are already on the base commit (`kernel/ultar-kern/src/{main,selft
 
 ## 5. Not done / open
 
-- **Engine:** no real web engine is built (owner's decision). `RemoteEngine` speaks the protocol
-  but there is no host program yet; `bin/ultar-web` fails with "engine host could not start" until
-  it exists. The test engine is the only engine.
+- **Engine (28.11.2026):** the full engine is **Servo** – host program `external/servo-host`
+  (`ultar-web-engine`), see `docs/integration/servo-engine.md`. `bin/ultar-web` starts Tor first and
+  gives the host Tor's HTTP `CONNECT` port; without the host (or when it refuses, e.g. with a cell) the
+  reader engine shows pages. The WPE plan of §6 is no longer followed.
 - **Menu button:** the board has no menu button; the menu is reachable by keyboard and secondary
   click. Proposal for the boards: a `browser.menu` icon button at the end of the toolbar.
 - **Permission prompt** is the browser's own modal dialog. A system-wide prompt (`Role::SystemDialog`)
@@ -84,10 +85,10 @@ findings that are already on the base commit (`kernel/ultar-kern/src/{main,selft
 - Not tested on a real display/compositor session, not on aarch64, not on the Ultar kernel.
 - `scripts/build-ultar-web.sh` and `tools/ultar-web-br/` still describe the old in-process WPE
   build; they are rewritten with the engine project (§6).
-- DESKTOP-SPEC §11 names Servo as the engine; the owner asked for WPE behind the trait. Both fit
-  `trait WebEngine`; the decision belongs in the spec.
+- DESKTOP-SPEC §11 names Servo as the engine; on 2026-11-28 the owner asked for the full browser with
+  Servo – decided, built (`external/servo-host`).
 
-## 6. Plan: the WPE WebKit engine (separate project)
+## 6. Former plan: the WPE WebKit engine (replaced by Servo on 28.11.2026, kept for reference)
 
 1. **Runtime** (`tools/ultar-web-br`, Buildroot 2026.08.2, WPE WebKit 2.54.3 with WPEPlatform,
    CPU rendering via patch 0002): add `ultar_x86_64_defconfig` (x86-64-v2, kernel headers 5.10,
