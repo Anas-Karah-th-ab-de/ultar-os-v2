@@ -1,172 +1,117 @@
-//! The word processor window: a tool bar (new, save, undo/redo, formatting, lists, direction,
-//! alignment, table, find), the document drawn by [`TextView`] over the wrapped flat view, a
-//! status line (word count, zoom, message) and three dialogs: "save changes?", the name of a
-//! new document and find/replace. Three layout classes (compact, medium, wide) select which
-//! buttons appear; the page stays white, the window dark or light.
+//! The word processor window: a tool bar (three layout classes), the document drawn by
+//! [`Artist`] over a [`Layout`] (paper pages or a flowing column), a status line (name, page,
+//! words, zoom, message) and the dialogs of [`crate::dialogs`]. The window around the
+//! document follows the theme; the paper stays white.
 
-use crate::state::{Doc, DocError, FlatView, MIN_CHARS};
-use crate::{keys, place};
+use crate::action::{AgentResult, Out};
+use crate::commands::{self, Class, Cmd};
+use crate::dialogs::{Ask, Nodes};
+use crate::layout::{build, Geo, Layout, ParaCache};
+use crate::paint::{paper_x, Artist, Marks}; // physical
+use crate::place;
+use crate::pointer::PointerState;
+use crate::recovery::{self, Timer};
+use crate::search::Find;
+use crate::state::{Doc, DocError};
 use std::collections::HashMap;
-use std::path::PathBuf;
-use ultar_textview::{Marks, Pos, TextView, ViewError};
-use ultar_ui::event::{Action, ActionKind, Event, PointerButton};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use ultar_office::doc::Block;
+use ultar_ui::event::{Action, ActionKind};
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
 use ultar_ui::tokens::{ColorRole, Space};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{Button, ButtonVariant, Dialog, Label, PixelArea, Text, TextField};
+use ultar_ui::widgets::{Button, ButtonVariant, Label, PixelArea, Text};
 
-/// What the window has to do for the app.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Out {
-    Copy(String),
-    Paste,
-    Title(String),
-    Close,
+/// What the window remembers so that it need not do work twice: the laid out paragraphs, the
+/// key of the layout, the formatting at the caret, the word count and the view mode.
+pub(crate) struct Memo {
+    pub(crate) cache: ParaCache,
+    pub(crate) lay_key: Option<(u64, Geo)>,
+    pub(crate) fmt_key: u64,
+    pub(crate) words: (u64, usize),
+    pub(crate) auto_view: bool,
 }
 
-/// An open question.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Ask {
-    Unsaved { then_close: bool },
-    Name { then_close: bool },
-    Find,
-}
-
-/// One toolbar command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Cmd {
-    New,
-    Save,
-    SaveAs,
-    Undo,
-    Redo,
-    Bold,
-    Italic,
-    Underline,
-    Strike,
-    Title,
-    H1,
-    H2,
-    H3,
-    Normal,
-    AlignStart,
-    AlignCenter,
-    AlignEnd,
-    AlignJustify,
-    DirRtl,
-    DirLtr,
-    Bullet,
-    Number,
-    Indent,
-    Outdent,
-    Table,
-    RowAdd,
-    RowDel,
-    ColAdd,
-    ColDel,
-    ZoomIn,
-    ZoomOut,
-    PageToggle,
-    Find,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Class {
-    Compact,
-    Medium,
-    Wide,
-}
-
-fn class(w: f32) -> Class {
-    if w < 480.0 {
-        Class::Compact
-    } else if w < 800.0 {
-        Class::Medium
-    } else {
-        Class::Wide
+impl Default for Memo {
+    fn default() -> Memo {
+        Memo {
+            cache: ParaCache::default(),
+            lay_key: None,
+            fmt_key: 0,
+            words: (u64::MAX, 0),
+            auto_view: true,
+        }
     }
 }
 
-fn commands(cls: Class) -> &'static [Cmd] {
-    use Cmd::*;
-    match cls {
-        Class::Compact => &[
-            New, Save, Undo, Redo, Bold, Italic, Underline, Bullet, Number, DirRtl, DirLtr, Find,
-        ],
-        Class::Medium => &[
-            New, Save, Undo, Redo, Bold, Italic, Underline, Strike, Title, H1, H2, H3, AlignStart,
-            AlignCenter, AlignEnd, Bullet, Number, DirRtl, DirLtr, Indent, Outdent, Find, ZoomIn,
-            ZoomOut,
-        ],
-        Class::Wide => &[
-            New, Save, SaveAs, Undo, Redo, Bold, Italic, Underline, Strike, Title, H1, H2, H3,
-            Normal, AlignStart, AlignCenter, AlignEnd, AlignJustify, Bullet, Number, DirRtl, DirLtr,
-            Indent, Outdent, Table, RowAdd, RowDel, ColAdd, ColDel, ZoomIn, ZoomOut, PageToggle, Find,
-        ],
-    }
-}
-
+/// What goes out of the window and what waits to be sent: events for the shell, the
+/// assistant's answers, the autosave timer and the app's own clipboard.
 #[derive(Default)]
-struct Nodes {
-    text: Option<NodeId>,
-    status: Option<NodeId>,
-    dialog: Option<NodeId>,
-    name_field: Option<NodeId>,
-    find_field: Option<NodeId>,
-    replace_field: Option<NodeId>,
-    ask_save: Option<NodeId>,
-    ask_discard: Option<NodeId>,
-    ask_cancel: Option<NodeId>,
+pub(crate) struct Io {
+    pub(crate) timer: Timer,
+    pub(crate) out: Vec<Out>,
+    pub(crate) agent_results: Vec<AgentResult>,
+    pub(crate) rich: Option<(String, Vec<Block>)>,
 }
 
-/// The word processor: its tree, its document and its text view.
+/// The state of the pointer and of vertical caret movement.
+#[derive(Default)]
+pub(crate) struct Inp {
+    pub(crate) goal_x: Option<f32>,
+    pub(crate) pointer_state: PointerState,
+}
+
+/// The word processor: its tree, its document, its layout and its pictures.
 pub struct App {
     pub ui: Ui,
     pub doc: Doc,
-    view: TextView,
-    flat: FlatView,
-    areas: PathBuf,
-    open_uri: Option<String>,
-    nodes: Nodes,
+    pub(crate) artist: Artist,
+    pub lay: Option<Layout>,
+    pub scroll: (f32, f32),
+    pub areas: PathBuf,
+    pub(crate) open_uri: Option<String>,
+    pub nodes: Nodes,
     cmds: HashMap<Cmd, NodeId>,
-    ask: Option<Ask>,
-    message: Option<Label>,
-    selecting: bool,
-    out: Vec<Out>,
+    pub ask: Option<Ask>,
+    pub message: Option<Label>,
+    pub find: Find,
+    pub(crate) memo: Memo,
+    pub(crate) io: Io,
+    pub(crate) inp: Inp,
 }
 
 impl App {
-    /// A word processor over `ui` for `doc`; `areas` is where the user's places are bound.
-    pub fn new(
-        ui: Ui,
-        doc: Doc,
-        areas: PathBuf,
-        open_uri: Option<String>,
-    ) -> Result<App, ViewError> {
-        let view = TextView::new(*ui.env(), false)?;
-        let flat = doc.flatten(60);
-        let mut e = App {
+    /// A word processor over `ui` for `doc`; `areas` is where the user's places are bound and
+    /// `open_uri` the `files://` address `doc` was opened from.
+    pub fn new(ui: Ui, doc: Doc, areas: PathBuf, open_uri: Option<String>) -> Result<App, String> {
+        let artist = Artist::new().map_err(|e| format!("fonts: {e:?}"))?;
+        let mut app = App {
             ui,
             doc,
-            view,
-            flat,
+            artist,
+            lay: None,
+            scroll: (0.0, 0.0),
             areas,
             open_uri,
             nodes: Nodes::default(),
             cmds: HashMap::new(),
             ask: None,
             message: None,
-            selecting: false,
-            out: Vec::new(),
+            find: Find::default(),
+            memo: Memo::default(),
+            io: Io::default(),
+            inp: Inp::default(),
         };
-        e.rebuild().map_err(|err| ViewError(format!("{err:?}")))?;
-        let title = e.title();
-        e.out.push(Out::Title(title));
-        Ok(e)
+        app.first_question();
+        app.rebuild().map_err(|e| format!("{e:?}"))?;
+        let title = app.title();
+        app.io.out.push(Out::Title(title));
+        Ok(app)
     }
 
-    /// Opens `uri` (a `files://` URI) or starts a new document.
-    pub fn open(uri: Option<&str>, areas: &std::path::Path) -> (Doc, Option<DocError>) {
+    /// Opens `uri` (a `files://` URI) or starts a new document; the error says why not.
+    pub fn open(uri: Option<&str>, areas: &Path) -> (Doc, Option<DocError>) {
         let Some(uri) = uri else {
             return (Doc::new(), None);
         };
@@ -179,17 +124,20 @@ impl App {
         }
     }
 
-    /// Says in the status line why the file did not open.
-    pub fn open_failed(&mut self, e: DocError) -> Result<(), UiError> {
-        let tr = self.ui.translator();
-        let why = tr.t(e.key()).into_owned();
-        let message = Label::key_with("doc.open_failed", &[("reason", &why)]);
-        self.say(message)
+    /// The first question of a new window: a crashed session's copy, else the warning about
+    /// parts of the file that cannot be kept.
+    fn first_question(&mut self) {
+        if let Some(copy) = recovery::pending(self.doc.path.as_deref(), &self.areas) {
+            self.ask = Some(Ask::Recover { copy });
+        } else if !self.doc.lossy.is_empty() {
+            self.ask = Some(Ask::Lossy);
+        }
     }
 
-    fn reason(&self, key: &'static str, name: &str, e: DocError) -> Label {
+    /// Says in the status line why the file did not open.
+    pub fn open_failed(&mut self, e: DocError) -> Result<(), UiError> {
         let why = self.ui.translator().t(e.key()).into_owned();
-        Label::key_with(key, &[("name", name), ("reason", &why)])
+        self.say(Label::key_with("doc.open_failed", &[("reason", &why)]))
     }
 
     /// Shows `message` in the status line.
@@ -205,631 +153,429 @@ impl App {
             .doc
             .name()
             .unwrap_or_else(|| tr.t("doc.untitled").into_owned());
-        let dot = if self.doc.dirty() { "• " } else { "" };
-        format!("{dot}{name} – {}", tr.t("app.doc.name"))
+        let dot = if self.doc.dirty() { "\u{2022} " } else { "" };
+        format!("{dot}{name} \u{2013} {}", tr.t("app.doc.name"))
+    }
+
+    pub(crate) fn touch_title(&mut self) {
+        let title = self.title();
+        self.io.out.push(Out::Title(title));
     }
 
     /// What the window has to do (taken once).
     pub fn take_out(&mut self) -> Vec<Out> {
-        std::mem::take(&mut self.out)
+        std::mem::take(&mut self.io.out)
     }
 
-    /// The URI the document was opened from (for the device mesh), with its place fragment.
+    /// The `files://` address of the open document without a place.
     pub fn open_uri(&self) -> Option<&str> {
         self.open_uri.as_deref()
     }
 
+    /// The address for the device mesh: the document and the block the caret is in
+    /// (`files://<area>/<file>#b<block>`).
+    pub fn mesh_uri(&self) -> Option<String> {
+        let base = match (&self.doc.path, &self.open_uri) {
+            (Some(p), _) => place::uri_of(p, &self.areas)?,
+            (None, Some(u)) => u.split('#').next()?.to_owned(),
+            _ => return None,
+        };
+        Some(format!("{base}#b{}", self.doc.cursor.block))
+    }
+
+    /// The tool bar button of a command (none when this layout class does not show it).
+    pub fn command_node(&self, cmd: Cmd) -> Option<NodeId> {
+        self.cmds.get(&cmd).copied()
+    }
+
+    /// The text has the keyboard (the window routes keys to it only then).
+    pub fn text_focused(&self) -> bool {
+        self.ask.is_none() && self.ui.focused().is_some() && self.ui.focused() == self.nodes.text
+    }
+
+    // ---- the tree ----------------------------------------------------------
+
     /// Builds the whole tree (also after a size change).
     pub fn rebuild(&mut self) -> Result<(), UiError> {
         self.nodes = Nodes::default();
-        let cls = class(self.ui.size().w);
-        let mut cmds_new = HashMap::new();
-        {
-            let ui = &mut self.ui;
-            ui.clear();
-            ui.set_root_flex(Flex::column().cross(CrossAlign::Stretch));
-            let root = ui.root();
-            let bar = ui.add(
-                root,
-                Flex::row()
-                    .gap(Space::S4)
-                    .padding(Padding::all(Space::S8))
-                    .cross(CrossAlign::Center),
-            )?;
-            for cmd in commands(cls) {
-                let key = cmd_key(*cmd);
-                let btn = if matches!(cmd, Cmd::Save) {
-                    Button::new(Label::key(key))
-                } else {
-                    Button::new(Label::key(key)).variant(ButtonVariant::Plain)
-                };
-                let id = ui.add(bar, btn)?;
-                cmds_new.insert(*cmd, id);
-            }
-            let name = self
-                .doc
-                .name()
-                .map_or_else(|| Label::key("doc.untitled"), |n| Label::data(&n));
-            let _title = ui.add_sized(
-                bar,
-                Text::new(name).color(ColorRole::TextMuted),
-                Sizing::grow(1),
-            )?;
-            let text = ui.add_sized(
-                root,
-                PixelArea::new(Label::key("doc.text")),
-                Sizing::grow(1),
-            )?;
-            self.nodes.text = Some(text);
-            self.nodes.status = Some(ui.add(
-                root,
-                Flex::row().padding(Padding::all(Space::S4)).main(MainAlign::Start),
-            )?);
-            self.nodes.status = Some(
-                ui.add(
-                    self.nodes.status.unwrap_or(root),
-                    Text::new(Label::data("")).color(ColorRole::TextMuted),
-                )?,
-            );
+        let class = Class::of(self.ui.size().w);
+        if self.memo.auto_view && self.ui.size().w > 8.0 {
+            self.memo.auto_view = false;
+            self.doc.page_view = class != Class::Compact;
         }
-        self.cmds = cmds_new;
+        self.cmds.clear();
+        self.ui.clear();
+        self.ui
+            .set_root_flex(Flex::column().cross(CrossAlign::Stretch));
+        let root = self.ui.root();
+        let bar = self.ui.add(
+            root,
+            Flex::row()
+                .gap(Space::S4)
+                .padding(Padding::all(Space::S8))
+                .cross(CrossAlign::Center)
+                .wrap(),
+        )?;
+        for cmd in commands::shown(class) {
+            let on = self.doc.is_on(cmd);
+            let mut b = Button::new(Label::key(commands::key(cmd))).toggled(on);
+            if cmd == Cmd::Save {
+                b = b.variant(ButtonVariant::Primary);
+            } else {
+                b = b.variant(ButtonVariant::Plain);
+            }
+            let id = self.ui.add(bar, b)?;
+            self.cmds.insert(cmd, id);
+        }
+        let text = self.ui.add_sized(
+            root,
+            PixelArea::new(Label::key("doc.text")),
+            Sizing::grow(1),
+        )?;
+        self.nodes.text = Some(text);
+        let row = self.ui.add(
+            root,
+            Flex::row()
+                .padding(Padding::all(Space::S4))
+                .main(MainAlign::Start),
+        )?;
+        self.nodes.status = Some(
+            self.ui
+                .add(row, Text::new(Label::data("")).color(ColorRole::TextMuted))?,
+        );
         self.build_dialog()?;
         if self.ask.is_none() {
-            let text = self.nodes.text;
-            if let Some(t) = text {
-                let _ = self.ui.focus(t);
-            }
+            let _ = self.ui.focus(text);
         }
+        self.memo.fmt_key = self.doc.format_key();
         self.buttons()?;
+        self.memo.lay_key = None;
         self.status()?;
-        self.refresh()
-    }
-
-    fn build_dialog(&mut self) -> Result<(), UiError> {
-        let Some(ask) = self.ask else {
-            return Ok(());
-        };
-        let root = self.ui.root();
-        let name = self
-            .doc
-            .name()
-            .unwrap_or_else(|| self.ui.translator().t("doc.untitled").into_owned());
-        let title = match ask {
-            Ask::Unsaved { .. } => Label::key_with("doc.ask.title", &[("name", &name)]),
-            Ask::Name { .. } => Label::key("doc.name.title"),
-            Ask::Find => Label::key("doc.find.title"),
-        };
-        let dialog = self.ui.add(root, Dialog::new(title))?;
-        self.nodes.dialog = Some(dialog);
-        match ask {
-            Ask::Unsaved { .. } => {
-                self.ui.add(dialog, Text::new(Label::key("doc.ask.message")).color(ColorRole::TextMuted))?;
-            }
-            Ask::Name { .. } => {
-                let field = TextField::new(Label::key("doc.name.field")).labelled();
-                self.nodes.name_field = Some(self.ui.add(dialog, field)?);
-            }
-            Ask::Find => {
-                let find = TextField::new(Label::key("doc.find.field")).labelled();
-                self.nodes.find_field = Some(self.ui.add(dialog, find)?);
-                let repl = TextField::new(Label::key("doc.replace.field")).labelled();
-                self.nodes.replace_field = Some(self.ui.add(dialog, repl)?);
-            }
-        }
-        let row = self.ui.add(dialog, Flex::row().gap(Space::S8).main(MainAlign::End))?;
-        let cancel = self.ui.add(row, Button::new(Label::key("doc.ask.cancel")).variant(ButtonVariant::Plain))?;
-        self.nodes.ask_cancel = Some(cancel);
-        if matches!(ask, Ask::Unsaved { .. }) {
-            self.nodes.ask_discard = Some(self.ui.add(row, Button::new(Label::key("doc.ask.discard")).variant(ButtonVariant::Danger))?);
-        }
-        let ok_key = match ask {
-            Ask::Unsaved { .. } => "doc.ask.save",
-            Ask::Name { .. } => "doc.name.ok",
-            Ask::Find => "doc.find.ok",
-        };
-        let ok = self.ui.add(row, Button::new(Label::key(ok_key)))?;
-        self.nodes.ask_save = Some(ok);
-        self.ui.set_default_action(dialog, Some(ok))?;
-        self.ui.open_dialog(dialog)?;
-        if let Some(field) = self.nodes.name_field.or(self.nodes.find_field) {
-            self.ui.focus(field)?;
-        }
-        Ok(())
+        self.draw()
     }
 
     fn buttons(&mut self) -> Result<(), UiError> {
-        for cmd in [Cmd::Undo, Cmd::Redo] {
+        for (cmd, off) in [
+            (Cmd::Undo, !self.doc.can_undo()),
+            (Cmd::Redo, !self.doc.can_redo()),
+        ] {
             if let Some(&n) = self.cmds.get(&cmd) {
-                let off = if cmd == Cmd::Undo { !self.doc.can_undo() } else { !self.doc.can_redo() };
                 self.ui.set_disabled(n, off)?;
             }
         }
         Ok(())
     }
 
-    fn status(&mut self) -> Result<(), UiError> {
+    pub(crate) fn status(&mut self) -> Result<(), UiError> {
         let Some(node) = self.nodes.status else {
             return Ok(());
         };
+        if self.memo.words.0 != self.doc.revision() {
+            self.memo.words = (self.doc.revision(), self.doc.document.word_count());
+        }
+        let page = self
+            .lay
+            .as_ref()
+            .and_then(|l| l.caret(&self.doc.cursor))
+            .map_or(1, |c| c.page + 1);
+        let pages = self.lay.as_ref().map_or(1, |l| l.pages.len());
         let tr = self.ui.translator();
-        let words = self.doc.document.word_count();
+        let name = self
+            .doc
+            .name()
+            .unwrap_or_else(|| tr.t("doc.untitled").into_owned());
         let zoom = (self.doc.zoom * 100.0).round() as u32;
-        let place = Label::key_with(
+        let (w, z, p, n) = (
+            self.memo.words.1.to_string(),
+            zoom.to_string(),
+            page.to_string(),
+            pages.to_string(),
+        );
+        let mut text = Label::key_with(
             "doc.status",
-            &[("words", &words.to_string()), ("zoom", &zoom.to_string())],
+            &[
+                ("name", &name),
+                ("page", &p),
+                ("pages", &n),
+                ("words", &w),
+                ("zoom", &z),
+            ],
         )
         .resolve(tr)
         .into_owned();
-        let mut text = place;
         if self.doc.dirty() {
             text.push(' ');
-            text.push_str(&tr.t("doc.dirty").into_owned());
+            text.push_str(&tr.t("doc.dirty"));
         }
         if let Some(m) = &self.message {
-            text.push_str("  ·  ");
+            text.push_str("  \u{b7}  ");
             text.push_str(&m.resolve(tr));
         }
         self.ui.set_label(node, Label::data(&text))
     }
 
-    fn refresh(&mut self) -> Result<(), UiError> {
-        let chars = self.max_chars();
-        self.flat = self.doc.flatten(chars);
-        self.draw_text()
-    }
+    // ---- layout and drawing ------------------------------------------------
 
-    fn max_chars(&self) -> usize {
-        let Some(node) = self.nodes.text else {
-            return 60;
-        };
-        let rect = self.ui.rect(node);
-        let scale = self.ui.env().scale;
-        let w = rect.map_or(800.0, |r| r.w * scale);
-        // ~8 device pixels per Latin character at the body size
-        let chars = (w / 8.0 / self.doc.zoom).max(MIN_CHARS as f32) as usize;
-        chars.max(8)
-    }
-
-    fn text_size(&mut self) -> Option<(u32, u32)> {
+    /// The size of the document area in device pixels.
+    pub(crate) fn view_size(&mut self) -> (f32, f32) {
         self.ui.layout();
-        let rect = self.ui.rect(self.nodes.text?)?;
         let s = self.ui.env().scale;
-        let (w, h) = ((rect.w * s).round(), (rect.h * s).round());
-        (w >= 1.0 && h >= 1.0).then_some((w as u32, h as u32))
+        self.nodes
+            .text
+            .and_then(|n| self.ui.rect(n))
+            .map_or((800.0, 600.0), |r| {
+                ((r.w * s).round().max(1.0), (r.h * s).round().max(1.0))
+            })
     }
 
-    /// Draws the visible text into the picture.
-    pub fn draw_text(&mut self) -> Result<(), UiError> {
-        let (Some(node), Some((w, h))) = (self.nodes.text, self.text_size()) else {
+    pub(crate) fn lay_line_h(&self) -> f32 {
+        self.lay
+            .as_ref()
+            .and_then(|l| l.placed.first())
+            .map_or(20.0, |p| p.line().h)
+    }
+
+    /// Lays the document out again if it, the zoom or the width changed.
+    pub(crate) fn ensure_layout(&mut self) {
+        let (w, _) = self.view_size();
+        let geo = Geo {
+            page_view: self.doc.page_view,
+            view_w: w,
+            scale: self.ui.env().scale,
+            zoom: self.doc.zoom,
+        };
+        let key = (self.doc.revision(), geo);
+        if self.lay.is_some() && self.memo.lay_key == Some(key) {
+            return;
+        }
+        self.lay = Some(build(
+            &self.doc.document,
+            &geo,
+            &mut self.artist.eng,
+            &mut self.memo.cache,
+        ));
+        self.memo.lay_key = Some(key);
+    }
+
+    pub(crate) fn clamp_scroll(&mut self) {
+        let (w, h) = self.view_size();
+        let Some(lay) = &self.lay else {
+            return;
+        };
+        let max_y = (lay.height - h).max(0.0);
+        let max_x = (lay.paper_w - w).max(0.0);
+        self.scroll = (
+            self.scroll.0.clamp(0.0, max_x),
+            self.scroll.1.clamp(0.0, max_y),
+        );
+    }
+
+    /// Scrolls so that the caret is in view.
+    pub(crate) fn reveal(&mut self) {
+        self.ensure_layout();
+        let (w, h) = self.view_size();
+        let Some(c) = self.lay.as_ref().and_then(|l| l.caret(&self.doc.cursor)) else {
+            return;
+        };
+        let margin = (self.lay_line_h() * 1.5).min(h / 4.0);
+        if c.y < self.scroll.1 + margin {
+            self.scroll.1 = c.y - margin;
+        } else if c.y + c.h > self.scroll.1 + h - margin {
+            self.scroll.1 = c.y + c.h - h + margin;
+        }
+        if c.x < self.scroll.0 + 8.0 {
+            self.scroll.0 = c.x - 8.0;
+        } else if c.x > self.scroll.0 + w - 8.0 {
+            self.scroll.0 = c.x - w + 8.0;
+        }
+        self.clamp_scroll();
+    }
+
+    fn marks(&self, lay: &Layout) -> Marks {
+        let mut m = Marks {
+            caret: lay.caret(&self.doc.cursor),
+            ..Marks::default()
+        };
+        if let Some((a, b)) = self.doc.selection() {
+            m.selection = lay.selection_rects(&a, &b);
+        }
+        if self.ask == Some(Ask::Find) {
+            for (i, (a, b, current)) in self.find.marks().take(400).enumerate() {
+                let rects = lay.selection_rects(&a, &b);
+                if current {
+                    m.current = rects.first().copied();
+                } else {
+                    m.found.extend(rects);
+                }
+                let _ = i;
+            }
+        }
+        m
+    }
+
+    /// Draws the visible part of the document into the picture.
+    pub fn draw(&mut self) -> Result<(), UiError> {
+        let Some(node) = self.nodes.text else {
             return Ok(());
         };
-        self.view.set_env(*self.ui.env());
-        let marks = self.marks();
-        let frame = self
-            .view
-            .render(w, h, &self.flat, &marks)
-            .map_err(|_| UiError::InvalidSize)?;
-        self.ui.set_picture(node, frame)
+        self.ensure_layout();
+        self.clamp_scroll();
+        let (w, h) = self.view_size();
+        let Some(lay) = self.lay.take() else {
+            return Ok(());
+        };
+        let marks = self.marks(&lay);
+        let label = self.ui.translator().t("doc.picture.shown").into_owned();
+        let frame = self.artist.render(
+            &self.doc.document,
+            &lay,
+            (w as u32, h as u32),
+            self.scroll,
+            self.ui.env(),
+            &marks,
+            &label,
+        );
+        self.lay = Some(lay);
+        self.ui
+            .set_picture(node, frame.map_err(|_| UiError::InvalidSize)?)
     }
 
-    /// The caret and selection as flat positions.
-    fn marks(&self) -> Marks {
-        Marks {
-            caret: self.caret_pos(),
-            selection: self.selection_pos(),
+    /// The paper's left edge in the view (for tests and hit testing).
+    pub fn paper_x(&mut self) -> f32 {
+        self.ensure_layout();
+        let (w, _) = self.view_size();
+        self.lay
+            .as_ref()
+            .map_or(0.0, |l| paper_x(l, w, self.scroll.0)) // physical
+    }
+
+    // ---- after changes -----------------------------------------------------
+
+    /// The document changed: title, tool bar state, caret in view, redraw.
+    pub(crate) fn changed(&mut self) -> Result<(), UiError> {
+        self.message = None;
+        self.touch_title();
+        if self.ask == Some(Ask::Find) || !self.find.hits.is_empty() {
+            self.find.run(&self.doc);
         }
+        self.moved()
     }
 
-    fn caret_pos(&self) -> Option<Pos> {
-        let c = self.doc.cursor;
-        let line = self.flat.lines.iter().position(|l| {
-            l.block == c.block
-                && l.cell == c.cell
-                && c.ch >= l.start
-                && c.ch <= l.start + l.text.chars().count()
-        })?;
-        let byte = self.doc.byte_in(&self.flat, c)?;
-        Some(Pos::new(line, byte))
+    /// The caret was moved from outside (a hand-off to a place): scroll to it and redraw.
+    pub fn show_caret(&mut self) -> Result<(), UiError> {
+        self.moved()
     }
 
-    fn selection_pos(&self) -> Option<(Pos, Pos)> {
-        let (a, b) = self.doc.selection()?;
-        let la = self.flat.lines.iter().position(|l| l.block == a.block && l.cell == a.cell && a.ch >= l.start && a.ch <= l.start + l.text.chars().count())?;
-        let lb = self.flat.lines.iter().position(|l| l.block == b.block && l.cell == b.cell && b.ch >= l.start && b.ch <= l.start + l.text.chars().count())?;
-        Some((
-            Pos::new(la, self.doc.byte_in(&self.flat, a)?),
-            Pos::new(lb, self.doc.byte_in(&self.flat, b)?),
-        ))
-    }
-
-    fn rows(&mut self) -> usize {
-        let h = self.text_size().map_or(1, |s| s.1);
-        self.view.rows(h)
-    }
-
-    fn after(&mut self, effect: keys::Effect) -> Result<(), UiError> {
-        match effect {
-            keys::Effect::None => return Ok(()),
-            keys::Effect::Copy(text) => self.out.push(Out::Copy(text)),
-            keys::Effect::Paste => self.out.push(Out::Paste),
-            keys::Effect::Save => return self.save(false),
-            keys::Effect::New => return self.new_doc(),
-            keys::Effect::Changed => {
-                self.message = None;
-                let title = self.title();
-                self.out.push(Out::Title(title));
-            }
-            keys::Effect::Moved => {}
-        }
-        if let Some(pos) = self.caret_pos() {
-            let rows = self.rows();
-            self.view.reveal(pos.line, rows);
+    /// The caret moved (or the document changed).
+    pub(crate) fn moved(&mut self) -> Result<(), UiError> {
+        self.ensure_layout();
+        self.reveal();
+        if self.ask.is_none() && self.memo.fmt_key != self.doc.format_key() {
+            return self.rebuild();
         }
         self.buttons()?;
         self.status()?;
-        self.refresh()
+        self.draw()
     }
 
-    /// A key the widgets did not use.
-    pub fn key(&mut self, event: Event) -> Result<(), UiError> {
-        if self.ask.is_some() {
-            return Ok(());
+    pub(crate) fn zoom(&mut self, factor: f32) {
+        self.doc.zoom =
+            (self.doc.zoom * factor).clamp(crate::state::ZOOM_MIN, crate::state::ZOOM_MAX);
+        self.memo.lay_key = None;
+    }
+
+    // ---- files -------------------------------------------------------------
+
+    /// Puts `doc` in the window (a new document, or one the assistant opened).
+    pub(crate) fn install(&mut self, doc: Doc, uri: Option<String>) -> Result<(), UiError> {
+        recovery::remove(self.doc.path.as_deref(), &self.areas);
+        self.doc = doc;
+        self.open_uri = uri;
+        self.io.timer.reset();
+        self.scroll = (0.0, 0.0);
+        self.message = None;
+        self.find = Find::default();
+        self.memo.auto_view = true;
+        self.first_question();
+        self.touch_title();
+        self.rebuild()
+    }
+
+    pub(crate) fn new_doc(&mut self) -> Result<(), UiError> {
+        if self.doc.dirty() {
+            return self.ask_for(Ask::Unsaved { then_close: false });
         }
-        let Event::Key { key, modifiers } = event else {
-            return Ok(());
-        };
-        let rtl = self
-            .flat
-            .lines
-            .iter()
-            .find(|l| l.block == self.doc.cursor.block && l.cell == self.doc.cursor.cell)
-            .map_or(false, |l| l.rtl);
-        let effect = keys::apply(&mut self.doc, key, modifiers, rtl);
-        self.after(effect)
+        self.reset_doc()
     }
 
-    /// Clipboard text that arrived.
-    pub fn pasted(&mut self, text: &str) -> Result<(), UiError> {
-        if self.ask.is_some() {
-            return Ok(());
+    pub(crate) fn reset_doc(&mut self) -> Result<(), UiError> {
+        self.install(Doc::new(), None)
+    }
+
+    pub(crate) fn save(&mut self, then_close: bool) -> Result<(), UiError> {
+        if !self.doc.saves_in_place() {
+            return self.ask_for(Ask::Name {
+                then_close,
+                purpose: crate::dialogs::Purpose::Save,
+            });
         }
-        let effect = keys::paste(&mut self.doc, text);
-        self.after(effect)
-    }
-
-    pub fn text_focused(&self) -> bool {
-        self.ask.is_none() && self.ui.focused().is_some() && self.ui.focused() == self.nodes.text
-    }
-
-    /// A pointer event (the widgets saw it too): caret, selection and scrolling.
-    pub fn pointer(&mut self, event: Event) -> Result<(), UiError> {
-        if self.ask.is_some() {
-            return Ok(());
-        }
-        let Some(node) = self.nodes.text else {
-            return Ok(());
-        };
-        let (pos, down) = match event {
-            Event::PointerDown { pos, button: PointerButton::Primary } => (pos, true),
-            Event::PointerMove { pos } if self.selecting => (pos, false),
-            Event::PointerUp { .. } => {
-                self.selecting = false;
-                return Ok(());
-            }
-            Event::Scroll { pos, lines } => {
-                if self.ui.rect(node).is_some_and(|r| r.contains(pos)) {
-                    let total = self.flat.lines.len();
-                    let rows = self.rows();
-                    self.view.scroll(lines.round() as isize * 3, total, rows);
-                    self.draw_text()?;
+        let name = self.doc.name().unwrap_or_default();
+        let kept = !self.doc.lossy.is_empty();
+        match self.doc.save() {
+            Ok(()) => {
+                recovery::remove(self.doc.path.as_deref(), &self.areas);
+                self.io.timer.reset();
+                self.message = Some(if kept {
+                    Label::key_with("doc.saved_kept", &[("name", &name)])
+                } else {
+                    Label::key_with("doc.saved", &[("name", &name)])
+                });
+                self.touch_title();
+                if then_close {
+                    self.io.out.push(Out::Close);
                 }
-                return Ok(());
             }
-            _ => return Ok(()),
-        };
-        let Some(rect) = self.ui.rect(node) else {
-            return Ok(());
-        };
-        if down && !rect.contains(pos) {
-            return Ok(());
+            Err(e) => self.message = Some(self.reason("doc.save_failed", &name, e)),
         }
-        let s = self.ui.env().scale;
-        let width = (rect.w * s).round().max(1.0) as u32;
-        let at = self.view.hit(width, (pos.x - rect.x) * s, (pos.y - rect.y) * s, &self.flat);
-        let c = self.doc.cursor_at(&self.flat, at.line, at.byte);
-        if down {
-            self.doc.anchor = Some(c);
-            self.selecting = true;
-            let _ = self.ui.focus(node);
-        }
-        self.doc.cursor = c;
-        self.after(keys::Effect::Moved)
+        self.rebuild()
+    }
+
+    pub(crate) fn reason(&self, key: &'static str, name: &str, e: DocError) -> Label {
+        let why = self.ui.translator().t(e.key()).into_owned();
+        Label::key_with(key, &[("name", name), ("reason", &why)])
     }
 
     /// The window was asked to close.
     pub fn close_requested(&mut self) -> Result<(), UiError> {
         if !self.doc.dirty() {
-            self.out.push(Out::Close);
+            recovery::remove(self.doc.path.as_deref(), &self.areas);
+            self.io.out.push(Out::Close);
             return Ok(());
         }
-        if self.ask.is_none() {
-            self.ask = Some(Ask::Unsaved { then_close: true });
-            self.rebuild()?;
+        if !matches!(self.ask, Some(Ask::Unsaved { .. })) {
+            self.ask_for(Ask::Unsaved { then_close: true })?;
         }
         Ok(())
     }
 
-    fn new_doc(&mut self) -> Result<(), UiError> {
-        if self.doc.dirty() {
-            self.ask = Some(Ask::Unsaved { then_close: false });
-            return self.rebuild();
-        }
-        self.reset_doc()
-    }
-
-    fn reset_doc(&mut self) -> Result<(), UiError> {
-        self.doc = Doc::new();
-        self.flat = self.doc.flatten(self.max_chars());
-        self.view.first = 0;
-        self.message = None;
-        let title = self.title();
-        self.out.push(Out::Title(title));
-        self.rebuild()
-    }
-
-    fn save(&mut self, then_close: bool) -> Result<(), UiError> {
-        if self.doc.path.is_none() {
-            self.ask = Some(Ask::Name { then_close });
-            return self.rebuild();
-        }
-        let name = self.doc.name().unwrap_or_default();
-        match self.doc.save() {
-            Ok(()) => {
-                self.message = Some(Label::key_with("doc.saved", &[("name", &name)]));
-                let title = self.title();
-                self.out.push(Out::Title(title));
-                if then_close {
-                    self.out.push(Out::Close);
-                }
-            }
-            Err(e) => self.message = Some(self.reason("doc.save_failed", &name, e)),
-        }
-        self.status()
-    }
-
-    fn save_named(&mut self, then_close: bool) -> Result<(), UiError> {
-        let name = self
-            .nodes
-            .name_field
-            .and_then(|f| self.ui.text(f).ok())
-            .unwrap_or_default()
-            .to_owned();
-        let result = place::new_path(&name, &self.areas)
-            .ok_or(DocError::BadName)
-            .and_then(|p| self.doc.save_as(&p));
-        self.ask = None;
-        match result {
-            Ok(()) => {
-                let shown = self.doc.name().unwrap_or_default();
-                self.message = Some(Label::key_with("doc.saved", &[("name", &shown)]));
-                let title = self.title();
-                self.out.push(Out::Title(title));
-                if then_close {
-                    self.out.push(Out::Close);
-                }
-            }
-            Err(e) => self.message = Some(self.reason("doc.save_failed", &name, e)),
-        }
-        self.rebuild()
-    }
-
-    fn do_cmd(&mut self, cmd: Cmd) -> Result<(), UiError> {
-        use ultar_office::doc::{Align, Dir, Style};
-        match cmd {
-            Cmd::New => self.new_doc()?,
-            Cmd::Save => self.save(false)?,
-            Cmd::SaveAs => {
-                self.ask = Some(Ask::Name { then_close: false });
-                self.rebuild()?;
-            }
-            Cmd::Undo => {
-                if self.doc.undo() {
-                    self.after(keys::Effect::Changed)?;
-                }
-            }
-            Cmd::Redo => {
-                if self.doc.redo() {
-                    self.after(keys::Effect::Changed)?;
-                }
-            }
-            Cmd::Bold => self.doc.for_each_run(|r| r.bold = !r.bold),
-            Cmd::Italic => self.doc.for_each_run(|r| r.italic = !r.italic),
-            Cmd::Underline => self.doc.for_each_run(|r| r.underline = !r.underline),
-            Cmd::Strike => self.doc.for_each_run(|r| r.strike = !r.strike),
-            Cmd::Title => self.doc.set_style(Style::Title),
-            Cmd::H1 => self.doc.set_style(Style::H1),
-            Cmd::H2 => self.doc.set_style(Style::H2),
-            Cmd::H3 => self.doc.set_style(Style::H3),
-            Cmd::Normal => self.doc.set_style(Style::Normal),
-            Cmd::AlignStart => self.doc.set_align(Align::Start),
-            Cmd::AlignCenter => self.doc.set_align(Align::Center),
-            Cmd::AlignEnd => self.doc.set_align(Align::End),
-            Cmd::AlignJustify => self.doc.set_align(Align::Justify),
-            Cmd::DirRtl => self.doc.set_dir(Dir::Rtl),
-            Cmd::DirLtr => self.doc.set_dir(Dir::Ltr),
-            Cmd::Bullet => self.doc.toggle_list(true),
-            Cmd::Number => self.doc.toggle_list(false),
-            Cmd::Indent => self.doc.indent(24.0),
-            Cmd::Outdent => self.doc.indent(-24.0),
-            Cmd::Table => self.insert_table(),
-            Cmd::RowAdd => self.table_row(1),
-            Cmd::RowDel => self.table_row(-1),
-            Cmd::ColAdd => self.table_col(1),
-            Cmd::ColDel => self.table_col(-1),
-            Cmd::ZoomIn => {
-                self.doc.zoom = (self.doc.zoom * 1.25).min(3.0);
-                self.after(keys::Effect::Changed)?;
-            }
-            Cmd::ZoomOut => {
-                self.doc.zoom = (self.doc.zoom / 1.25).max(0.5);
-                self.after(keys::Effect::Changed)?;
-            }
-            Cmd::PageToggle => {
-                self.doc.page_view = !self.doc.page_view;
-                self.after(keys::Effect::Changed)?;
-            }
-            Cmd::Find => {
-                self.ask = Some(Ask::Find);
-                self.rebuild()?;
-            }
-        }
-        if !matches!(cmd, Cmd::New | Cmd::Save | Cmd::SaveAs | Cmd::Undo | Cmd::Redo | Cmd::Find | Cmd::ZoomIn | Cmd::ZoomOut | Cmd::PageToggle) {
-            self.doc.burst_break();
-            self.after(keys::Effect::Changed)?;
-        }
-        Ok(())
-    }
-
-    fn insert_table(&mut self) {
-        let b = self.doc.cursor.block + 1;
-        let rows = vec![vec![String::new(); 2]; 2];
-        self.doc.document.blocks.insert(b, ultar_office::doc::Block::Table(rows));
-        self.doc.dirty = true;
-    }
-
-    fn table_clone(&self) -> Option<(usize, Vec<Vec<String>>)> {
-        let b = self.doc.cursor.block;
-        match self.doc.document.blocks.get(b) {
-            Some(ultar_office::doc::Block::Table(t)) => Some((b, t.clone())),
-            _ => None,
+    /// Time passes (`now` from any steady clock): writes the crash-recovery copy of a
+    /// changed document every [`recovery::INTERVAL`].
+    pub fn tick(&mut self, now: Duration) {
+        if self.io.timer.due(&self.doc, now) {
+            let _ = recovery::write(&self.doc, &self.areas);
         }
     }
 
-    fn table_row(&mut self, delta: isize) {
-        let Some((b, mut t)) = self.table_clone() else {
-            let _ = self.say(Label::key("doc.table.need"));
-            return;
-        };
-        let cols = t.first().map_or(1, |r| r.len());
-        if delta > 0 {
-            t.push(vec![String::new(); cols]);
-        } else if t.len() > 1 {
-            t.pop();
-        }
-        self.doc.document.blocks[b] = ultar_office::doc::Block::Table(t);
-        self.doc.dirty = true;
-    }
-
-    fn table_col(&mut self, delta: isize) {
-        let Some((b, mut t)) = self.table_clone() else {
-            let _ = self.say(Label::key("doc.table.need"));
-            return;
-        };
-        if delta > 0 {
-            for row in &mut t {
-                row.push(String::new());
-            }
-        } else if t.first().map_or(0, |r| r.len()) > 1 {
-            for row in &mut t {
-                row.pop();
-            }
-        }
-        self.doc.document.blocks[b] = ultar_office::doc::Block::Table(t);
-        self.doc.dirty = true;
-    }
-
-    fn find_next(&mut self, needle: &str, repl: &str) -> usize {
-        if needle.is_empty() {
-            return 0;
-        }
-        if !repl.is_empty() {
-            let n = self.doc.document.replace(needle, repl);
-            if n > 0 {
-                self.doc.dirty = true;
-            }
-            return n;
-        }
-        // move the caret to the next match
-        let blocks = self.doc.document.blocks.len();
-        let start = self.doc.cursor.block;
-        for off in 0..blocks {
-            let bi = (start + off) % blocks;
-            let Some(t) = self.doc.item_text(bi, None) else {
-                continue;
-            };
-            let from = if bi == self.doc.cursor.block { self.doc.cursor.ch } else { 0 };
-            if let Some(i) = find_in(&t, needle, from) {
-                self.doc.anchor = Some(crate::state::Cursor { block: bi, cell: None, ch: i });
-                self.doc.cursor = crate::state::Cursor { block: bi, cell: None, ch: i + needle.chars().count() };
-                return 1;
-            }
-        }
-        0
-    }
+    // ---- the widgets -------------------------------------------------------
 
     /// The actions of the widget tree.
     pub fn actions(&mut self, actions: Vec<Action>) -> Result<(), UiError> {
         for a in actions {
-            let activated = matches!(a.kind, ActionKind::Activated | ActionKind::Submitted);
-            if !activated {
-                continue;
-            }
-            let n = &self.nodes;
-            let node = Some(a.node);
-            let dial = n.ask_cancel.is_some() && node == n.ask_cancel;
-            let disc = n.ask_discard.is_some() && node == n.ask_discard;
-            let ok = (n.ask_save.is_some() && node == n.ask_save)
-                || (n.find_field.is_some() && node == n.find_field)
-                || (n.name_field.is_some() && node == n.name_field && self.ask.is_some());
-            let field_ok = (n.find_field.is_some() && node == n.find_field)
-                || (n.name_field.is_some() && node == n.name_field && self.ask.is_some());
-            if dial {
-                self.ask = None;
-                self.rebuild()?;
-                continue;
-            }
-            if disc {
-                let close = matches!(self.ask, Some(Ask::Unsaved { then_close: true }));
-                self.ask = None;
-                if close {
-                    self.out.push(Out::Close);
-                } else {
-                    self.doc.dirty = false;
-                    self.reset_doc()?;
-                }
-                continue;
-            }
-            if ok && field_ok {
-                match self.ask {
-                    Some(Ask::Unsaved { then_close }) => {
-                        self.ask = None;
-                        self.rebuild()?;
-                        self.save(then_close)?;
-                    }
-                    Some(Ask::Name { then_close }) => self.save_named(then_close)?,
-                    Some(Ask::Find) => {
-                        let find = self
-                            .nodes
-                            .find_field
-                            .and_then(|f| self.ui.text(f).ok())
-                            .unwrap_or_default()
-                            .to_owned();
-                        let repl = self
-                            .nodes
-                            .replace_field
-                            .and_then(|f| self.ui.text(f).ok())
-                            .unwrap_or_default()
-                            .to_owned();
-                        self.ask = None;
-                        let hit = self.find_next(&find, &repl);
-                        self.message = Some(Label::key_with("doc.find.count", &[("n", &hit.to_string())]));
-                        self.rebuild()?;
-                    }
-                    None => {}
-                }
-                continue;
-            }
             if self.ask.is_some() {
+                self.dialog_action(&a)?;
+                continue;
+            }
+            if !matches!(a.kind, ActionKind::Activated | ActionKind::Submitted) {
                 continue;
             }
             if let Some((&cmd, _)) = self.cmds.iter().find(|(_, &id)| id == a.node) {
@@ -838,58 +584,4 @@ impl App {
         }
         Ok(())
     }
-}
-
-fn cmd_key(cmd: Cmd) -> &'static str {
-    use Cmd::*;
-    match cmd {
-        New => "doc.new",
-        Save => "doc.save",
-        SaveAs => "doc.saveas",
-        Undo => "doc.undo",
-        Redo => "doc.redo",
-        Bold => "doc.bold",
-        Italic => "doc.italic",
-        Underline => "doc.underline",
-        Strike => "doc.strike",
-        Title => "doc.style.title",
-        H1 => "doc.style.h1",
-        H2 => "doc.style.h2",
-        H3 => "doc.style.h3",
-        Normal => "doc.style.normal",
-        AlignStart => "doc.align.start",
-        AlignCenter => "doc.align.center",
-        AlignEnd => "doc.align.end",
-        AlignJustify => "doc.align.justify",
-        DirRtl => "doc.dir.rtl",
-        DirLtr => "doc.dir.ltr",
-        Bullet => "doc.list.bullet",
-        Number => "doc.list.number",
-        Indent => "doc.indent",
-        Outdent => "doc.outdent",
-        Table => "doc.table",
-        RowAdd => "doc.table.row_add",
-        RowDel => "doc.table.row_del",
-        ColAdd => "doc.table.col_add",
-        ColDel => "doc.table.col_del",
-        ZoomIn => "doc.zoom.in",
-        ZoomOut => "doc.zoom.out",
-        PageToggle => "doc.page",
-        Find => "doc.find",
-    }
-}
-
-/// A naive character-based search; returns the character offset of the match.
-fn find_in(hay: &str, needle: &str, from_ch: usize) -> Option<usize> {
-    let hay: Vec<char> = hay.chars().collect();
-    let nee: Vec<char> = needle.chars().collect();
-    if nee.is_empty() || nee.len() > hay.len() {
-        return None;
-    }
-    for i in from_ch..=(hay.len().saturating_sub(nee.len())) {
-        if hay[i..i + nee.len()] == nee[..] {
-            return Some(i);
-        }
-    }
-    None
 }

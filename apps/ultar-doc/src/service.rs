@@ -4,8 +4,8 @@
 //! the mesh (no `--bus`) nothing happens.
 
 use std::time::Duration;
-use ultar_bus::Client;
 use ultar_bus::messages::mesh::{Activity, SetActivity};
+use ultar_bus::Client;
 
 /// Timeout of a report; the mesh may be busy or absent and that must never block the UI.
 const TIMEOUT: Duration = Duration::from_millis(300);
@@ -18,7 +18,10 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn new(bus: Client) -> Mesh {
-        Mesh { bus, reported: None }
+        Mesh {
+            bus,
+            reported: None,
+        }
     }
 
     /// Reports the open document; `uri` carries the place (`files://…#b<block>`), `title` the
@@ -27,7 +30,7 @@ impl Mesh {
         if uri.is_none() && path.is_none() {
             return;
         }
-        let key = uri.map_or_else(|| String::new(), |u| u.to_owned());
+        let key = uri.map_or_else(String::new, |u| u.to_owned());
         if self.reported.as_deref() == Some(key.as_str()) {
             return;
         }
@@ -37,7 +40,12 @@ impl Mesh {
             uri: uri.map(str::to_owned),
             file: path.map(str::to_owned),
         };
-        let _ = self.bus.call(&SetActivity { activity: Some(activity) }, TIMEOUT);
+        let _ = self.bus.call(
+            &SetActivity {
+                activity: Some(activity),
+            },
+            TIMEOUT,
+        );
         self.reported = Some(key);
     }
 }

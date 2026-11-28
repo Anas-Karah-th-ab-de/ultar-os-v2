@@ -1,207 +1,249 @@
-//! What a key does to the document. Arrow keys are physical: in a right-to-left paragraph the
-//! left arrow moves on to the next letter, in a left-to-right one back. `Ctrl+B/I/U` toggle
-//! bold/italic/underline; `Ctrl+S` saves, `Ctrl+N` starts a new document, `Ctrl+C/X/V` copy,
-//! cut and paste.
+//! What a key does. Arrow keys are physical: in a right-to-left line the left arrow moves on
+//! to the next letter, in a left-to-right line back. Up and down follow the layout (and keep
+//! their column), Home and End go to the start/end of the line. `Ctrl+B/I/U` toggle the
+//! formats, `Ctrl+S` saves, `Ctrl+N` starts a new document, `Ctrl+A/C/X/V/Z/Y/F` as usual,
+//! `Ctrl+Enter` breaks the page, `Ctrl+Plus/Minus` zoom, `Ctrl+Arrow` moves by words.
 
-use crate::state::Doc;
-use ultar_ui::event::{Key, Modifiers};
+use crate::action::Out;
+use crate::app::App;
+use crate::commands::Cmd;
+use crate::state::Cursor;
+use ultar_ui::event::{Event, Key, Modifiers};
+use ultar_ui::ui::UiError;
 
-/// What the app does after a key.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Effect {
-    None,
-    Moved,
-    Changed,
-    Save,
-    New,
-    Copy(String),
-    Paste,
-}
-
-/// Applies `key` to `doc`; `rtl` tells whether the caret's paragraph runs right to left.
-pub fn apply(doc: &mut Doc, key: Key, m: Modifiers, rtl: bool) -> Effect {
-    if m.ctrl && !m.alt {
-        ctrl_key(doc, key, m.shift)
-    } else if m.alt || m.meta {
-        Effect::None
-    } else {
-        plain_key(doc, key, m.shift, rtl)
-    }
-}
-
-fn ctrl_key(doc: &mut Doc, key: Key, shift: bool) -> Effect {
-    match key {
-        Key::Char(c) => match c.to_ascii_lowercase() {
-            's' => Effect::Save,
-            'n' => Effect::New,
-            'a' => {
-                doc.select_all();
-                Effect::Moved
-            }
-            'z' if shift => changed(doc.redo()),
-            'z' => changed(doc.undo()),
-            'y' => changed(doc.redo()),
-            'c' => copy(doc.selected_text()),
-            'x' => {
-                let text = doc.selected_text();
-                if text.is_empty() {
-                    return Effect::None;
-                }
-                doc.delete_selection();
-                Effect::Copy(text)
-            }
-            'v' => Effect::Paste,
-            'b' => {
-                doc.for_each_run(|r| r.bold = !(r.bold && !r.text.is_empty()));
-                Effect::Changed
-            }
-            'i' => {
-                doc.for_each_run(|r| r.italic = !(r.italic && !r.text.is_empty()));
-                Effect::Changed
-            }
-            'u' => {
-                doc.for_each_run(|r| r.underline = !(r.underline && !r.text.is_empty()));
-                Effect::Changed
-            }
-            _ => Effect::None,
-        },
-        _ => Effect::None,
-    }
-}
-
-fn plain_key(doc: &mut Doc, key: Key, shift: bool, rtl: bool) -> Effect {
-    match key {
-        Key::Char(c) => {
-            doc.insert(&c.to_string());
-            Effect::Changed
-        }
-        Key::Space => {
-            doc.insert(" ");
-            Effect::Changed
-        }
-        Key::Enter => {
-            doc.newline();
-            Effect::Changed
-        }
-        Key::Tab => {
-            doc.insert("    ");
-            Effect::Changed
-        }
-        Key::Backspace => {
-            doc.backspace();
-            Effect::Changed
-        }
-        Key::Delete => {
-            doc.delete();
-            Effect::Changed
-        }
-        Key::ArrowLeft | Key::ArrowRight => {
-            let on = matches!(key, Key::ArrowLeft) == rtl;
-            doc.move_chars(if on { 1 } else { -1 }, shift);
-            Effect::Moved
-        }
-        Key::Home => {
-            doc.home(shift);
-            Effect::Moved
-        }
-        Key::End => {
-            doc.end(shift);
-            Effect::Moved
-        }
-        Key::ArrowUp => {
-            doc.move_block(-1, shift);
-            Effect::Moved
-        }
-        Key::ArrowDown => {
-            doc.move_block(1, shift);
-            Effect::Moved
-        }
-        _ => Effect::None,
-    }
-}
-
-fn changed(did: bool) -> Effect {
-    if did {
-        Effect::Changed
-    } else {
-        Effect::None
-    }
-}
-
-fn copy(text: String) -> Effect {
-    if text.is_empty() {
-        Effect::None
-    } else {
-        Effect::Copy(text)
-    }
-}
-
-/// Inserts pasted `text` at the caret (replacing the selection).
-pub fn paste(doc: &mut Doc, text: &str) -> Effect {
-    if text.is_empty() {
-        return Effect::None;
-    }
-    doc.insert(text);
-    Effect::Changed
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::Cursor;
-
-    fn no() -> Modifiers {
-        Modifiers::default()
-    }
-    fn ctrl() -> Modifiers {
-        Modifiers { ctrl: true, ..Modifiers::default() }
-    }
-
-    fn typed(doc: &mut Doc, s: &str) {
-        for c in s.chars() {
-            let key = if c == ' ' { Key::Space } else { Key::Char(c) };
-            apply(doc, key, no(), false);
-        }
-    }
-
-    #[test]
-    fn typing_and_ctrl_bold_work() {
-        let mut d = Doc::new();
-        typed(&mut d, "hello");
-        assert_eq!(d.item_text(0, None), Some("hello".into()));
-        apply(&mut d, Key::Char('a'), ctrl(), false);
-        apply(&mut d, Key::Char('b'), ctrl(), false);
-        let ultar_office::doc::Block::Para(p) = &d.document.blocks[0] else {
-            panic!("expected a paragraph");
+impl App {
+    /// A key the widgets did not use.
+    pub fn key(&mut self, event: Event) -> Result<(), UiError> {
+        let Event::Key { key, modifiers: m } = event else {
+            return Ok(());
         };
-        assert!(p.runs.iter().all(|r| r.bold));
-        apply(&mut d, Key::Char('s'), ctrl(), false);
-        assert_eq!(
-            apply(&mut d, Key::Home, no(), false),
-            Effect::Moved
+        if self.ask.is_some() {
+            return Ok(());
+        }
+        if m.ctrl && !m.alt {
+            return self.ctrl_key(key, m);
+        }
+        if m.alt || m.meta {
+            return Ok(());
+        }
+        match key {
+            Key::Char(c) => self.typed(&c.to_string()),
+            Key::Space => self.typed(" "),
+            Key::Enter => self.edit(|d| d.newline()),
+            Key::Tab if m.shift => self.do_cmd(Cmd::Outdent),
+            Key::Tab
+                if self.doc.caret_para().is_some_and(|p| {
+                    p.style == ultar_office::doc::Style::Bullet
+                        || p.style == ultar_office::doc::Style::Number
+                }) =>
+            {
+                self.do_cmd(Cmd::Indent)
+            }
+            Key::Tab => self.typed("    "),
+            Key::Backspace => self.edit(|d| d.backspace()),
+            Key::Delete => self.edit(|d| d.delete()),
+            _ => self.navigate(key, m.shift, false),
+        }
+    }
+
+    fn typed(&mut self, s: &str) -> Result<(), UiError> {
+        self.inp.goal_x = None;
+        self.edit(|d| d.insert(s))
+    }
+
+    pub(crate) fn edit(&mut self, f: impl FnOnce(&mut crate::state::Doc)) -> Result<(), UiError> {
+        f(&mut self.doc);
+        self.changed()
+    }
+
+    fn ctrl_key(&mut self, key: Key, m: Modifiers) -> Result<(), UiError> {
+        match key {
+            Key::Char(c) => self.ctrl_char(c.to_ascii_lowercase(), m.shift),
+            Key::Enter => self.do_cmd(Cmd::PageBreak),
+            k if is_navigation(k) => self.navigate(key, m.shift, true),
+            _ => Ok(()),
+        }
+    }
+
+    fn ctrl_char(&mut self, c: char, shift: bool) -> Result<(), UiError> {
+        match c {
+            's' => self.save(false),
+            'n' => self.new_doc(),
+            'f' => self.do_cmd(Cmd::Find),
+            'a' => {
+                self.doc.select_all();
+                self.moved()
+            }
+            'z' if shift => self.do_cmd(Cmd::Redo),
+            'z' => self.do_cmd(Cmd::Undo),
+            'y' => self.do_cmd(Cmd::Redo),
+            'b' => self.do_cmd(Cmd::Bold),
+            'i' => self.do_cmd(Cmd::Italic),
+            'u' => self.do_cmd(Cmd::Underline),
+            'e' => self.do_cmd(Cmd::AlignCenter),
+            'j' => self.do_cmd(Cmd::AlignJustify),
+            '=' | '+' => self.do_cmd(Cmd::ZoomIn),
+            '-' => self.do_cmd(Cmd::ZoomOut),
+            'c' => self.copy(false),
+            'x' => self.copy(true),
+            'v' => {
+                self.io.out.push(Out::Paste);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Copies the selection (plain text to the surface clipboard, the formatted blocks to
+    /// the app's own buffer); `cut` removes it afterwards.
+    pub(crate) fn copy(&mut self, cut: bool) -> Result<(), UiError> {
+        let text = self.doc.selected_text();
+        if text.is_empty() {
+            return Ok(());
+        }
+        self.io.rich = Some((text.clone(), self.doc.copy_blocks()));
+        self.io.out.push(Out::Copy(text));
+        if cut {
+            self.doc.burst_break();
+            self.doc.delete_selection();
+            self.doc.burst_break();
+            return self.changed();
+        }
+        Ok(())
+    }
+
+    /// Clipboard text that arrived: the app's own formatted blocks when it is the text copied
+    /// here, otherwise plain text.
+    pub fn pasted(&mut self, text: &str) -> Result<(), UiError> {
+        if self.ask.is_some() || text.is_empty() {
+            return Ok(());
+        }
+        self.doc.burst_break();
+        match self.io.rich.clone() {
+            Some((t, blocks)) if t == text => self.doc.paste_blocks(blocks),
+            _ => self.doc.insert(text),
+        }
+        self.doc.burst_break();
+        self.changed()
+    }
+
+    /// Movement keys; `word` is the Ctrl state.
+    fn navigate(&mut self, key: Key, extend: bool, word: bool) -> Result<(), UiError> {
+        let rtl = self.caret_rtl();
+        let vertical = matches!(
+            key,
+            Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown
         );
+        match key {
+            k if is_arrow(k) => {
+                let on = matches!(key, Key::ArrowLeft) == rtl; // physical
+                let step = if on { 1 } else { -1 };
+                if word {
+                    self.doc.move_word(step, extend);
+                } else {
+                    self.doc.move_chars(step, extend);
+                }
+            }
+            Key::Home | Key::End => self.home_end(matches!(key, Key::Home), extend, word),
+            Key::ArrowUp | Key::ArrowDown => {
+                self.vertical(if key == Key::ArrowUp { -1 } else { 1 }, extend, 1)
+            }
+            Key::PageUp | Key::PageDown => {
+                let rows = (self.view_size().1 / self.lay_line_h().max(1.0))
+                    .floor()
+                    .max(1.0) as isize
+                    - 1;
+                self.vertical(if key == Key::PageUp { -1 } else { 1 }, extend, rows.max(1));
+            }
+            Key::Escape => {
+                self.doc.anchor = None;
+            }
+            _ => return Ok(()),
+        }
+        if !vertical {
+            self.inp.goal_x = None;
+        }
+        self.moved()
     }
 
-    #[test]
-    fn copy_cut_paste_flow() {
-        let mut d = Doc::new();
-        typed(&mut d, "abc");
-        apply(&mut d, Key::Char('a'), ctrl(), false);
-        assert_eq!(apply(&mut d, Key::Char('c'), ctrl(), false), Effect::Copy("abc".into()));
-        assert_eq!(apply(&mut d, Key::Char('x'), ctrl(), false), Effect::Copy("abc".into()));
-        assert_eq!(d.item_text(0, None), Some(String::new()));
-        assert_eq!(apply(&mut d, Key::Char('v'), ctrl(), false), Effect::Paste);
-        paste(&mut d, "\nxyz");
-        assert_eq!(d.document.blocks.len(), 2);
+    fn home_end(&mut self, home: bool, extend: bool, whole: bool) {
+        if whole {
+            let last = self.doc.document.blocks.len().saturating_sub(1);
+            let target = if home {
+                Cursor::default()
+            } else {
+                let len = self.doc.item_len(last, None).unwrap_or(0);
+                Cursor {
+                    block: last,
+                    cell: None,
+                    ch: len,
+                }
+            };
+            self.doc.set_pos(target, extend);
+            return;
+        }
+        self.ensure_layout();
+        let c = self.doc.cursor;
+        let to = self.lay.as_ref().and_then(|l| {
+            if home {
+                l.line_start(&c)
+            } else {
+                l.line_end(&c)
+            }
+        });
+        match to {
+            Some(t) => self.doc.set_pos(t, extend),
+            None if home => self.doc.home(extend),
+            None => self.doc.end(extend),
+        }
     }
 
-    #[test]
-    fn arrows_are_physical_in_arabic() {
-        let mut d = Doc::new();
-        typed(&mut d, "سلام");
-        apply(&mut d, Key::Home, no(), true);
-        d.cursor = Cursor { block: 0, cell: None, ch: 0 };
-        apply(&mut d, Key::ArrowLeft, no(), true);
-        assert_eq!(d.cursor.ch, 1, "left goes on in a right-to-left paragraph");
+    /// Moves `rows` lines up or down, keeping the column.
+    fn vertical(&mut self, dir: isize, extend: bool, rows: isize) {
+        self.ensure_layout();
+        let c = self.doc.cursor;
+        let Some(lay) = self.lay.as_ref() else {
+            return;
+        };
+        let x = self.inp.goal_x.or_else(|| lay.caret(&c).map(|p| p.x));
+        self.inp.goal_x = x;
+        let mut at = c;
+        for _ in 0..rows {
+            match lay.move_vertical(&at, dir, x.unwrap_or(0.0)) {
+                Some(n) if n != at => at = n,
+                _ => break,
+            }
+        }
+        if at == c && dir < 0 {
+            at = Cursor { ch: 0, ..c };
+        } else if at == c {
+            let len = self.doc.item_len(c.block, c.cell).unwrap_or(0);
+            at = Cursor { ch: len, ..c };
+        }
+        self.doc.set_pos(at, extend);
     }
+
+    /// `true` when the caret's line runs right to left.
+    pub(crate) fn caret_rtl(&mut self) -> bool {
+        self.ensure_layout();
+        let c = self.doc.cursor;
+        self.lay
+            .as_ref()
+            .and_then(|l| {
+                l.line_of(&c)
+                    .and_then(|i| l.placed.get(i))
+                    .map(|p| p.line().rtl)
+            })
+            .unwrap_or(false)
+    }
+}
+
+/// Keys that move the caret by the screen direction, line ends included.
+fn is_navigation(k: Key) -> bool {
+    matches!(k, Key::ArrowLeft | Key::ArrowRight | Key::Home | Key::End) // physical
+}
+
+/// The two horizontal arrows: they are physical, not logical.
+fn is_arrow(k: Key) -> bool {
+    matches!(k, Key::ArrowLeft | Key::ArrowRight) // physical
 }

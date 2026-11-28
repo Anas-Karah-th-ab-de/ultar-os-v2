@@ -113,6 +113,8 @@ pub struct Para {
     pub line_spacing: Option<f32>,
     /// First-line indentation of the start side, in point; `None` = none.
     pub indent_pt: Option<f32>,
+    /// A page break stands before this paragraph (`w:br w:type="page"`).
+    pub page_break: bool,
     pub runs: Vec<Run>,
 }
 
@@ -124,6 +126,7 @@ impl Para {
             dir: Dir::Auto,
             line_spacing: None,
             indent_pt: None,
+            page_break: false,
             runs: vec![Run::plain(text)],
         }
     }
@@ -187,10 +190,74 @@ pub enum Block {
     Picture(Picture),
 }
 
+/// The paper of a document: size and margins in point (A4 and 2.5 cm by default).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Page {
+    pub width_pt: f32,
+    pub height_pt: f32,
+    /// Top, end-of-line side (right), bottom, start side (left) as stored by Word.
+    pub margin_top: f32,
+    pub margin_right: f32, // physical
+    pub margin_bottom: f32,
+    pub margin_left: f32, // physical
+}
+
+impl Page {
+    /// A4: 595.3 x 841.9 pt.
+    pub const A4: Page = Page {
+        width_pt: 595.3,
+        height_pt: 841.9,
+        margin_top: 70.9,
+        margin_right: 70.9, // physical
+        margin_bottom: 56.7,
+        margin_left: 70.9, // physical
+    };
+    /// US Letter: 612 x 792 pt, one inch margins.
+    pub const LETTER: Page = Page {
+        width_pt: 612.0,
+        height_pt: 792.0,
+        margin_top: 72.0,
+        margin_right: 72.0, // physical
+        margin_bottom: 72.0,
+        margin_left: 72.0, // physical
+    };
+    /// Width of the text column.
+    pub fn text_width(&self) -> f32 {
+        (self.width_pt - self.margin_left - self.margin_right).max(72.0) // physical
+    }
+    /// Height of the text area.
+    pub fn text_height(&self) -> f32 {
+        (self.height_pt - self.margin_top - self.margin_bottom).max(72.0)
+    }
+    /// Sets the margins that are given, in the order of Word's `w:pgMar`: top, end, bottom,
+    /// start (physical right and left in the page's coordinates).
+    pub fn set_margins(&mut self, m: [Option<f32>; 4]) {
+        self.margin_top = m[0].unwrap_or(self.margin_top);
+        self.margin_right = m[1].unwrap_or(self.margin_right); // physical
+        self.margin_bottom = m[2].unwrap_or(self.margin_bottom);
+        self.margin_left = m[3].unwrap_or(self.margin_left); // physical
+    }
+    /// `true` for a Letter-sized page (within a point).
+    pub fn is_letter(&self) -> bool {
+        (self.width_pt - 612.0).abs() < 1.0 && (self.height_pt - 792.0).abs() < 1.0
+    }
+}
+
+impl Default for Page {
+    fn default() -> Page {
+        Page::A4
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Document {
     pub blocks: Vec<Block>,
+    /// Paper size and margins (`w:sectPr`).
+    pub page: Page,
 }
+
+mod edit;
+pub use edit::{same_format, Hit, MAX_LEVEL};
 
 impl Document {
     pub fn paras(&self) -> impl Iterator<Item = &Para> {
@@ -311,6 +378,7 @@ impl Document {
                     dir: Dir::Auto,
                     line_spacing: None,
                     indent_pt: None,
+                    page_break: false,
                     runs: inline(para.trim()),
                 }));
             }
@@ -387,6 +455,7 @@ impl Document {
                         dir: Dir::Auto,
                         line_spacing: None,
                         indent_pt: None,
+                        page_break: false,
                         runs,
                     }));
                 }
@@ -413,47 +482,13 @@ impl Document {
                 .lines()
                 .map(|l| Block::Para(Para::new(Style::Normal, l)))
                 .collect(),
+            page: Page::default(),
         }
     }
 
     /// Suchen und Ersetzen in allen Absätzen und Tabellen; liefert Anzahl
     pub fn replace(&mut self, find: &str, repl: &str) -> usize {
-        if find.is_empty() {
-            return 0;
-        }
-        let mut n = 0;
-        for b in &mut self.blocks {
-            match b {
-                Block::Para(p) => {
-                    let mut hit = false;
-                    for r in &mut p.runs {
-                        let k = r.text.matches(find).count();
-                        if k > 0 {
-                            n += k;
-                            r.text = r.text.replace(find, repl);
-                            hit = true;
-                        }
-                    }
-                    // Fundstelle über Laufgrenzen hinweg
-                    if !hit && p.text().contains(find) {
-                        let t = p.text();
-                        n += t.matches(find).count();
-                        p.set_text(&t.replace(find, repl));
-                    }
-                }
-                Block::Table(t) => {
-                    for c in t.iter_mut().flatten() {
-                        let k = c.matches(find).count();
-                        if k > 0 {
-                            n += k;
-                            *c = c.replace(find, repl);
-                        }
-                    }
-                }
-                Block::Picture(_) => {}
-            }
-        }
-        n
+        self.replace_all(find, repl, true)
     }
 }
 
@@ -510,69 +545,4 @@ fn inline(s: &str) -> Vec<Run> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn markdown_hin_und_zurueck() {
-        let md = "# Bericht\n\nDas ist **wichtig** und *schön*.\n\n## Punkte\n- eins\n- zwei\n1. erst\n2. dann\n\n| A | B |\n|---|---|\n| 1 | 2 |\n";
-        let d = Document::from_markdown(md);
-        let ps: Vec<&Para> = d.paras().collect();
-        assert_eq!(ps[0].style, Style::Title);
-        assert_eq!(ps[1].runs[1].text, "wichtig");
-        assert!(ps[1].runs[1].bold);
-        assert!(ps[1].runs[3].italic);
-        assert_eq!(ps[2].style, Style::H2);
-        assert_eq!(ps[3].style, Style::Bullet);
-        assert_eq!(ps[5].style, Style::Number);
-        assert!(matches!(d.blocks.last(), Some(Block::Table(t)) if t.len() == 2));
-        let md2 = d.to_markdown();
-        assert!(md2.contains("**wichtig**"));
-        assert!(md2.contains("2. dann"));
-        assert_eq!(Document::from_markdown(&md2), d);
-    }
-
-    #[test]
-    fn rtl_und_ersetzen() {
-        let mut d = Document::from_text("مرحبا بالعالم\nHallo Welt");
-        assert!(d.paras().next().unwrap().rtl());
-        assert!(!d.paras().nth(1).unwrap().rtl());
-        assert_eq!(d.replace("Welt", "Ultar"), 1);
-        assert!(d.to_text().contains("Hallo Ultar"));
-    }
-
-    #[test]
-    fn direction_button_wins_over_the_text() {
-        let ltr = Para {
-            dir: Dir::Ltr,
-            ..Para::new(Style::Normal, "مرحبا")
-        };
-        assert!(!ltr.rtl(), "forced LTR overrides Arabic text");
-        let rtl = Para {
-            dir: Dir::Rtl,
-            ..Para::new(Style::Normal, "hello")
-        };
-        assert!(rtl.rtl(), "forced RTL overrides Latin text");
-        assert!(Para::new(Style::Normal, "hello").rtl() == false);
-    }
-
-    #[test]
-    fn runs_carry_the_formatting() {
-        let mut r = Run::plain("x");
-        r.strike = true;
-        r.size_pt = Some(14.0);
-        r.color = Some("FF0000".into());
-        r.highlight = Some("FFFF00".into());
-        let p = Para {
-            style: Style::Normal,
-            align: Align::Center,
-            dir: Dir::Auto,
-            line_spacing: Some(2.0),
-            indent_pt: Some(24.0),
-            runs: vec![r],
-        };
-        assert_eq!(p.runs[0].size_pt, Some(14.0));
-        assert_eq!(p.runs[0].color.as_deref(), Some("FF0000"));
-        assert_eq!(p.line_spacing, Some(2.0));
-    }
-}
+mod tests;

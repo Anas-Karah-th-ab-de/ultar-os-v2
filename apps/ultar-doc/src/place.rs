@@ -28,8 +28,48 @@ pub fn path_of(uri: &str, areas: &Path) -> Option<PathBuf> {
     (parts >= 2).then_some(path)
 }
 
+/// The `files://` URI of a file below `areas` (the inverse of [`path_of`]); `None` for a
+/// path outside.
+pub fn uri_of(path: &Path, areas: &Path) -> Option<String> {
+    let rel = path.strip_prefix(areas).ok()?;
+    let mut uri = String::from("files:/");
+    for part in rel.components() {
+        let s = part.as_os_str().to_str()?;
+        uri.push('/');
+        for b in s.bytes() {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                uri.push(char::from(b));
+            } else {
+                uri.push_str(&format!("%{b:02X}"));
+            }
+        }
+    }
+    (rel.components().count() >= 2).then_some(uri)
+}
+
 /// Where a new document called `name` is saved (in [`NEW_IN`]); `None` for a bad name.
 pub fn new_path(name: &str, areas: &Path) -> Option<PathBuf> {
+    with_ext(name, "docx", areas)
+}
+
+/// Like [`new_path`] with another ending (`pdf` for the export).
+pub fn with_ext(name: &str, ext: &str, areas: &Path) -> Option<PathBuf> {
+    let name = clean_name(name)?;
+    let suffix = format!(".{ext}");
+    let name = if name.to_ascii_lowercase().ends_with(&suffix) {
+        name.to_owned()
+    } else {
+        format!("{name}{suffix}")
+    };
+    Some(areas.join(NEW_IN).join(name))
+}
+
+/// The file called `name` in [`NEW_IN`] (a picture to insert); `None` for a bad name.
+pub fn existing(name: &str, areas: &Path) -> Option<PathBuf> {
+    Some(areas.join(NEW_IN).join(clean_name(name)?))
+}
+
+fn clean_name(name: &str) -> Option<&str> {
     let name = name.trim();
     let bad = name.is_empty()
         || name.len() > 255
@@ -37,15 +77,7 @@ pub fn new_path(name: &str, areas: &Path) -> Option<PathBuf> {
         || name == ".."
         || name.contains(['/', '\\', '\0'])
         || name.chars().any(char::is_control);
-    if bad {
-        return None;
-    }
-    let name = if name.ends_with(".docx") {
-        name.to_owned()
-    } else {
-        format!("{name}.docx")
-    };
-    Some(areas.join(NEW_IN).join(name))
+    (!bad).then_some(name)
 }
 
 fn decode(part: &str) -> Option<String> {
@@ -88,7 +120,10 @@ mod tests {
             new_path("مستند", a),
             Some(PathBuf::from("/areas/documents/مستند.docx"))
         );
-        assert_eq!(new_path("a.docx", a), Some(PathBuf::from("/areas/documents/a.docx")));
+        assert_eq!(
+            new_path("a.docx", a),
+            Some(PathBuf::from("/areas/documents/a.docx"))
+        );
         assert_eq!(new_path("../x", a), None);
         assert_eq!(new_path("  ", a), None);
     }

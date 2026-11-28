@@ -4,7 +4,7 @@
 //! ultar-doc [--compositor PATH] [--bus PATH] [--areas DIR] [--lang ar|en|de] [--light] [URI]
 //! ```
 //! `--compositor` defaults to `$ULTAR_COMPOSITOR`, `--areas` to `$ULTAR_AREAS` or `/areas`,
-//! `--bus` to `$ULTAR_BUS_SOCKET`, the URI to `$ULTAR_OPEN_URI` (a `files://…` document, with an
+//! `--bus` to `$ULTAR_BUS_SOCKET`, the URI to `$ULTAR_OPEN_URI` (a `files://...` document, with an
 //! optional `#b<block>` place).
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
@@ -12,9 +12,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use ultar_doc::app::{App, Out};
+use std::time::{Duration, Instant};
 use ultar_doc::service::Mesh;
+use ultar_doc::{App, Out};
 use ultar_i18n::Lang;
 use ultar_surface::client::{Client, WindowConfig};
 use ultar_surface::proto::Request;
@@ -72,9 +72,17 @@ fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
     Some(o)
 }
 
+fn block_fragment(uri: &str) -> Option<usize> {
+    uri.split('#').nth(1)?.strip_prefix('b')?.parse().ok()
+}
+
 fn open(o: &Options) -> Result<(UiWindow, App, Option<ultar_bus::Client>), String> {
     let socket = o.compositor.clone().ok_or("compositor")?;
-    let theme = if o.light { ThemeKind::Light } else { ThemeKind::Dark };
+    let theme = if o.light {
+        ThemeKind::Light
+    } else {
+        ThemeKind::Dark
+    };
     let env = PaintEnv::new(o.lang, theme);
     let tr = ultar_doc::i18n::translator;
     let ui = |lang: Lang| {
@@ -86,27 +94,23 @@ fn open(o: &Options) -> Result<(UiWindow, App, Option<ultar_bus::Client>), Strin
     let mut window = UiWindow::new(client, &config, ui(o.lang)?).map_err(|e| e.to_string())?;
     window.set_shortcuts(Some(shortcut));
     let uri = o.uri.as_deref();
-    let (doc, failed) = App::open(uri, &o.areas);
+    let (mut doc, failed) = App::open(uri, &o.areas);
     // Jump to the place a handoff gave (`#b<block>`).
-    let tree = std::mem::replace(window.ui_mut(), ui(o.lang)?);
-    let mut app = App::new(tree, doc, o.areas.clone(), uri.map(str::to_owned)).map_err(|e| e.to_string())?;
     if let Some(place) = uri.and_then(block_fragment) {
-        app.doc.cursor.block = place.min(app.doc.document.blocks.len().saturating_sub(1));
-        app.doc.clamp();
+        doc.cursor.block = place.min(doc.document.blocks.len().saturating_sub(1));
+        doc.clamp();
     }
+    let tree = std::mem::replace(window.ui_mut(), ui(o.lang)?);
+    let mut app = App::new(tree, doc, o.areas.clone(), uri.map(str::to_owned))?;
     if let Some(e) = failed {
         app.open_failed(e).map_err(|e| format!("{e:?}"))?;
     }
     std::mem::swap(window.ui_mut(), &mut app.ui);
-    let bus = o.bus.as_ref().map(|p| {
-        ultar_bus::Client::connect(p, ultar_bus::ClientOptions::named(APP_ID)).ok()
-    });
+    let bus = o
+        .bus
+        .as_ref()
+        .map(|p| ultar_bus::Client::connect(p, ultar_bus::ClientOptions::named(APP_ID)).ok());
     Ok((window, app, bus.flatten()))
-}
-
-fn block_fragment(uri: &str) -> Option<usize> {
-    let frag = uri.split('#').nth(1)?;
-    frag.strip_prefix('b')?.parse().ok()
 }
 
 fn turn(
@@ -114,6 +118,7 @@ fn turn(
     app: &mut App,
     size: &mut Size,
     mesh: &mut Option<Mesh>,
+    started: Instant,
 ) -> Result<bool, String> {
     let actions = window.dispatch(Some(POLL)).map_err(|e| e.to_string())?;
     let closing = window.window().close_requested();
@@ -126,10 +131,11 @@ fn turn(
             *size = app.ui.size();
             app.rebuild()?;
         }
-        app.actions(actions)?;
+        // Pointer first: a click that closes a dialog must not also land on the text below.
         for event in pointer {
             app.pointer(event)?;
         }
+        app.actions(actions)?;
         for key in keys {
             app.key(key)?;
         }
@@ -142,6 +148,7 @@ fn turn(
         Ok::<(), ultar_ui::ui::UiError>(())
     })();
     TEXT_FOCUSED.store(app.text_focused(), Ordering::Relaxed);
+    app.tick(started.elapsed());
     let out = app.take_out();
     std::mem::swap(window.ui_mut(), &mut app.ui);
     result.map_err(|e| format!("{e:?}"))?;
@@ -152,7 +159,7 @@ fn turn(
     }
     if let Some(m) = mesh {
         let title = app.title();
-        m.report(APP_ID, &title, app.open_uri(), None);
+        m.report(APP_ID, &title, app.mesh_uri().as_deref(), None);
     }
     if closing {
         window.keep_open();
@@ -181,7 +188,8 @@ fn run(o: Options) -> Result<(), String> {
     let (mut window, mut app, bus) = open(&o)?;
     let mut mesh = bus.map(Mesh::new);
     let mut size = Size::new(0.0, 0.0);
-    while turn(&mut window, &mut app, &mut size, &mut mesh)? {}
+    let started = Instant::now();
+    while turn(&mut window, &mut app, &mut size, &mut mesh, started)? {}
     Ok(())
 }
 

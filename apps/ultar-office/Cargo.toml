@@ -13,6 +13,8 @@ regex = { version = "1", default-features = false, features = ["std", "unicode-p
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
+# Flate streams of the PDF writer (the deflate of the zip crate; already in the lock file).
+miniz_oxide = "0.8"
 
 [lib]
 name = "ultar_office"

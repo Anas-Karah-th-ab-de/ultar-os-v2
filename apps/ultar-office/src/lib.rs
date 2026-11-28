@@ -15,6 +15,7 @@ pub mod code;
 pub mod doc;
 pub mod docx;
 pub mod pdf;
+pub mod pdfout;
 pub mod sheet;
 pub mod xlsx;
 
