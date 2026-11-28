@@ -44,8 +44,10 @@ and the hardware self test) and the USB part of `geraetetest --hotplug` (`geraet
   direction keyed by stream offset). `recvmsg` that reads that byte installs them (lowest free numbers); it never
   reads past the next byte that carries descriptors, so two messages' descriptors never arrive together. What
   does not fit the control buffer is closed (`MSG_CTRUNC`). A plain `read` discards descriptors. Descriptors in
-  flight keep their objects alive. Unix socket descriptors cannot be passed (`EOPNOTSUPP`; Linux allows it):
-  without Linux' garbage collector a socket in flight inside itself would never be freed. Not supported: `SCM_CREDENTIALS` (use `SO_PEERCRED`), `MSG_PEEK` on Unix sockets, datagram
+  flight keep their objects alive. A connected Unix socket travels too (Wine hands its server one end of a
+  socket pair per new process) unless it would land in its own receiving direction or a Unix socket already
+  travels there; listening sockets never travel (`EOPNOTSUPP` for all three). Without Linux' garbage collector
+  this rule keeps rings of sockets that only hold each other from forming (docs/integration/kern-wine.md). Not supported: `SCM_CREDENTIALS` (use `SO_PEERCRED`), `MSG_PEEK` on Unix sockets, datagram
   sockets.
 * K11 cause: `poll`/`epoll_wait`/`select` and a full pipe write read the wake-up counter *after* checking
   readiness, so a reader that made room in between was missed until the next unrelated event. The counter is
