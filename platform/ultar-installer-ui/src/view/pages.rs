@@ -274,6 +274,14 @@ fn account(cx: &mut Cx<'_>, card: NodeId) -> Result<(), UiError> {
         }
     }
     muted(cx.ui, body, k("installer.account.note"))?;
+    // The PC's public key for SSH (optional): the server edition lets it in at once.
+    let f = TextField::new(k("installer.account.ssh_key"))
+        .labelled()
+        .direction(TextDirection::Ltr)
+        .max_len(crate::engine::answers::MAX_VALUE)
+        .text(&cx.model.wizard.account[3]);
+    cx.act(body, f, Act::AccountField(3))?;
+    muted(cx.ui, body, k("installer.account.ssh_key.note"))?;
     Ok(())
 }
 
