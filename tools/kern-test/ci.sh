@@ -6,7 +6,8 @@
 #   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs),
 #   5a. vfork release at exec and flock (spawntest); durable ext4 writes of large, fragmented files
 #       through a hard stop, honest ENOSPC/EIO from fsync and close (ext4-durable.sh), the encrypted
-#       data partition: LUKS2 like cryptsetup, decryption like dm-crypt, unlock at start (crypt-data.sh),
+#       data partition: LUKS2 like cryptsetup, decryption like dm-crypt, unlock at start on the console and
+#       on the graphical screen (crypt-data.sh), a grown data file system (ext4-grow.sh),
 #   5b. identities, file modes and owners, Unix socket nodes and peer credentials, fsync (rechtetest),
 #       and modes/owners/data that reach a writable ext4 disk (rechte-ext4.sh; skipped without e2fsprogs),
 #   5c. the device interfaces for ultar-devd (geraetetest: device list, driver register, bind/unbind/rebind of
@@ -27,6 +28,9 @@
 #       to the host, renew, static address, cable out and in (netz-e2e.sh, NETZ: ALLES OK), and the VMware machine's
 #       disk driven only through emulated USB/PS/2 input: locked at start, unlock, start menu, five apps open
 #       (tools/vm/vmware-input-e2e.sh, VMWARE-INPUT-E2E: ALLES OK; VMWARE_INPUT=0 skips it),
+#   5h. SSH into the Ultar kernel end to end (ssh-e2e.sh, SSH: ALLES OK): ultar-sshd on the Ultar kernel,
+#       key only – command + uname, exit code, scp 1 MiB up/down (sha256 equal), sftp ls, a foreign key and
+#       password auth rejected, sequential and parallel sessions,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -127,6 +131,31 @@ else
     echo "FAIL  NETZ"; tail -40 "$NLOG"; exit 1
   fi
 fi
+# SSH into the Ultar kernel end to end (ssh-e2e.sh): the pure-Rust ultar-sshd on the Ultar kernel with a
+# fresh test key only – command + uname, exit code, scp 1 MiB up/down (sha256 equal), sftp ls, a foreign key
+# and password auth rejected, sequential and parallel sessions; it builds its own static server and disk.
+if [ "${SSH:-1}" = 0 ]; then
+  echo "skip  SSH (SSH=0)"
+else
+  SLOG="${SSH_E2E_LOG:-$(mktemp)}"
+  if SMP="${SMP:-2}" bash tools/kern-test/ssh-e2e.sh > "$SLOG" 2>&1 && grep -q "^SSH: ALLES OK" "$SLOG"; then
+    grep -E "^(ok|skip|info)" "$SLOG"; echo "ok    SSH: ALLES OK"
+  else
+    echo "FAIL  SSH"; tail -50 "$SLOG"; exit 1
+  fi
+fi
+# USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is
+# skipped in QEMU (the driver, like Linux, picks the device's RNDIS configuration first).
+if [ "${USBNET:-1}" = 0 ]; then
+  echo "skip  USBNET (USBNET=0)"
+else
+  ULOG="${USBNET_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/usb-net-e2e.sh > "$ULOG" 2>&1 && grep -qE "^USBNET: (ALLES OK|TEILWEISE)" "$ULOG"; then
+    echo "ok    $(grep -oE '^USBNET:.*' "$ULOG")"
+  else
+    echo "FAIL  USBNET"; tail -40 "$ULOG"; exit 1
+  fi
+fi
 HLOG="${HLOG:-$(mktemp)}"
 SMP="${SMP:-2}" WAIT=180 timeout 360 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true
 if grep -q "GERAETETEST-USB: ALLES OK" "$HLOG" && ! grep -qiE "kernel panic|PANIK" "$HLOG"; then
@@ -150,6 +179,8 @@ fi
 if command -v mke2fs >/dev/null && command -v debugfs >/dev/null && command -v e2fsck >/dev/null; then
   EXT4_BLOCK=1024 bash tools/kern-test/ext4-durable.sh
   EXT4_BLOCK=4096 bash tools/kern-test/ext4-durable.sh
+  # a data file system grown by ultar-ext4grow: inodes and blocks of the new groups
+  bash tools/kern-test/ext4-grow.sh
 else
   echo "skip  EXT4TEST (e2fsprogs missing)"
 fi

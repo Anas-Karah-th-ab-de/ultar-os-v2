@@ -1,0 +1,17 @@
+[package]
+name = "ultar-ext4grow"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Grows an unmounted ext4 file system to the size of its partition (new block groups, reserved descriptor blocks, resize inode), as resize2fs does offline – for the data partition the installer writes, plain or inside LUKS2"
+
+[lib]
+name = "ultar_ext4grow"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-ext4grow"
+path = "src/bin/ultar-ext4grow.rs"
+
+[dependencies]

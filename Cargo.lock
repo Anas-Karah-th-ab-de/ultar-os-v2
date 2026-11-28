@@ -8678,6 +8678,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-ext4grow"
+version = "0.8.0"
+
+[[package]]
 name = "ultar-face"
 version = "0.8.0"
 dependencies = [
@@ -8776,6 +8780,7 @@ dependencies = [
  "toml 0.8.23",
  "ultar-brand",
  "ultar-bus",
+ "ultar-ext4grow",
  "ultar-i18n",
  "ultar-installer-ui",
  "ultar-luks",
@@ -9269,6 +9274,22 @@ dependencies = [
  "ultar-brand",
  "ultar-i18n",
  "unicode-bidi",
+]
+
+[[package]]
+name = "ultar-unlock"
+version = "0.8.0"
+dependencies = [
+ "ultar-brand",
+ "ultar-compositor",
+ "ultar-hal",
+ "ultar-hal-gfx",
+ "ultar-hal-system",
+ "ultar-i18n",
+ "ultar-luks",
+ "ultar-surface",
+ "ultar-ui",
+ "zeroize",
 ]
 
 [[package]]

@@ -19,8 +19,10 @@ use alloc::vec::Vec;
 use spin::Mutex;
 
 pub mod bt;
+mod cdc_ecm;
 mod hid;
 mod hotplug;
+mod net_common;
 mod pointer;
 mod rndis;
 pub mod uvc;
@@ -189,6 +191,9 @@ impl Hc {
                     continue;
                 }
                 if rndis::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
+                    continue;
+                }
+                if cdc_ecm::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
                 if uvc::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
@@ -401,6 +406,7 @@ struct Desc {
     sub: u8,
     proto: u8,
     iface: u8,
+    alt: u8,
     config: u8,
     eps: Vec<(u8, u8, u16, u8)>, // (Adresse, Attribute, max. Paket, Intervall)
 }
@@ -519,6 +525,29 @@ fn hub_ports(hc: &mut Hc, hub: u32, ports: u32, pwr_ms: u64, ss: bool, speed: u3
     }
 }
 
+/// Schnittstellen und Endpunkte aus einem Konfigurations-Deskriptor ziehen.
+fn parse_descs(cd: &[u8], config: u8) -> Vec<Desc> {
+    let mut ifs: Vec<Desc> = Vec::new();
+    let mut o = 0usize;
+    while o + 2 <= cd.len() {
+        let l = cd[o] as usize;
+        if l < 2 || o + l > cd.len() {
+            break;
+        }
+        match cd[o + 1] {
+            4 if l >= 9 => ifs.push(Desc { class: cd[o + 5], sub: cd[o + 6], proto: cd[o + 7], iface: cd[o + 2], alt: cd[o + 3], config, eps: Vec::new() }),
+            5 if l >= 7 => {
+                if let Some(d) = ifs.last_mut() {
+                    d.eps.push((cd[o + 2], cd[o + 3], u16::from_le_bytes([cd[o + 4], cd[o + 5]]) & 0x7ff, cd[o + 6]));
+                }
+            }
+            _ => {}
+        }
+        o += l;
+    }
+    ifs
+}
+
 fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, String> {
     let port = lage.root;
     let ev = hc.command(0, TRB_ENABLE_SLOT << 10).ok_or("Slot freigeben fehlgeschlagen")?;
@@ -560,30 +589,27 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
     hc.control(slot, 0x80, 6, 0x0100, 0, 18, buf).ok_or("Gerätebeschreibung fehlt")?;
     let dd: Vec<u8> = unsafe { core::slice::from_raw_parts(buf as *const u8, 18) }.to_vec();
     let (vid, pid) = (u16::from_le_bytes([dd[8], dd[9]]), u16::from_le_bytes([dd[10], dd[11]]));
-    // Konfiguration lesen
-    hc.control(slot, 0x80, 6, 0x0200, 0, 9, buf).ok_or("Konfiguration fehlt")?;
-    let total = unsafe { core::ptr::read_unaligned((buf + 2) as *const u16) }.min(4096);
-    hc.control(slot, 0x80, 6, 0x0200, 0, total, buf).ok_or("Konfiguration fehlt")?;
-    let cd: Vec<u8> = unsafe { core::slice::from_raw_parts(buf as *const u8, total as usize) }.to_vec();
-    let cfg_val = cd[5];
-    let mut ifs: Vec<Desc> = Vec::new();
-    let mut o = 0usize;
-    while o + 2 <= cd.len() {
-        let l = cd[o] as usize;
-        if l < 2 || o + l > cd.len() {
-            break;
-        }
-        match cd[o + 1] {
-            4 if l >= 9 => ifs.push(Desc { class: cd[o + 5], sub: cd[o + 6], proto: cd[o + 7], iface: cd[o + 2], config: cfg_val, eps: Vec::new() }),
-            5 if l >= 7 => {
-                if let Some(d) = ifs.last_mut() {
-                    d.eps.push((cd[o + 2], cd[o + 3], u16::from_le_bytes([cd[o + 4], cd[o + 5]]) & 0x7ff, cd[o + 6]));
-                }
-            }
-            _ => {}
-        }
-        o += l;
+    // Konfigurationen lesen (USB-Netz in QEMU und manche Tether bieten zwei: RNDIS + CDC-ECM):
+    // höchstens zwei, jede Kennung mit ihrem rohen Deskriptor und ihren Schnittstellen.
+    let num_cfg = (dd[17] as usize).max(1).min(2);
+    let mut configs: Vec<(u8, Vec<u8>, Vec<Desc>)> = Vec::new();
+    for ci in 0..num_cfg {
+        hc.control(slot, 0x80, 6, 0x0200 | ci as u16, 0, 9, buf).ok_or("Konfiguration fehlt")?;
+        let total = unsafe { core::ptr::read_unaligned((buf + 2) as *const u16) }.min(4096) as usize;
+        hc.control(slot, 0x80, 6, 0x0200 | ci as u16, 0, total as u16, buf).ok_or("Konfiguration fehlt")?;
+        let cd: Vec<u8> = unsafe { core::slice::from_raw_parts(buf as *const u8, total) }.to_vec();
+        let cfg_val = cd[5];
+        let ifs = parse_descs(&cd, cfg_val);
+        configs.push((cfg_val, cd, ifs));
     }
+    // Netzfunktion wählen: zuerst RNDIS (Handy-Tether, QEMU usb-net Konfiguration 1, wie Linux),
+    // dann CDC-ECM (Dongles), sonst die erste Konfiguration.
+    let pick = configs
+        .iter()
+        .position(|(_, _, ifs)| ifs.iter().any(|d| d.class == 0x02 && d.sub == 0x02 && d.proto == 0xff))
+        .or_else(|| configs.iter().position(|(_, _, ifs)| ifs.iter().any(|d| d.class == 0x02 && d.sub == 0x06)))
+        .unwrap_or(0);
+    let (cfg_val, chosen, ifs) = configs.swap_remove(pick);
     hc.control(slot, 0x00, 9, cfg_val as u16, 0, 0, 0).ok_or("Konfiguration setzen fehlgeschlagen")?;
     let mut what = format!("{vid:04x}:{pid:04x}");
     let mut hub: Option<(u32, u64, bool)> = None;
@@ -645,9 +671,19 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             }
         } else if d.class == 0x0E && d.sub == 1 && !cam_bound {
             // camera (video class): only the descriptors now, the stream starts when the node opens
-            if let Some((w, h)) = uvc::attach(hc, slot, (inp, out, speed), &cd) {
+            if let Some((w, h)) = uvc::attach(hc, slot, (inp, out, speed), &chosen) {
                 cam_bound = true;
                 what = format!("Kamera {w}x{h} MJPEG {what}");
+            }
+        } else if cdc_ecm::is_ctrl(d) && !net_bound {
+            // CDC-ECM-Steuer-Schnittstelle (USB-C-zu-Ethernet-Dongles; QEMU usb-net Konfiguration 2)
+            match cdc_ecm::attach(hc, slot, (inp, out, speed), d, &ifs, &chosen, buf) {
+                Ok(Some(n)) => {
+                    net_bound = true;
+                    what = format!("USB-Netz {n} {what}");
+                }
+                Ok(None) => {}
+                Err(e) => crate::kprintln!("[usb-net] {e}"),
             }
         } else if rndis::is_data_iface(d) && !net_bound {
             // CDC-Daten-Schnittstelle: Teil einer RNDIS-USB-Netzfunktion (Handy-Tethering, QEMU usb-net).

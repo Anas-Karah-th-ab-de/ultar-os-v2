@@ -38,7 +38,12 @@ fn text<E: std::fmt::Display>(e: E) -> String {
 
 fn format(image: &str, plain: &str, params: &Params) -> Result<(), String> {
     let pass = stdin_line();
-    let f = ultar_luks::format(pass.as_bytes(), params).map_err(text)?;
+    // with the start token, as the installer writes it (cryptsetup must keep accepting it)
+    let start = ultar_luks::StartInfo {
+        lang: "en".into(),
+        keyboard: "us".into(),
+    };
+    let f = ultar_luks::format_with(pass.as_bytes(), params, Some(&start)).map_err(text)?;
     let out = OpenOptions::new()
         .write(true)
         .create(true)
