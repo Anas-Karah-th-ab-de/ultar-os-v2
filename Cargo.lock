@@ -8702,6 +8702,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-foreign"
+version = "0.8.1"
+dependencies = [
+ "rustix",
+ "serde",
+ "toml 0.8.23",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+ "ultar-sys",
+]
+
+[[package]]
 name = "ultar-hal"
 version = "0.8.1"
 dependencies = [

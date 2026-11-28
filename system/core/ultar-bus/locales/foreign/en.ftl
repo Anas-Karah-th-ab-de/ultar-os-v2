@@ -1,0 +1,28 @@
+# Texts of the service for apps from other systems (ultar-foreign): the system dialog and the
+# surfaces that show its jobs load them. Arabic is the reference.
+foreign.confirm.install = Install “{arg0}” ({arg1}). This program comes from another system and was not checked by KM Code Craft. It runs isolated in its own cell; network: {arg2}; folders: {arg3}.
+foreign.confirm.archive = Install the package “{arg0}” from the sources of the Linux area. The program runs isolated in its own cell; network: {arg2}; folders: {arg3}.
+foreign.confirm.update = Update the packages of the Linux area from its signed sources.
+foreign.source.deb = Linux package
+foreign.source.exe = Windows program
+foreign.source.msi = Windows installer
+foreign.source.apk = Android app
+foreign.source.unknown = unknown kind
+foreign.net.none = no network
+foreign.net.internet = internet only
+foreign.net.lan = internet and local network
+foreign.folders.none = none
+foreign.step.confirm = Waiting for confirmation
+foreign.step.prepare = Preparing
+foreign.step.install = Installing
+foreign.step.register = Adding the apps
+foreign.step.done = Done
+foreign.step.cancelled = Cancelled
+foreign.fail.damaged = The file is damaged or not what it claims to be.
+foreign.fail.refused = The package manager refused the installation.
+foreign.fail.no_programs = The package brings no program with a window.
+foreign.fail.network = A download failed.
+foreign.fail.space = Not enough space.
+foreign.fail.launcher = The app could not be added.
+foreign.fail.no_confirmation = The confirmation could not be asked.
+foreign.fail.internal = Something went wrong; the log has the details.

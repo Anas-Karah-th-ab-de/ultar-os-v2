@@ -35,6 +35,14 @@ pub const FOLDERS: [&str; 7] = [
     "home",
 ];
 
+/// The service's texts (keys `foreign.*`) by language tag, for the system dialog (the
+/// confirmation) and the surfaces that show its jobs.
+pub const LOCALES: [(&str, &str); 3] = [
+    ("ar", include_str!("../../locales/foreign/ar.ftl")),
+    ("en", include_str!("../../locales/foreign/en.ftl")),
+    ("de", include_str!("../../locales/foreign/de.ftl")),
+];
+
 /// Where an app comes from.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Source {
@@ -455,6 +463,27 @@ mod tests {
         round_trip(&InstallReply {
             outcome: InstallOutcome::Started(3),
         });
+    }
+
+    #[test]
+    fn texts_exist_in_every_language_with_the_same_keys() {
+        let keys = |src: &str| -> Vec<String> {
+            let mut k: Vec<String> = src
+                .lines()
+                .filter(|l| !l.starts_with('#') && l.contains(" = "))
+                .map(|l| l.split(" = ").next().unwrap_or_default().to_owned())
+                .collect();
+            k.sort();
+            k
+        };
+        let ar = keys(LOCALES[0].1);
+        assert!(ar.contains(&"foreign.confirm.install".to_owned()));
+        for s in Source::ALL {
+            assert!(ar.contains(&format!("foreign.source.{}", s.word())));
+        }
+        for (_, src) in &LOCALES[1..] {
+            assert_eq!(keys(src), ar);
+        }
     }
 
     #[test]

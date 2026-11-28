@@ -1,0 +1,28 @@
+# Texts of the service for apps from other systems (ultar-foreign): the system dialog and the
+# surfaces that show its jobs load them. Arabic is the reference.
+foreign.confirm.install = „{arg0}“ ({arg1}) installieren. Dieses Programm stammt aus einem anderen System und wurde von KM Code Craft nicht geprüft. Es läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
+foreign.confirm.archive = Das Paket „{arg0}“ aus den Quellen des Linux-Bereichs installieren. Das Programm läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
+foreign.confirm.update = Die Pakete des Linux-Bereichs aus seinen signierten Quellen aktualisieren.
+foreign.source.deb = Linux-Paket
+foreign.source.exe = Windows-Programm
+foreign.source.msi = Windows-Installer
+foreign.source.apk = Android-App
+foreign.source.unknown = unbekannte Art
+foreign.net.none = kein Netz
+foreign.net.internet = nur Internet
+foreign.net.lan = Internet und lokales Netz
+foreign.folders.none = keine
+foreign.step.confirm = Wartet auf Bestätigung
+foreign.step.prepare = Vorbereiten
+foreign.step.install = Installieren
+foreign.step.register = Apps hinzufügen
+foreign.step.done = Fertig
+foreign.step.cancelled = Abgebrochen
+foreign.fail.damaged = Die Datei ist beschädigt oder nicht, was sie vorgibt.
+foreign.fail.refused = Die Paketverwaltung hat die Installation abgelehnt.
+foreign.fail.no_programs = Das Paket bringt kein Programm mit Fenster mit.
+foreign.fail.network = Ein Download ist fehlgeschlagen.
+foreign.fail.space = Nicht genug Platz.
+foreign.fail.launcher = Die App konnte nicht hinzugefügt werden.
+foreign.fail.no_confirmation = Die Bestätigung konnte nicht erfragt werden.
+foreign.fail.internal = Etwas ist schiefgegangen; Einzelheiten stehen im Protokoll.

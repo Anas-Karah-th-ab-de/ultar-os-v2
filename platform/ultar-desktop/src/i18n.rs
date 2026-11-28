@@ -16,8 +16,12 @@ pub fn translator(lang: Lang) -> Result<Translator, ParseError> {
     for (each, source) in SOURCES {
         tr.add_source(each, source)?;
     }
-    // The helper's answers are shown by the shell: its texts come with its contract.
-    for (tag, source) in ultar_bus::messages::agent::LOCALES {
+    // The helper's answers are shown by the shell, the confirmation of apps from other
+    // systems by the system dialog: their texts come with their contracts.
+    let contracts = ultar_bus::messages::agent::LOCALES
+        .into_iter()
+        .chain(ultar_bus::messages::foreign::LOCALES);
+    for (tag, source) in contracts {
         if let Some(each) = Lang::parse(tag) {
             tr.add_source(each, source)?;
         }
