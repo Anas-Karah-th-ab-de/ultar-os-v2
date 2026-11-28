@@ -55,6 +55,7 @@ pub fn grant_word(grant: Grant) -> &'static str {
         Grant::Audio => "audio",
         Grant::Compute => "compute",
         Grant::Model => "model",
+        Grant::Call => "call",
     }
 }
 

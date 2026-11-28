@@ -824,6 +824,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
+name = "calls-e2e"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-call",
+ "ultar-mesh",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "caret"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8887,6 +8897,8 @@ dependencies = [
 name = "ultar-mediad"
 version = "0.8.1"
 dependencies = [
+ "base64 0.22.1",
+ "tempfile",
  "ultar-bus",
  "ultar-service",
  "ultar-svckit",

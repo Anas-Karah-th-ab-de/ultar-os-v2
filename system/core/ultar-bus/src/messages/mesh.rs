@@ -80,6 +80,9 @@ pub enum Right {
     Compute,
     /// Let this device's language model think for it.
     Model,
+    /// Offer calls here, relay their sound and mirror notifications
+    /// ("Anrufe und Ton"), off after pairing.
+    Call,
 }
 
 /// One device of the mesh as this device sees it.

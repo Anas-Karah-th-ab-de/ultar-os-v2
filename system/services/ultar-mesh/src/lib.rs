@@ -13,6 +13,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod acting;
+pub mod audio_link;
+pub mod calls;
 pub mod clip_bridge;
 pub mod clip_image;
 mod clip_service;
@@ -23,6 +25,8 @@ pub mod compute;
 pub mod device;
 pub mod handoff;
 mod lending;
+pub mod media_link;
+mod media_service;
 pub mod model;
 pub mod net;
 pub mod node;

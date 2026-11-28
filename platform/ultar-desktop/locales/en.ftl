@@ -445,6 +445,18 @@ volumed.drive.mount = Mount
 desk.note.screend = {arg0} is looking at this screen
 desk.note.screend.body = Everything you do here is visible to that device, and it can type here.
 desk.note.screend.stop = Stop
+desk.call.incoming = Incoming call from {arg0}
+desk.call.incoming.body = On {arg0}. Answer here to talk through this computer.
+desk.call.answer = Answer
+desk.call.decline = Decline
+desk.call.active = In a call with {arg0}
+desk.call.active.body = The sound goes through {arg0}.
+desk.call.active.muted = Microphone off. The sound goes through {arg0}.
+desk.call.mute = Mute
+desk.call.unmute = Unmute
+desk.call.hangup = Hang up
+desk.note.mirror.title = {arg0}: {arg1}
+desk.note.mirror.locked = New notification on {arg0}
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = New shortcut…

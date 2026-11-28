@@ -50,6 +50,8 @@ pub struct Notes {
     pub visual_alert: bool,
     /// A flash is owed (a banner appeared while `visual_alert` is on).
     flash: bool,
+    /// Month shown by the calendar and the selected day index.
+    pub calendar: Option<(super::calendar::Month, usize)>,
 }
 
 impl Notes {
@@ -133,6 +135,40 @@ impl Notes {
             },
         });
         self.show_banner(id, now);
+    }
+
+    /// The shell's own notice of a call (`id` from [`crate::model::calls`]): the title and
+    /// body are texts of the catalogue, the buttons are the shell's own and never go to the
+    /// notification service. It stays as a banner until it is closed; posting the same id
+    /// again replaces it.
+    pub fn post_call(
+        &mut self,
+        id: u64,
+        app: &str,
+        title: Text,
+        body: Text,
+        actions: Vec<Action>,
+        now: u64,
+    ) {
+        self.add(Posted {
+            id,
+            timestamp_ms: now,
+            sender: "system.shell".to_owned(),
+            post: Post {
+                urgency: Urgency::High,
+                category: Category::Call,
+                app_id: app.to_owned(),
+                title,
+                body: Body::Localized(body),
+                actions,
+            },
+        });
+        self.show_banner(id, now);
+    }
+
+    /// Whether notification `id` is in the list.
+    pub fn has(&self, id: u64) -> bool {
+        self.list.iter().any(|n| n.id == id)
     }
 
     /// The id of button `index` of notification `id` (note.action).

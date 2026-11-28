@@ -8,7 +8,12 @@ args = [
     "--bus", "/run/ultar/bus/mediad.sock",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/mediad.sock",
+    # Play there (docs/integration/mesh-calls.md): this device plays the sound of another
+    # device's media session on its speaker (the card is taken for a session only).
+    "--there-sink", "/dev/ultar/pcm",
 ]
+# right sound: the running streams /dev/ultar/pcm, nothing else of the sound card.
+rights = ["sound"]
 user = 824
 notify = true
 after = ["bus"]

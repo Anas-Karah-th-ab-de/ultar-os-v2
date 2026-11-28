@@ -304,6 +304,7 @@ impl ServicesPort for BusPorts {
             | Call::Forget(_)
             | Call::SetVpn(..) => self.network(call),
             Call::SetMesh(_) | Call::MeshSend(..) | Call::AskHelper(_) => self.mesh(call),
+            Call::CallAnswer(..) | Call::CallEnd(_) | Call::CallMute(_) => self.calls(call),
         }
     }
 }

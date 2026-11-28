@@ -127,8 +127,8 @@ call     = ["devices.list", "devices.switch", "devices.rescan", "init.power", "i
 # update service itself refuses them everything that changes the system.
 [[rule]]
 identity  = "app.*"
-call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy", "notify.post", "notify.dismiss", "notify.take_invoked", "media.update", "media.release"]
-subscribe = ["update.progress", "notify.invoked", "media.command"]
+call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy", "notify.post", "notify.dismiss", "notify.take_invoked", "media.update", "media.release", "notify.post_ex", "media.there_push"]
+subscribe = ["update.progress", "notify.invoked", "media.command", "media.there"]
 
 # Call service: offers `call`, publishes the call state, drives the modem.
 # `call.emergency` dials `emergency.number`, which it reads and validates itself
@@ -136,12 +136,12 @@ subscribe = ["update.progress", "notify.invoked", "media.command"]
 [[rule]]
 identity  = "system.calld"
 register  = ["call"]
-publish   = ["call.state", "call.picture"]
-subscribe = ["modem.state", "account.state", "settings.changed"]
+publish   = ["call.state", "call.picture", "call.mesh"]
+subscribe = ["modem.state", "account.state", "settings.changed", "mesh.state", "mesh.call_incoming", "mesh.call_progress", "mesh.call_audio"]
 # The account service proves and signs with the device key for calls (the key never leaves it)
 # and hands out the relay's credentials; only this service may ask. `settings.get` reads
 # `emergency.number` for `call.emergency`.
-call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn", "settings.get"]
+call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn", "settings.get", "mesh.call_offer", "mesh.call_end", "mesh.call_audio"]
 
 # Modem service (ultar-ril): offers `modem` and its state, nothing else.
 [[rule]]
@@ -272,9 +272,14 @@ call      = ["auth.users", "lock.lock", "account.session", "settings.get", "noti
 
 # Notification service (821): offers `notify` and publishes its topics.
 [[rule]]
-identity = "system.notifyd"
-register = ["notify"]
-publish  = ["notify.posted", "notify.dismissed", "notify.invoked"]
+identity  = "system.notifyd"
+register  = ["notify"]
+publish   = ["notify.posted", "notify.dismissed", "notify.invoked"]
+# Notifications of the person's other devices (mesh.note, shown with the device named) and
+# what may leave this device (mesh.note_mirror; never a private one). session.state tells
+# whether the device is locked (nobody signed in).
+subscribe = ["mesh.note", "session.state"]
+call      = ["mesh.note_mirror"]
 
 # Calendar service (822): offers `calendar`, follows who is in front.
 [[rule]]
@@ -301,9 +306,14 @@ publish  = ["audio.state"]
 
 # Media service (824): offers `media`, publishes the session and the buttons.
 [[rule]]
-identity = "system.mediad"
-register = ["media"]
-publish  = ["media.state", "media.command"]
+identity  = "system.mediad"
+register  = ["media"]
+publish   = ["media.state", "media.command", "media.there"]
+# Play there: the paired devices with a speaker (mesh.state) and the sound, its controls and
+# its end that the mesh carries (mesh.media_*); the sound itself goes out through
+# mesh.media_pcm, the session is opened and ended with mesh.media_open and mesh.media_ctl.
+subscribe = ["mesh.state", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress"]
+call      = ["mesh.media_open", "mesh.media_pcm", "mesh.media_ctl"]
 
 # Screenshot service (825): offers `capture`, follows who is in front.
 [[rule]]
@@ -350,7 +360,7 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 [[rule]]
 identity  = "system.mesh"
 register  = ["mesh"]
-publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state"]
+publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state", "mesh.call_incoming", "mesh.call_progress", "mesh.call_audio", "mesh.note", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress"]
 call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask", "notify.post"]
 subscribe = ["llm.state"]
 
@@ -411,8 +421,8 @@ subscribe = ["agent.reach", "agent.activity"]
 # long lists above stay as they are).
 [[rule]]
 identity  = "system.shell"
-call      = ["mesh.*", "agent.ask"]
-subscribe = ["mesh.*", "agent.state", "agent.progress"]
+call      = ["mesh.*", "agent.ask", "call.mesh_mute", "media.set_output", "media.there_volume", "media.there_pause"]
+subscribe = ["mesh.*", "agent.state", "agent.progress", "call.mesh", "media.there"]
 
 [[rule]]
 identity  = "app.settings"

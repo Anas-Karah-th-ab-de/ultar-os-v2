@@ -14,6 +14,8 @@ const POLICY: &str = r#"
 identity = "system.notifyd"
 register = ["notify"]
 publish = ["notify.posted", "notify.dismissed", "notify.invoked"]
+subscribe = ["mesh.note", "session.state"]
+call = ["mesh.note_mirror"]
 
 [[rule]]
 identity = "system.shell"

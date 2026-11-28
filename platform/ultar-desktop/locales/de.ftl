@@ -445,6 +445,18 @@ volumed.drive.mount = Einhängen
 desk.note.screend = {arg0} sieht diesen Bildschirm
 desk.note.screend.body = Alles, was du hier tust, ist auf diesem Gerät sichtbar, und es kann hier tippen.
 desk.note.screend.stop = Beenden
+desk.call.incoming = Eingehender Anruf von {arg0}
+desk.call.incoming.body = Auf {arg0}. Hier annehmen, um über diesen Computer zu sprechen.
+desk.call.answer = Annehmen
+desk.call.decline = Ablehnen
+desk.call.active = Im Gespräch mit {arg0}
+desk.call.active.body = Der Ton läuft über {arg0}.
+desk.call.active.muted = Mikrofon aus. Der Ton läuft über {arg0}.
+desk.call.mute = Stumm
+desk.call.unmute = Stumm aus
+desk.call.hangup = Auflegen
+desk.note.mirror.title = {arg0}: {arg1}
+desk.note.mirror.locked = Neue Benachrichtigung auf {arg0}
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = Neue Verknüpfung…
