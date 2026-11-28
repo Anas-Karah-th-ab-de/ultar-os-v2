@@ -275,6 +275,11 @@ missing=$(chroot "$TREE" sh -c 'for f in /usr/bin/android-translation-layer /usr
 [ -z "$missing" ] || fail "libraries missing in the area: $missing"
 [ -x "$TREE/opt/ultar-android/bin/ultar-apk-run" ] || fail "no start program"
 printf 'android=%s\n' "$VERSION" >>"$TREE/etc/ultar-runtime"
+# The app users (the launcher's range 20000-49999, rootfs/etc/ultar/services/compositor.toml):
+# ART's libcore asks for the user's name and home at its start and stops without them.
+if ! grep -q '^app20000:' "$TREE/etc/passwd"; then
+  seq 20000 49999 | awk '{ printf "app%d:x:%d:%d:Ultar app:/data:/usr/sbin/nologin\n", $1, $1, $1 }' >>"$TREE/etc/passwd"
+fi
 
 # --- self-test: ART runs a program of its own in the area (also used on the Ultar kernel) ----
 H="$BUILD/hello"
