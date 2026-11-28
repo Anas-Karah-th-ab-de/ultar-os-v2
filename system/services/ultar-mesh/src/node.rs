@@ -6,6 +6,7 @@
 use crate::device::{self, Device};
 use crate::offers::Offers;
 use crate::trust::{Joiner, Shower, Shown, Trust};
+use crate::view::{ViewEnd, Views};
 use crate::wire::{Frame, VERSION};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -127,6 +128,70 @@ pub enum Effect {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// A paired device with the right asks to see this device's screen (source: ask the
+    /// person, then [`Node::view_accept`] or [`Node::view_refuse`]).
+    ViewIncoming {
+        /// Who asks.
+        peer: String,
+        /// The session.
+        id: u64,
+    },
+    /// The session runs: the source streams and the viewer shows width x height pixels.
+    ViewStarted {
+        /// The other device.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// Picture width in pixels.
+        width: u32,
+        /// Picture height in pixels.
+        height: u32,
+    },
+    /// A damaged rectangle arrived (viewer; `data` are the raw RGBA bytes of `region`).
+    ViewFrame {
+        /// Who serves.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// `x, y, width, height` in pixels.
+        region: [u32; 4],
+        /// Raw pixels, four bytes each.
+        data: Vec<u8>,
+    },
+    /// The viewer's pointer/keys to inject (source).
+    ViewInput {
+        /// Who watches.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// The event.
+        input: String,
+    },
+    /// A session ended ([`ViewEnd`] says how) (either side).
+    ViewEnded {
+        /// The other device.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// How it ended.
+        end: ViewEnd,
+    },
+    /// A paired device offers a call; the person answers with [`Node::call_answer`].
+    CallIncoming(ultar_bus::messages::mesh_calls::CallIncoming),
+    /// A call changed on this device.
+    CallProgress(ultar_bus::messages::mesh_calls::CallProgress),
+    /// One 20 ms of a call's voice from a paired device.
+    CallAudio(ultar_bus::messages::mesh_calls::CallAudio),
+    /// A notification of a paired device to show here.
+    Note(ultar_bus::messages::mesh_calls::NoteRemote),
+    /// A paired device wants to play its sound here ("play there").
+    MediaIncoming(ultar_bus::messages::mesh_media::MediaIncoming),
+    /// One 20 ms of that sound.
+    MediaPcm(ultar_bus::messages::mesh_media::MediaPcmIn),
+    /// The other end of a "play there" session pressed a control.
+    MediaControl(ultar_bus::messages::mesh_media::MediaControl),
+    /// A "play there" session ended.
+    MediaProgress(ultar_bus::messages::mesh_media::MediaProgress),
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -150,18 +215,20 @@ pub struct Node {
     pub(crate) activity: Option<Activity>,
     pub(crate) reported: BTreeMap<String, Activity>,
     pub(crate) offers: Offers,
-    pub(crate) clip_seq: u64,
-    pub(crate) clip_remote: Option<String>,
     pub(crate) clip: crate::clip_share::ClipState,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
+    pub(crate) views: Views,
+    pub(crate) calls: crate::calls::Calls,
 }
 
 impl Node {
     /// The device with the static public key `key`.
     pub fn new(config: Config, key: &[u8], trust: Trust) -> Self {
+        let id = device::id_of(key);
         Self {
-            id: device::id_of(key),
+            calls: crate::calls::Calls::salted(&id),
+            id,
             key: key.to_owned(),
             config,
             enabled: true,
@@ -171,11 +238,10 @@ impl Node {
             activity: None,
             reported: BTreeMap::new(),
             offers: Offers::default(),
-            clip_seq: 0,
-            clip_remote: None,
             clip: crate::clip_share::ClipState::default(),
             thinking: 0,
             serving: 0,
+            views: Views::default(),
         }
     }
 
@@ -260,6 +326,9 @@ impl Node {
             return Vec::new();
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.view_clear(peer));
+        effects.extend(self.calls.peer_down(peer));
+        effects.extend(self.calls.media.peer_down(peer));
         effects.push(Effect::Changed);
         effects
     }
@@ -311,6 +380,7 @@ impl Node {
             return (false, Vec::new());
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.view_revoke(peer, true));
         effects.push(Effect::Changed);
         (true, effects)
     }
@@ -320,7 +390,14 @@ impl Node {
         if !self.trust.set_rights(peer, rights) {
             return (false, Vec::new());
         }
-        (true, vec![Effect::Changed])
+        // Taking the right back ends a running remote view at once.
+        let mut effects = if rights.contains(&Right::Control) {
+            Vec::new()
+        } else {
+            self.view_revoke(peer, false)
+        };
+        effects.push(Effect::Changed);
+        (true, effects)
     }
 
     fn on_hello(&mut self, peer: &str, frame: Frame) -> Vec<Effect> {
@@ -374,6 +451,21 @@ impl Node {
             }
             Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
             Frame::Act { .. } | Frame::Acted { .. } => self.on_remote_frame(peer, frame),
+            Frame::ViewStart { .. }
+            | Frame::ViewRefuse { .. }
+            | Frame::ViewAccept { .. }
+            | Frame::ViewFrame { .. }
+            | Frame::ViewAck { .. }
+            | Frame::ViewInput { .. }
+            | Frame::ViewStop { .. } => self.on_view_frame(peer, frame),
+            Frame::Call { .. }
+            | Frame::CallAnswer { .. }
+            | Frame::CallEnd { .. }
+            | Frame::CallAudio { .. }
+            | Frame::Note { .. } => self.on_call_frame(peer, frame),
+            Frame::MediaOpen { .. } | Frame::MediaPcm { .. } | Frame::MediaCtl { .. } => {
+                self.on_media_frame(peer, frame)
+            }
             other => self.on_offer_frame(peer, other, now),
         }
     }

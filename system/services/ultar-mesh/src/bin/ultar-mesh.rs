@@ -104,17 +104,19 @@ fn main() -> ExitCode {
         let state = args.required_path("state").map_err(|_| Msg::BadArguments)?;
         let inbox = args.required_path("inbox").map_err(|_| Msg::BadArguments)?;
         let kind = kind_from(&kind_word(args));
+        let capabilities = default_capabilities(kind);
         let config = Config {
             name: name(args),
             kind,
-            capabilities: default_capabilities(kind),
+            capabilities: capabilities.clone(),
             apps: Vec::new(),
             inbox,
             share: list(args.option("share").unwrap_or(""))
                 .into_iter()
                 .map(Into::into)
                 .collect(),
-            remote_view: false,
+            // A device with a screen may show its windows on another device (remote view).
+            remote_view: capabilities.contains(&ultar_bus::messages::mesh::Capability::Screen),
         };
         // The shared clipboard goes through the compositor (right ui.clipboard-bridge).
         let compositor = args.path("compositor").map_err(|_| Msg::BadArguments)?;

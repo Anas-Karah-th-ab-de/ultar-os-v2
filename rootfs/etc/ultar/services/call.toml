@@ -10,6 +10,12 @@ args = [
     # Ultar-number calls end to end with the person's account (account.*): signalling at the
     # account server, the device key stays in the account service, sound through /dev/ultar/pcm.
     "--account",
+    # Calls between the person's devices (docs/integration/mesh-calls.md): a ringing Ultar-number
+    # call is offered to paired devices with the right "Anrufe und Ton" (off after pairing), and
+    # this device answers calls that another device offers. The voice goes over the end-to-end
+    # encrypted mesh. Mobile-network calls are not offered: no modem voice stream
+    # (--mesh-modem-pcm NODE) is proven yet.
+    "--mesh-calls", "--mesh-guest",
 ]
 # Identity: its own user (829); it talks to the bus, the account server, the TURN relay and the
 # other device (UDP), and to the sound card.

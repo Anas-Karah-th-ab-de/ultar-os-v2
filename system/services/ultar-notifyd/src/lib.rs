@@ -15,6 +15,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod mirror;
 pub mod notes;
 pub mod service;
 

@@ -341,6 +341,12 @@ impl DesktopApp {
     }
 
     fn event(&mut self, event: HostEvent) -> Result<(), AppError> {
+        let before = self.shell.d.open;
+        let control = match &event {
+            HostEvent::Action(id, action) => self.control_x(*id, action.node),
+            HostEvent::Menu(id, node, _) => self.control_x(*id, *node),
+            _ => None,
+        };
         let outcome = match event {
             HostEvent::Action(id, action) => self.action(id, &action.kind, action.node),
             HostEvent::Key(id, key, m) if Some(id) == self.popup.map(|p| p.id) => {
@@ -378,7 +384,20 @@ impl DesktopApp {
             HostEvent::Compositor(e) => self.compositor(e)?,
             _ => Outcome::none(),
         };
+        self.shell.opened_at(before, control);
         self.apply(outcome)
+    }
+
+    /// The middle of a node in screen points from the left: the bar and the side panels
+    /// span the screen's width, a popup lies at its offset.
+    fn control_x(&self, id: SurfaceId, node: ultar_ui::ui::NodeId) -> Option<f32> {
+        let origin = if id == self.bar || self.is_panel(id) || self.is_background(id) {
+            0.0
+        } else {
+            self.popup.filter(|p| p.id == id)?.offset.0 as f32
+        };
+        let r = self.host.view(id)?.ui.rect(node)?;
+        Some(origin + r.x + r.w / 2.0)
     }
 
     fn target(&self, id: SurfaceId, node: ultar_ui::ui::NodeId) -> Option<Target> {

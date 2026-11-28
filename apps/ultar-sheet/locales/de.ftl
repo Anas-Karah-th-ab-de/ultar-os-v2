@@ -1,0 +1,114 @@
+# ultar-sheet - Texte der Tabellenkalkulation (Arabisch ist die Vorlage)
+app.sheet.name = Tabellenkalkulation
+app.sheet.desc = Rechnen mit Tabellen, Formeln und Zahlen auf Arabisch und Englisch.
+
+sheet.untitled = Neue Arbeitsmappe
+sheet.loading = Arbeitsmappe wird geöffnet …
+sheet.too_big.title = Diese Arbeitsmappe ist zu groß
+sheet.too_big = Die Datei ist zu groß, um sie hier zu öffnen (Grenze {mb} MB).
+sheet.damaged.title = Diese Datei lässt sich nicht öffnen
+sheet.damaged = Die Datei ist keine Arbeitsmappe, die diese App lesen kann: {reason}.
+
+sheet.reason.denied = Schreiben ist hier nicht erlaubt
+sheet.reason.missing = die Datei oder der Ordner existiert nicht
+sheet.reason.exists = eine Datei mit diesem Namen existiert
+sheet.reason.name = dieser Name kann nicht verwendet werden
+sheet.reason.too_big = die Datei ist zu groß
+sheet.reason.damaged = die Datei ist beschädigt
+sheet.reason.io = der Datenträger hat nicht geantwortet
+
+sheet.new = Neu
+sheet.open = Öffnen …
+sheet.save = Speichern
+sheet.save_as = Speichern unter …
+sheet.undo = Rückgängig
+sheet.redo = Wiederholen
+sheet.tools = Werkzeuge
+sheet.bold = F
+sheet.italic = K
+sheet.wrap = Umbruch
+sheet.align_start = Anfang
+sheet.align_center = Mitte
+sheet.align_end = Ende
+sheet.color = Schriftfarbe
+sheet.fill = Füllung
+sheet.fmt_general = Standard
+sheet.fmt_number = 1,234.00
+sheet.fmt_percent = %
+sheet.fmt_currency = $
+sheet.fmt_date = Datum
+sheet.freeze_row = Zeile fixieren
+sheet.freeze_col = Spalte fixieren
+sheet.rtl = Rechts nach links
+sheet.sort_asc = Aufsteigend
+sheet.sort_desc = Absteigend
+sheet.fill_down = Nach unten füllen
+sheet.fill_right = Nach rechts füllen
+sheet.row_add = + Zeile
+sheet.row_del = − Zeile
+sheet.col_add = + Spalte
+sheet.col_del = − Spalte
+sheet.find = Suchen
+sheet.extend = Auswahl erweitern
+
+sheet.formula = Formelleiste
+sheet.formula.hint = Wert oder Formel eingeben, z. B. =SUM(A1:A9)
+sheet.grid = Tabellenblatt
+sheet.empty = Dieses Blatt ist leer. Zelle auswählen und losschreiben.
+sheet.stats = Summe {sum}  ·  Mittelwert {avg}  ·  Anzahl {n}
+
+sheet.find.field = Suchen nach
+sheet.replace.field = Ersetzen durch
+sheet.find_prev = Zurück
+sheet.find_next = Weiter
+sheet.match_case = Groß-/Kleinschreibung
+sheet.replace_one = Ersetzen
+sheet.replace_all = Alle ersetzen
+sheet.close = Schließen
+
+sheet.sheet_add = +
+sheet.sheet_rename = Blatt umbenennen
+sheet.sheet_delete = Blatt löschen
+sheet.sheet_deleted = Blatt gelöscht. Mit „Rückgängig“ kommt es zurück.
+sheet.sheet_last = Das letzte Blatt kann nicht gelöscht werden.
+
+sheet.copied = Kopiert
+sheet.cut = Ausgeschnitten
+sheet.pasted = Eingefügt
+sheet.paste_cut = Eingefügt; was nicht mehr passte, blieb weg.
+sheet.no_room = Für weitere Zeilen oder Spalten ist kein Platz.
+sheet.sort_failed = Die Auswahl lässt sich nicht sortieren.
+sheet.not_found = Nichts gefunden.
+sheet.replaced = In {n} Zellen ersetzt.
+sheet.bad_formula = Diese Formel lässt sich nicht lesen: {why}
+sheet.saved = „{name}“ gespeichert
+sheet.saved_values = „{name}“ gespeichert – eine CSV-Datei behält nur die Werte dieses Blattes.
+sheet.saved_utf8 = „{name}“ in UTF-8 gespeichert – die alte Kodierung konnte nicht alle Zeichen fassen.
+sheet.save_failed = „{name}“ konnte nicht gespeichert werden: {reason}
+sheet.recovered = Die ungespeicherten Änderungen wurden wiederhergestellt. Speichern Sie die Arbeitsmappe, um sie zu behalten.
+
+sheet.ask.title = Änderungen an „{name}“ speichern?
+sheet.ask.message = Ohne Speichern gehen die Änderungen verloren.
+sheet.ask.save = Speichern
+sheet.ask.discard = Nicht speichern
+sheet.ask.cancel = Abbrechen
+sheet.name.title = Speichern unter
+sheet.name.field = Dateiname (in Dokumente)
+sheet.name.ok = Speichern
+sheet.open.title = Arbeitsmappe öffnen
+sheet.open.ok = Öffnen
+sheet.rename.title = Blatt umbenennen
+sheet.rename.field = Blattname
+sheet.rename.ok = Umbenennen
+sheet.rename.taken = Ein Blatt mit diesem Namen existiert.
+sheet.rename.bad = Dieser Blattname kann nicht verwendet werden.
+sheet.recover.title = Ungespeicherte Änderungen wiederherstellen?
+sheet.recover.message = Die App wurde unerwartet beendet. Eine Kopie Ihrer ungespeicherten Änderungen wurde gefunden.
+sheet.recover.ok = Wiederherstellen
+sheet.recover.discard = Kopie verwerfen
+sheet.agent.title = Der Assistent möchte diese Arbeitsmappe ändern
+sheet.agent.message = Der Assistent möchte: {what}
+sheet.agent.allow = Erlauben
+sheet.agent.deny = Nicht erlauben
+sheet.agent.write = {n} Zellen ab {range} schreiben
+sheet.agent.add = das Blatt „{name}“ hinzufügen

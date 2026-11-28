@@ -824,6 +824,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
+name = "calls-e2e"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-call",
+ "ultar-mesh",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "caret"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8652,6 +8662,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-doc"
+version = "0.8.1"
+dependencies = [
+ "miniz_oxide 0.8.9",
+ "png 0.17.16",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-office",
+ "ultar-surface",
+ "ultar-ui",
+ "unicode-bidi",
+]
+
+[[package]]
 name = "ultar-driverpkg"
 version = "0.8.1"
 dependencies = [
@@ -8887,6 +8911,8 @@ dependencies = [
 name = "ultar-mediad"
 version = "0.8.1"
 dependencies = [
+ "base64 0.22.1",
+ "tempfile",
  "ultar-bus",
  "ultar-service",
  "ultar-svckit",
@@ -8996,12 +9022,24 @@ version = "0.8.1"
 dependencies = [
  "encoding_rs",
  "hayro",
+ "miniz_oxide 0.8.9",
  "png 0.17.16",
  "quick-xml",
  "regex",
  "serde",
  "serde_json",
  "zip",
+]
+
+[[package]]
+name = "ultar-pdf"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-office",
+ "ultar-surface",
+ "ultar-ui",
 ]
 
 [[package]]
@@ -9059,12 +9097,35 @@ name = "ultar-radio"
 version = "0.8.1"
 
 [[package]]
+name = "ultar-remote"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-ril"
 version = "0.8.1"
 dependencies = [
  "libc",
  "ultar-bus",
  "ultar-radio",
+]
+
+[[package]]
+name = "ultar-screend"
+version = "0.8.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal-linux",
+ "ultar-mesh",
+ "ultar-service",
+ "ultar-surface",
+ "ultar-svckit",
 ]
 
 [[package]]
@@ -9115,6 +9176,17 @@ dependencies = [
  "ultar-i18n",
  "ultar-profile",
  "ultar-service",
+]
+
+[[package]]
+name = "ultar-sheet"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-office",
+ "ultar-surface",
+ "ultar-ui",
 ]
 
 [[package]]
@@ -9333,6 +9405,18 @@ dependencies = [
  "tungstenite",
  "ultar-sprache",
  "ureq 2.12.1",
+]
+
+[[package]]
+name = "ultar-voiced"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-service",
+ "ultar-svckit",
 ]
 
 [[package]]

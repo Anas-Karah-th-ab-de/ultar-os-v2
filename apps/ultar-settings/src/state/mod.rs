@@ -138,6 +138,8 @@ pub struct StatusView {
     pub mesh: mesh::MeshView,
     /// The cloud model (Settings › Assistant; `None`: no such service).
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
+    /// Voice control (Settings > Assistant; `None`: no such service).
+    pub voice: Option<ultar_bus::messages::voice::VoiceState>,
     /// What the helper thinks with right now (`None`: no helper).
     pub brain: Option<ultar_bus::messages::agent::Brain>,
     /// What the helper did lately (`None`: no helper).

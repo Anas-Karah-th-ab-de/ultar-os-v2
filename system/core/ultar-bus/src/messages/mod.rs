@@ -72,6 +72,10 @@
 //! | `agent.activity` | topic | yes | what the helper did lately |
 //! | `agent.progress` | topic | – | each step of the request being answered |
 //! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
+//! | `voice.state` | topic | yes | voice control service (`ultar-voiced`, see [`voice`]) |
+//! | `voice.set_enabled` / `set_language` / `set_model` / `enroll` / `forget` / `test` / `set_locked` / `owner_confirmed` | calls | - | voice control service |
+//! | `audio.mic` | topic | no | microphone chunks of the audio service, only while `audio.capture` is on |
+//! | `audio.capture` / `audio.play` | calls | - | the voice service asks the audio service for the microphone stream and plays clips |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -98,12 +102,16 @@ pub mod lock;
 pub mod log;
 pub mod media;
 pub mod mesh;
+pub mod mesh_calls;
 pub mod mesh_dialog;
+pub mod mesh_media;
 pub mod mesh_model;
 pub mod mesh_remote;
+pub mod mesh_view;
 pub mod modem;
 pub mod net;
 pub mod notify;
+pub mod notify_mirror;
 pub mod power;
 pub mod session;
 pub mod settings;
@@ -111,6 +119,7 @@ mod settings_access;
 mod settings_ext;
 pub mod shell;
 pub mod sysdialog;
+pub mod voice;
 pub mod volumes;
 pub mod vpn;
 
@@ -245,6 +254,54 @@ mod tests {
         check_call::<super::init::Power>();
     }
 
+    #[test]
+    fn mesh_call_contract_names_are_valid() {
+        check_call::<super::mesh_calls::CallOffer>();
+        check_call::<super::mesh_calls::CallAnswer>();
+        check_call::<super::mesh_calls::CallEnd>();
+        check_call::<super::mesh_calls::CallAudioIn>();
+        check_call::<super::mesh_calls::NoteMirror>();
+        check_topic::<super::mesh_calls::CallIncoming>();
+        check_topic::<super::mesh_calls::CallProgress>();
+        check_topic::<super::mesh_calls::CallAudio>();
+        check_topic::<super::mesh_calls::NoteRemote>();
+        check_call::<super::mesh_calls::CallMeshMute>();
+        check_topic::<super::mesh_calls::MeshCallState>();
+    }
+
+    #[test]
+    fn mesh_media_and_mirror_contract_names_are_valid() {
+        check_call::<super::mesh_media::MediaOpen>();
+        check_call::<super::mesh_media::MediaPcmOut>();
+        check_call::<super::mesh_media::MediaCtlOut>();
+        check_call::<super::mesh_media::SetThere>();
+        check_call::<super::mesh_media::ThereVolume>();
+        check_call::<super::mesh_media::TherePause>();
+        check_call::<super::mesh_media::TherePush>();
+        check_call::<super::notify_mirror::PostEx>();
+        check_topic::<super::mesh_media::MediaIncoming>();
+        check_topic::<super::mesh_media::MediaPcmIn>();
+        check_topic::<super::mesh_media::MediaControl>();
+        check_topic::<super::mesh_media::MediaProgress>();
+        check_topic::<super::mesh_media::ThereState>();
+    }
+
+    #[test]
+    fn voice_contract_names_are_valid() {
+        check_topic::<super::voice::VoiceState>();
+        check_call::<super::voice::SetEnabled>();
+        check_call::<super::voice::SetLanguage>();
+        check_call::<super::voice::SetModel>();
+        check_call::<super::voice::Enroll>();
+        check_call::<super::voice::Test>();
+        check_call::<super::voice::SetLocked>();
+        check_call::<super::voice::Forget>();
+        check_call::<super::voice::OwnerConfirmed>();
+        check_call::<super::voice::Capture>();
+        check_call::<super::voice::Play>();
+        check_topic::<super::voice::MicChunk>();
+    }
+
     fn retained<T: Topic>() -> (&'static str, bool) {
         (T::TOPIC, T::RETAINED)
     }
@@ -258,6 +315,8 @@ mod tests {
             retained::<super::devices::DriverState>(),
             retained::<super::notify::Posted>(),
             retained::<super::settings::Changed>(),
+            retained::<super::voice::VoiceState>(),
+            retained::<super::voice::MicChunk>(),
         ];
         let expected = [
             ("devices.capabilities", true),
@@ -266,6 +325,9 @@ mod tests {
             ("devices.driver_state", false),
             ("notify.posted", false),
             ("settings.changed", false),
+            ("voice.state", true),
+            // the microphone is a stream, not a state: nothing is kept for late subscribers
+            ("audio.mic", false),
         ];
         assert_eq!(table, expected);
     }

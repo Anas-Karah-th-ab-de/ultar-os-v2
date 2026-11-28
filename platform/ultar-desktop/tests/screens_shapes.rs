@@ -8,6 +8,7 @@ use common::shots::*;
 use common::*;
 use ultar_desktop::model::{Open, QuickPage};
 use ultar_desktop::shell::{bar_panel, second_panel, Outcome};
+use ultar_desktop::view::Target;
 use ultar_surface::proto::Edge;
 use ultar_ui::geom::Size;
 use ultar_ui::snapshot::Image;
@@ -58,7 +59,12 @@ fn the_top_bar_looks_as_recorded() {
         ];
         for (name, o) in top {
             let mut h = Harness::top(lang, theme);
-            open(&mut h, o);
+            // The menus as a click opens them: at their button or dock tile.
+            match o {
+                Open::AppMenu => h.click_bar(Target::AppMenu),
+                Open::TileMenu(i) => h.right_side(Target::App(i)),
+                _ => open(&mut h, o),
+            }
             let img = compose(&mut h);
             check(name, lang, theme, &img, &mut problems);
         }

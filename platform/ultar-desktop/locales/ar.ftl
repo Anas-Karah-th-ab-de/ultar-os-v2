@@ -442,6 +442,21 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+desk.note.screend = {arg0} يشاهد هذه الشاشة
+desk.note.screend.body = كل ما تفعله هنا ظاهر لذلك الجهاز، ويمكنه الكتابة هنا.
+desk.note.screend.stop = إيقاف
+desk.call.incoming = مكالمة واردة من {arg0}
+desk.call.incoming.body = على {arg0}. أجب هنا للتحدث عبر هذا الحاسوب.
+desk.call.answer = أجب
+desk.call.decline = ارفض
+desk.call.active = في مكالمة مع {arg0}
+desk.call.active.body = الصوت عبر {arg0}.
+desk.call.active.muted = الميكروفون مغلق. الصوت عبر {arg0}.
+desk.call.mute = كتم
+desk.call.unmute = إلغاء الكتم
+desk.call.hangup = إنهاء المكالمة
+desk.note.mirror.title = {arg0}: {arg1}
+desk.note.mirror.locked = إشعار جديد على {arg0}
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = اختصار جديد…
@@ -484,3 +499,8 @@ desk.metrics.none = –
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}
 mesh.clip.body = للصق اضغط Ctrl+V
+desk.app.remote = العرض عن بعد
+dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم بها
+dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
+dialog.view.accept = سماح
+dialog.view.decline = رفض

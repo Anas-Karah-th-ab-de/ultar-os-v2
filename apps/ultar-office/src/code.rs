@@ -1200,8 +1200,8 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
         }
         let rest = &line[i..];
         if let Some((s, e)) = blk {
-            if rest.starts_with(s) {
-                match rest[s.len()..].find(e) {
+            if let Some(after) = rest.strip_prefix(s) {
+                match after.find(e) {
                     Some(p) => {
                         let end = i + s.len() + p + e.len();
                         out.push((i, end, Tk::Comment));
@@ -1282,36 +1282,12 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
             }
             let w = &line[i..j];
             let next = line[j..].trim_start();
+            let after_tag = i > 0 && (b[i - 1] == b'<' || b[i - 1] == b'/');
             let k = if (ci && kws.iter().any(|k| k.eq_ignore_ascii_case(w)))
                 || (!ci && kws.contains(&w))
             {
                 Tk::Keyword
-            } else if ch == b'$' {
-                Tk::Name
-            } else if next.starts_with('(')
-                || (matches!(lang, Lang::Html | Lang::Xml)
-                    && i > 0
-                    && (b[i - 1] == b'<' || b[i - 1] == b'/'))
-            {
-                Tk::Name
-            } else if matches!(
-                lang,
-                Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css
-            ) && (next.starts_with(':') || next.starts_with('='))
-            {
-                Tk::Name
-            } else if w.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-                && matches!(
-                    lang,
-                    Lang::Rust
-                        | Lang::Java
-                        | Lang::Kotlin
-                        | Lang::CSharp
-                        | Lang::TypeScript
-                        | Lang::Go
-                        | Lang::Cpp
-                )
-            {
+            } else if word_is_name(lang, ch, w, next, after_tag) {
                 Tk::Name
             } else {
                 Tk::Text
@@ -1343,6 +1319,30 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
         i = j;
     }
     (out, st)
+}
+
+/// Whether the word `w` (first byte `first`, followed by `next`) is shown as a name: `$vars`,
+/// calls, HTML/XML tags, keys of data files and capitalised types of the typed languages.
+fn word_is_name(lang: Lang, first: u8, w: &str, next: &str, after_tag: bool) -> bool {
+    let key_lang = matches!(
+        lang,
+        Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css
+    );
+    let typed_lang = matches!(
+        lang,
+        Lang::Rust
+            | Lang::Java
+            | Lang::Kotlin
+            | Lang::CSharp
+            | Lang::TypeScript
+            | Lang::Go
+            | Lang::Cpp
+    );
+    first == b'$'
+        || next.starts_with('(')
+        || (matches!(lang, Lang::Html | Lang::Xml) && after_tag)
+        || (key_lang && (next.starts_with(':') || next.starts_with('=')))
+        || (typed_lang && w.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
 }
 
 #[cfg(test)]

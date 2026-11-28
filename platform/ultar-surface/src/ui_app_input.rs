@@ -17,6 +17,8 @@ pub(super) struct AppInput {
     pub(super) pointer_events: Vec<UiEvent>,
     /// A pointer button is held.
     pub(super) held: bool,
+    /// Touch contacts (down, move, up, cancel), oldest first.
+    pub(super) touch_events: Vec<UiEvent>,
 }
 
 impl UiWindow {
@@ -25,6 +27,12 @@ impl UiWindow {
     /// (the editor's text) places its caret and selection with them.
     pub fn take_pointer_events(&mut self) -> Vec<UiEvent> {
         std::mem::take(&mut self.app.pointer_events)
+    }
+
+    /// Touch contacts since the last call, oldest first (the widget tree handled them too). An
+    /// app that draws a picture itself (the PDF reader) pans and pinches with them.
+    pub fn take_touch_events(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.app.touch_events)
     }
 
     /// Asks the compositor for the clipboard text for the app itself (not for a field);
@@ -44,6 +52,19 @@ impl UiWindow {
     }
 
     pub(super) fn note_pointer(&mut self, event: &UiEvent) {
+        if matches!(
+            event,
+            UiEvent::TouchDown { .. }
+                | UiEvent::TouchMove { .. }
+                | UiEvent::TouchUp { .. }
+                | UiEvent::TouchCancel { .. }
+        ) {
+            if self.app.touch_events.len() >= MAX_UNHANDLED {
+                self.app.touch_events.remove(0);
+            }
+            self.app.touch_events.push(*event);
+            return;
+        }
         let keep = match event {
             UiEvent::PointerDown { .. } => {
                 self.app.held = true;

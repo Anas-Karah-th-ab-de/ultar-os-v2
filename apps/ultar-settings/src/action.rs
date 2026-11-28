@@ -121,6 +121,18 @@ pub enum Act {
     CloudModel,
     /// Type the address of the provider.
     CloudAddress,
+    /// Voice control on or off.
+    VoiceToggle,
+    /// Choose the speech language.
+    VoiceLanguage,
+    /// Choose the speech-to-text model.
+    VoiceModel,
+    /// Record the next training take of what is trained (0 wake word, 1 secret word, 2 voice).
+    VoiceTrain(usize),
+    /// Forget the training of what is trained (same numbers).
+    VoiceForget(usize),
+    /// Test whether the wake word is heard.
+    VoiceTest,
     /// Mesh on or off.
     MeshToggle,
     /// Copy this device's id.

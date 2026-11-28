@@ -11,11 +11,19 @@
 //! auf dem eigenen Ultar-Kern (Linux-ABI). Der KI-Agent greift über dieselben Funktionen zu – in der Oberfläche
 //! als Werkzeuge, von außen über das Befehlszeilenprogramm `udoc` (JSON-Ausgabe).
 
+pub mod calc;
 pub mod code;
 pub mod doc;
 pub mod docx;
+pub mod numfmt;
 pub mod pdf;
+mod pdf_text;
+pub mod pdfout;
 pub mod sheet;
+pub mod sheet_edit;
+pub mod sheet_find;
+pub mod sheet_refs;
+pub mod style;
 pub mod xlsx;
 
 use std::path::Path;

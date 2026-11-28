@@ -121,16 +121,16 @@ fn calendar_and_more(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outco
         (Target::PrevMonth | Target::NextMonth, ActionKind::Activated) => {
             let step = if *target == Target::PrevMonth { -1 } else { 1 };
             let today = s.local_time().map(|t| Month::of(t.date));
-            let current = s.d.calendar.map(|c| c.0).or(today);
+            let current = s.d.notes.calendar.map(|c| c.0).or(today);
             if let Some(m) = current {
-                s.d.calendar = Some((m.step(step), usize::MAX));
+                s.d.notes.calendar = Some((m.step(step), usize::MAX));
             }
             popup_only()
         }
         (Target::Days, ActionKind::Selected(i)) => {
             let today = s.local_time().map(|t| Month::of(t.date));
-            if let Some(m) = s.d.calendar.map(|c| c.0).or(today) {
-                s.d.calendar = Some((m, *i));
+            if let Some(m) = s.d.notes.calendar.map(|c| c.0).or(today) {
+                s.d.notes.calendar = Some((m, *i));
             }
             let mut out = popup_only();
             out.effects.extend(s.day_request());

@@ -422,7 +422,7 @@ angelehnt (zentrierte Symbole, runde Ecken, Einstellungen mit Seitenleiste und K
 
 | # | Frage | Entscheidung |
 |---|---|---|
-| 1+2 | Leiste und Dock | **Standard: eine einzige Leiste unten wie bei Windows 11** – Mitte: Übersicht · alle Apps · Suche · angeheftete und laufende Apps; Ende: Tastaturbelegung · Status (öffnet Schnelleinstellungen) · Uhr/Datum (öffnet Kalender und Benachrichtigungen); Anfang: Papierkorb. Schnelleinstellungen und Kalender öffnen von unten am Ende. Umstellbar: Symbole am Anfang statt Mitte · Leiste oben + getrenntes Dock (Abschnitt 5.1 beschreibt diese Variante) |
+| 1+2 | Leiste und Dock | **Standard: eine einzige Leiste unten wie bei Windows 11** – Mitte: Übersicht · alle Apps · Suche · angeheftete und laufende Apps; Ende: Tastaturbelegung · Status (öffnet Schnelleinstellungen) · Uhr/Datum (öffnet Kalender und Benachrichtigungen); Anfang: Papierkorb. Schnelleinstellungen und Kalender öffnen von unten am Ende. Menüs der Leiste (Eingabesprache, App-Kachel, Laufwerk, Ein/Aus, Ausgabe, App-Menü) öffnen am angeklickten Knopf – mittig darüber bzw. darunter, mindestens 8 pt vom Bildschirmrand; per Taste geöffnet in der Mitte. Umstellbar: Symbole am Anfang statt Mitte · Leiste oben + getrenntes Dock (Abschnitt 5.1 beschreibt diese Variante) |
 | 3 | Fensterknöpfe | am **Ende** der Titelleiste (Arabisch: links) |
 | 4 | Browser | siehe unten |
 | 5 | Farbwelt | **Dunkel („Ultar Noir“ mit Gold) als Standard**, Hell wählbar, dazu „automatisch nach Sonnenstand“ |

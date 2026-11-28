@@ -154,7 +154,7 @@ fn notes_column(
 
 /// The day the calendar sheet shows the appointments of: the selected one, else today.
 pub fn shown_day(d: &Desktop, today: Date) -> Date {
-    let Some((month, selected)) = d.calendar else {
+    let Some((month, selected)) = d.notes.calendar else {
         return today;
     };
     let start = WeekStart::default_for(d.lang);
@@ -191,7 +191,10 @@ fn events(view: &mut View, column: NodeId, d: &Desktop, today: Date) -> Result<(
 }
 
 fn day_grid(d: &Desktop, today: Today, look: Look, tr: &Translator) -> (DayGrid, Month) {
-    let (month, selected) = d.calendar.unwrap_or((Month::of(today.date), usize::MAX));
+    let (month, selected) = d
+        .notes
+        .calendar
+        .unwrap_or((Month::of(today.date), usize::MAX));
     let start = WeekStart::default_for(look.lang);
     let days = calendar::grid(month, today.date, start);
     let headers = start

@@ -91,20 +91,40 @@ scripts/build-servo-engine.sh --media              # mit Ton und Video (GStreame
 Builder: clang, python3, cmake, Entwicklerpakete für fontconfig/freetype/EGL (für den Bau; das Ultar-Bündel
 bringt seine eigenen Bibliotheken, siehe offen). Ziel-Ordner `TARGET` (Standard `/root/ultar-servo/target`).
 
+## Ultar-Kern
+
+Die Engine läuft auf dem Ultar-Kern (QEMU/KVM, Kern-Image des Repos, Wurzel-Platte ext4 mit dem Bündel
+`/usr/lib/ultar/web`). `tools/kern-test/servo-run.sh` startet den Kern, lädt über `ultar-tor-port` die Seite
+`https://example.org/` und bekommt das PNG über die serielle Leitung zurück; das Urteil fällt der Host-Rechner
+aus dem PNG selbst. Beleg des letzten Laufs: `SERVO: ALLES OK (1280x800 PNG of https://example.org/: 34927
+pixels differ from the background colour eeeeee, 1161 colours)` – Latein, Arabisch und Kyrillisch sind
+gezeichnet, Thai erscheint als Kästchen (keine Schrift im Bündel).
+
+Lücken des Kerns, die dabei auffielen (alle ohne Folgen für das Bild):
+
+| Aufruf | Befund |
+|---|---|
+| `getrusage` (Nr. 98) | „noch nicht umgesetzt“, einmal am Ende des Programms; das Ergebnis wird nicht gebraucht |
+
+Der Kern bleibt für `socket.rs` und `syscall.rs` unangetastet. Der Gast-Prozessor ist Nehalem: der Kern rettet
+die breiten Vektor-Register nicht, deshalb erzeugt llvmpipe nur 128-Bit-Code (`LP_NATIVE_VECTOR_WIDTH=128`,
+vom Host gesetzt). Das Bündel, sein Bau und die Annahmen stehen in `servo-bundle.md`.
+
 ## Offen (ehrlich)
 
 1. **Zelle der Seite:** gebaut (Abschnitt „Zelle“, `docs/integration/servo-cell.md`). Offen: auf dem
    **Ultar-Kern** ist sie nicht baubar (kein Netz-Namensraum) – der Host verweigert dort den Start mit Zelle;
    die Liste, was im Kern fehlt, steht in `servo-cell.md`. Entwicklung: `ultar-web --no-cell`.
-2. **Ultar-Kern:** nur unter Linux belegt. Bündel für `/usr/lib/ultar/web`: glibc, libstdc++, zlib,
-   fontconfig, freetype, expat und Mesa mit EGL + llvmpipe/iris aus eigenen Paketen (`tools/ultar-paketbau`).
-3. **Ton und Video:** Merkmal `media` (GStreamer) gebaut, Video-Dekodierung belegt; auf dem Ultar-Kern braucht
-   es eine GStreamer-Tonausgabe nach `/dev/ultar/pcm` (Anfang im Branch `wip/servobundle`: `src/pcm.rs`,
-   `src/media.rs`) und GStreamer als eigene Pakete. YouTube & Co. brauchen MSE, das Servo nicht hat.
-   Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).
+2. **Ultar-Kern:** belegt (Abschnitt „Ultar-Kern“ oben, Einzelheiten in `servo-bundle.md`). Offen dort:
+   iris (Grafikkarte) ungetestet, Bündel noch unsigniert, Spawn der Engine durch den Browser auf dem Kern.
+3. **Ton und Video:** Merkmal `media` (GStreamer): die Tonsenke für `/dev/ultar/pcm` ist da
+   (`src/pcm.rs`, `src/media/gst.rs`, Einheitentests grün). Offen: GStreamer samt Plug-ins als eigene
+   Pakete (Bündel hat noch kein `lib/gstreamer-1.0`), Ton auf dem Kern nicht gehört. YouTube & Co.
+   brauchen MSE, das Servo nicht hat. Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).
 4. Auswahllisten (`<select>`), Datei-Auswahl, Dialoge (`alert`), Kontextmenüs der Seite: der Host
    beantwortet sie noch mit dem Standard; der Browser braucht dafür eigene Protokoll-Nachrichten.
-5. Downloads, Zähler des Tracking-Schutzes, Zwischenablage, Schriften für CJK im Bündel.
+5. Downloads, Zähler des Tracking-Schutzes, Zwischenablage; CJK-/Thai-Schrift fehlt im Bündel noch
+   (`--fonts` nimmt weitere Schriften auf, Lizenz und Quelle noch nicht gewählt).
 6. Wikipedia-Symbole (CSS `mask-image`) zeichnet Servo als schwarze Flächen – Grenze von Servo 0.8.
 
 Zu 1 (Paket `servocell`, Branch `q/servocell`): umgesetzt wie unten im Abschnitt „Zelle“; der Ultar-Kern

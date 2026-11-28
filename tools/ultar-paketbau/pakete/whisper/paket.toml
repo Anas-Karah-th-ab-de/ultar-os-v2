@@ -1,0 +1,98 @@
+# Ultar Spracherkennung: whisper.cpp (speech to text on the device, no cloud). Built from the
+# unmodified upstream release; stands on the package `grafik-laufzeit` (C library and loader come
+# from there, nothing from a distribution). Used by `ultar-voiced` (docs/integration/ultar-voiced.md):
+# the service starts `whisper-server` on the loopback address only when a spoken request has to
+# be turned into text, and stops it when it has been idle.
+#
+# CPU only. Built for SSE4.2 only, like `llama`: the Ultar kernel does not save the wider registers
+# (AVX) of a program yet, so code using them is stopped there. The multilingual models (tiny, base,
+# small, medium; Arabic, English, German) are data files (ggml-<name>.bin), not part of this package;
+# they come with the offline update.
+#
+# Build it in the same work directory as `grafik-laufzeit` / `llama`: the build tools (cmake, ninja)
+# are then built only once.
+#
+# Update from upstream: `ultar-paketbau outdated` lists newer releases; change `version` and
+# `sha256` of the part, build, run the checks. No patches.
+
+id = "whisper"
+name = "Ultar Spracherkennung"
+version = "1"
+arch = "x86_64"
+prefix = "/pkg/whisper"
+uses = ["/pkg/grafik-laufzeit"]
+host_needs = ["gcc", "g++", "make", "python3", "git", "curl", "tar", "patch", "xz"]
+
+env = [
+  ["PKG_CONFIG_ALLOW_SYSTEM_CFLAGS", "1"],
+  ["PKG_CONFIG_ALLOW_SYSTEM_LIBS", "1"],
+]
+# compiled against the C library of the package below and started by its loader
+runtime_env = [
+  ["CC", "gcc -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib"],
+  ["CXX", "g++ -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib"],
+  ["LDFLAGS", "-L/pkg/grafik-laufzeit/lib -Wl,-rpath,{prefix}/lib:/pkg/grafik-laufzeit/lib -Wl,--dynamic-linker=/pkg/grafik-laufzeit/lib/ld-linux-x86-64.so.2 -static-libstdc++ -static-libgcc"],
+]
+remove = ["include", "lib/*.a", "lib/cmake", "lib/pkgconfig"]
+
+# ---- build tools (not shipped; the same parts as in llama) -----------------------------------
+
+[[part]]
+name = "ninja"
+kind = "tool"
+version = "1.13.2"
+source = "https://github.com/ninja-build/ninja/archive/refs/tags/v{version}.tar.gz"
+sha256 = "974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17"
+upstream = "https://github.com/ninja-build/ninja"
+tag = "v{version}"
+license = "Apache-2.0"
+why = "runs the builds cmake describes"
+build = ["python3 configure.py --bootstrap", "install -Dm755 ninja {tools}/bin/ninja"]
+
+[[part]]
+name = "cmake"
+kind = "tool"
+version = "4.5.1"
+source = "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}.tar.gz"
+sha256 = "a79bf33cbe05686fdf79c2bbbcfe5e8e62ad16d3d540fa737cbedfeed41fb69e"
+upstream = "https://github.com/Kitware/CMake"
+tag = "v{version}"
+license = "BSD-3-Clause"
+why = "build system of whisper.cpp"
+build = ["./bootstrap --prefix={tools} --parallel={jobs} -- -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF", "make -j{jobs}", "make install"]
+
+# ---- the package ----------------------------------------------------------------------------
+
+[[part]]
+name = "whisper-cpp"
+kind = "runtime"
+version = "1.9.6"
+source = "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v{version}.tar.gz"
+sha256 = "7ab15dc88022d2425ad94dcffd8abbf1b6d7018089b4e48d6b40780738e0b445"
+upstream = "https://github.com/ggml-org/whisper.cpp"
+tag = "v{version}"
+license = "MIT"
+why = "turns a spoken request into text on the device (whisper models, GGML files); its server answers on the loopback address only"
+# The C++ headers of the compiler must come before the C headers of the package below (see the
+# llama recipe): the first command asks the compiler where its C++ headers are.
+build = [
+  "echo | g++ -xc++ -E -v - 2>&1 | grep '^ /.*c++' | sed 's/^ / -isystem /' | tr -d '\\n' > cxx-dirs",
+  "CXX=\"g++ $(cat cxx-dirs) -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib\" cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX_VNNI=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_AVX512=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_SDL2=OFF -DWHISPER_CURL=OFF -DWHISPER_FFMPEG=OFF",
+  "cmake --build build -j{jobs} --target whisper-server whisper-cli",
+  "install -Dm755 build/bin/whisper-server {prefix}/bin/whisper-server",
+  "install -Dm755 build/bin/whisper-cli {prefix}/bin/whisper-cli",
+]
+
+# ---- proof that the package works with nothing but itself and the package below ------------
+
+[[check]]
+name = "the speech-to-text server starts and names its options"
+build = []
+run = "{prefix}/bin/whisper-server --help"
+expect = "--inference-path"
+
+[[check]]
+name = "the command line program starts"
+build = []
+run = "{prefix}/bin/whisper-cli --help"
+expect = "--language"

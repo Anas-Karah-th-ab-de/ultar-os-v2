@@ -1,0 +1,43 @@
+# Ultar spreadsheet - app manifest (docs/APP-RULES.md §3).
+id          = "sheet"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.sheet.name"
+description = "app.sheet.desc"
+icon        = "sheet"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+# files://<area>/<path>[#sheet=<name>&cell=<A1>]  a workbook of the user: .xlsx and .csv
+# (Files opens them with this app; the fragment is the place the device mesh continues at)
+schemes      = ["files"]
+multi_window = true
+
+[permissions]
+# The user's places: open and save workbooks (the cell binds each at /areas/<name>).
+# mesh.set_activity: tells the device mesh which workbook, sheet and cell is open.
+bus         = ["mesh.set_activity"]
+files       = ["home:rw", "documents:rw", "downloads:rw", "desktop:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[agent]
+# open: a workbook by URI; read_range: the values (and formulas) of a range, e.g. A1:C5.
+# write_range and add_sheet change the workbook: the user is asked first (APP-RULES §9);
+# each is one undo step.
+actions     = ["open", "read_range"]
+confirm     = ["write_range", "add_sheet"]
+
+[limits]
+memory_mb   = 256
+cpu         = "foreground"

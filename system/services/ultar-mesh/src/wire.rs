@@ -185,6 +185,130 @@ pub enum Frame {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// See this device's screen (remote view): a viewer asks a source to stream its
+    /// picture and take its pointer and keys.
+    ViewStart {
+        /// Session id chosen by the viewer.
+        id: u64,
+    },
+    /// The source refuses (no right, busy, or its person said no).
+    ViewRefuse {
+        /// The session.
+        id: u64,
+    },
+    /// The source accepts and will stream `width` × `height` pixels.
+    ViewAccept {
+        /// The session.
+        id: u64,
+        /// Picture width in pixels.
+        width: u32,
+        /// Picture height in pixels.
+        height: u32,
+    },
+    /// One damaged rectangle of the picture, QOI-compressed (base64).
+    ViewFrame {
+        /// The session.
+        id: u64,
+        /// Rising counter; the viewer acknowledges the frames it has rendered.
+        seq: u32,
+        /// `x, y, width, height` of the rectangle in pixels.
+        region: [u32; 4],
+        /// The pixels of that rectangle, QOI-compressed, base64.
+        data: String,
+    },
+    /// The viewer has rendered everything up to (and including) `seq` (flow control).
+    ViewAck {
+        /// The session.
+        id: u64,
+        /// Sequence rendered.
+        seq: u32,
+    },
+    /// The viewer's pointer and keys on the source (a short word code, see
+    /// `ultar-screend`).
+    ViewInput {
+        /// The session.
+        id: u64,
+        /// The event.
+        input: String,
+    },
+    /// Either side ends the session.
+    ViewStop {
+        /// The session.
+        id: u64,
+        /// The source ended it because its screen locked.
+        #[serde(default)]
+        locked: bool,
+    },
+    /// Offer a call that rings here (who calls is only what the phone shows).
+    Call {
+        /// Id chosen by the offering device.
+        id: u64,
+        /// Name or number of the caller.
+        caller: String,
+        /// Video call.
+        video: bool,
+    },
+    /// The person's answer to a [`Frame::Call`].
+    CallAnswer {
+        /// The call.
+        id: u64,
+        /// Accepted.
+        accept: bool,
+    },
+    /// Hang up (either side).
+    CallEnd {
+        /// The call.
+        id: u64,
+    },
+    /// One 20 ms of the call's voice: PCM 16-bit, 48 kHz mono, base64.
+    CallAudio {
+        /// The call.
+        id: u64,
+        /// Frame counter.
+        seq: u64,
+        /// The PCM bytes.
+        pcm: String,
+    },
+    /// A notification of this device to mirror on the other.
+    Note {
+        /// Counter of the sender's notifications.
+        seq: u64,
+        /// Title (data).
+        title: String,
+        /// Body (data).
+        text: String,
+        /// Application id of the sender.
+        app: String,
+        /// Attention level: 0 low, 1 normal, 2 high.
+        urgency: u8,
+        /// The source asks to show it only on an unlocked target.
+        hide_on_locked: bool,
+    },
+    /// Start playing the sound of a media session here ("play there").
+    MediaOpen {
+        /// Id chosen by the source.
+        id: u64,
+        /// What plays (data).
+        title: String,
+        /// By whom (data).
+        artist: String,
+    },
+    /// One 20 ms of the media sound: PCM 16-bit, 48 kHz mono, base64.
+    MediaPcm {
+        /// The session.
+        id: u64,
+        /// Frame counter.
+        seq: u64,
+        /// The PCM bytes.
+        pcm: String,
+    },
+    /// Pause, resume, volume or stop (either end).
+    MediaCtl {
+        /// The session.
+        id: u64,
+        /// What to do.
+        ctl: ultar_bus::messages::mesh_media::MediaCtl,
+    },
     /// Anything this version does not know.
     #[serde(other)]
     Unknown,
@@ -245,5 +369,42 @@ mod tests {
             text: "x".repeat(MAX_FRAME),
         };
         assert!(pack(&huge).is_none());
+    }
+
+    #[test]
+    fn a_view_frame_survives_the_wire() {
+        let frame = Frame::ViewFrame {
+            id: 3,
+            seq: 9,
+            region: [2, 3, 8, 6],
+            data: "AAAA".into(),
+        };
+        let bytes = pack(&frame).unwrap();
+        assert_eq!(unpack(&bytes), Some(frame));
+    }
+
+    #[test]
+    fn call_and_note_frames_survive_the_wire() {
+        let call = Frame::Call {
+            id: 9,
+            caller: "+963 000".into(),
+            video: false,
+        };
+        assert_eq!(unpack(&pack(&call).unwrap()), Some(call));
+        let audio = Frame::CallAudio {
+            id: 9,
+            seq: 0xCAFE,
+            pcm: "aGVsbG8=".into(),
+        };
+        assert_eq!(unpack(&pack(&audio).unwrap()), Some(audio));
+        let note = Frame::Note {
+            seq: 4,
+            title: "SMS".into(),
+            text: "مرحبا".into(),
+            app: "messages".into(),
+            urgency: 2,
+            hide_on_locked: true,
+        };
+        assert_eq!(unpack(&pack(&note).unwrap()), Some(note));
     }
 }

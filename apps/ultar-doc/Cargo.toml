@@ -1,0 +1,33 @@
+[package]
+name = "ultar-doc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS word processor: .docx documents with Arabic/Latin paragraphs, formatting, lists, tables, pictures, undo, find/replace and zoom (area 6, apps)"
+
+[lib]
+name = "ultar_doc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-doc"
+path = "src/bin/ultar-doc.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+# The document model and .docx reading/writing of the office library.
+ultar-office = { path = "../ultar-office" }
+# Mixed Arabic/Latin lines: the reordering of the pieces of a line (the engine of ultar-ui
+# uses the same crate; already in the lock file).
+unicode-bidi = "0.3"
+# PNG pictures of a document (also used by ultar-office; already in the lock file).
+png = "0.17"
+# Compressed streams of the PDF export (the deflate of the zip crate; already in the lock).
+miniz_oxide = "0.8"
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }
