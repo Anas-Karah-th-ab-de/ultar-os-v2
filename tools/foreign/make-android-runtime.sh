@@ -91,7 +91,9 @@ done
 
 # --- the build tree (its own Ubuntu, the same release as the area) ---------------------------
 BUILD="$OUT/build"
-BUILD_DEPS="build-essential,meson,ninja-build,pkg-config,git,ca-certificates,autoconf,automake,libtool,python3,python-is-python3,default-jdk-headless,zip,unzip,file,libasm-java,libgetopt-java,libegl-dev,libgl-dev,libbsd-dev,libunwind-dev,libelf-dev,valgrind,libicu-dev,libssl-dev,libexpat1-dev,liblz4-dev,liblzma-dev,libcap-dev,zlib1g-dev,libasound2-dev,libavcodec-dev,libswscale-dev,libdrm-dev,libglib2.0-dev,libgtk-4-dev,libgudev-1.0-dev,libopenxr-dev,libportal-dev,libsqlite3-dev,libwebkitgtk-6.0-dev,libsecret-1-dev,libspeechd-dev,libvulkan-dev,libwayland-dev,wayland-protocols,libfontconfig-dev,libsdl2-dev,libsndfile1-dev,binutils"
+BUILD_DEPS="apt,build-essential,meson,ninja-build,pkg-config,git,ca-certificates,autoconf,automake,libtool,python3,python-is-python3,default-jdk-headless,zip,unzip,file,libasm-java,libgetopt-java,libegl-dev,libgl-dev,libbsd-dev,libunwind-dev,libelf-dev,valgrind,libicu-dev,libssl-dev,libexpat1-dev,liblz4-dev,liblzma-dev,libcap-dev,zlib1g-dev,libasound2-dev,libavcodec-dev,libswscale-dev,libdrm-dev,libglib2.0-dev,libgtk-4-dev,libgudev-1.0-dev,libopenxr-dev,libportal-dev,libsqlite3-dev,libwebkitgtk-6.0-dev,libsecret-1-dev,libspeechd-dev,libvulkan-dev,libwayland-dev,wayland-protocols,libfontconfig-dev,libsdl2-dev,libsndfile1-dev,binutils"
+# a tree without apt (an earlier list) is made again
+[ -x "$BUILD/usr/bin/apt-get" ] || rm -f "$BUILD/.ready"
 if [ ! -f "$BUILD/.ready" ]; then
   rm -rf "$BUILD"
   mmdebstrap --mode=root --variant=minbase --arch=amd64 --components=main,universe \

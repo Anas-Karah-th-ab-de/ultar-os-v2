@@ -144,7 +144,9 @@ ZIP64, no encryption; at most 100 000 entries, 16 MiB directory), the binary `An
 `resources.arsc` (label per language, icon per density, references followed four deep), APK Signature
 Scheme v3 then v2 (signing block, signature over the signed data with the signer's key: RSA PKCS#1 and
 PSS, ECDSA P-256/P-384; the certificate's key must be the signing key; content digest over the entries,
-the directory and the end record in 1 MiB chunks). Every reader is fuzz-tested (no panic, bounded memory).
+the directory and the end record in 1 MiB chunks). The ZIP, manifest and resource readers are fuzz-tested
+(no panic, bounded memory); the signature check is tested with files signed by a test signer
+(`src/apk/testsign.rs`, feature `test-sign`, never in the service) and with changed bytes.
 The dialog shows the signer as the SHA-256 of its certificate with its common name, **unverified** (an
 Android certificate names nobody checked). Suggested: "internet only" when the app asks for `INTERNET`,
 nothing else. Camera, microphone, location, contacts, phone, SMS and sensors are never granted; the
