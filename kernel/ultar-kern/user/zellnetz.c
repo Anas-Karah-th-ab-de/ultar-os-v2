@@ -349,17 +349,26 @@ static void namespace_rules(void) {
 static pid_t orphan(int w, int sig) {
     pid_t mid = fork();
     if (mid == 0) {
+        // the parent ends only once the grandchild asked for its signal (a signal asked for after the
+        // parent's end never comes, as on Linux)
+        int ready[2];
+        if (pipe(ready) != 0) _exit(2);
         pid_t g = fork();
         if (g == 0) {
             int got = -1;
+            close(ready[0]);
             if (sig) prctl(PR_SET_PDEATHSIG, sig, 0, 0, 0);
             prctl(PR_GET_PDEATHSIG, (unsigned long)&got, 0, 0, 0);
             char line[32];
             int n = snprintf(line, sizeof line, "%d %d\n", (int)getpid(), got);
-            if (write(w, line, n) != n) _exit(2);
+            if (write(w, line, n) != n || write(ready[1], "r", 1) != 1) _exit(2);
+            close(ready[1]);
             for (;;) pause();
         }
-        _exit(0); // the parent ends at once: the grandchild is the orphan
+        close(ready[1]);
+        char c;
+        if (read(ready[0], &c, 1) != 1) _exit(3);
+        _exit(0); // then at once: the grandchild is the orphan
     }
     waitpid(mid, NULL, 0);
     return mid;
