@@ -25,7 +25,7 @@ impl DesktopApp {
     /// Shows, updates or removes the mesh toasts.
     pub(super) fn sync_mesh_toasts(&mut self) -> Result<(), AppError> {
         let want = &self.shell.d.svc.mesh.toasts;
-        if *want == self.mesh_toasts.shown {
+        if *want == self.banners.toasts.shown {
             return Ok(());
         }
         let now = self.host.now_ms();
@@ -36,10 +36,10 @@ impl DesktopApp {
             top_bar,
             &self.shell.tr,
         )?;
-        self.mesh_toasts.shown = want.clone();
-        match (built, self.mesh_toasts.surface) {
+        self.banners.toasts.shown = want.clone();
+        match (built, self.banners.toasts.surface) {
             (None, Some((id, _))) => {
-                self.mesh_toasts.surface = None;
+                self.banners.toasts.surface = None;
                 self.host.close(id)?;
             }
             (None, None) => {}
@@ -59,7 +59,7 @@ impl DesktopApp {
                 };
                 let config = WindowConfig::with_role(role, "", true);
                 let id = self.host.open(&config, view, Some(place.surface))?;
-                self.mesh_toasts.surface = Some((id, place.offset));
+                self.banners.toasts.surface = Some((id, place.offset));
             }
         }
         Ok(())
@@ -76,7 +76,7 @@ impl DesktopApp {
             },
             ActionKind::ToastClosed(id) => {
                 // A waiting toast that timed out stays: build it again.
-                self.mesh_toasts.shown.clear();
+                self.banners.toasts.shown.clear();
                 if mesh.closed(*id, now) {
                     Outcome::surfaces()
                 } else {

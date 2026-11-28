@@ -17,6 +17,12 @@ use ultar_bus::messages::volumes::VolumesState;
 use ultar_bus::messages::vpn::VpnState;
 use ultar_bus::{Client, Topic, TypedSubscription};
 
+/// What the mesh reports besides its state: how offers go and what arrived.
+struct MeshFlow {
+    progress: Option<TypedSubscription<HandoffProgress>>,
+    arrived: Option<TypedSubscription<FileReceived>>,
+}
+
 /// Subscriptions of the service topics (each `None` when the bus refused it).
 pub struct ServiceTopics {
     power: Option<TypedSubscription<PowerActions>>,
@@ -31,8 +37,7 @@ pub struct ServiceTopics {
     wifi: Option<TypedSubscription<WifiLink>>,
     vpn: Option<TypedSubscription<VpnState>>,
     mesh: Option<TypedSubscription<MeshState>>,
-    handoff: Option<TypedSubscription<HandoffProgress>>,
-    arrived: Option<TypedSubscription<FileReceived>>,
+    handoff: MeshFlow,
     helper: Option<TypedSubscription<ultar_bus::messages::agent::AgentState>>,
     progress: Option<TypedSubscription<ultar_bus::messages::agent::Progress>>,
 }
@@ -63,8 +68,10 @@ impl ServiceTopics {
             wifi: client.subscribe().ok(),
             vpn: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
-            handoff: client.subscribe().ok(),
-            arrived: client.subscribe().ok(),
+            handoff: MeshFlow {
+                progress: client.subscribe().ok(),
+                arrived: client.subscribe().ok(),
+            },
             helper: client.subscribe().ok(),
             progress: client.subscribe().ok(),
         }
@@ -89,10 +96,10 @@ impl ServiceTopics {
         any |= drain(&self.vpn, |m| svc.vpn = Some(m));
         any |= drain(&self.mesh, |m| svc.mesh.state = Some(m));
         let mut progress = Vec::new();
-        any |= drain(&self.handoff, |m| progress.push(m));
+        any |= drain(&self.handoff.progress, |m| progress.push(m));
         crate::model::mesh::report(d, &progress);
         let mut files = Vec::new();
-        any |= drain(&self.arrived, |m| files.push(m));
+        any |= drain(&self.handoff.arrived, |m| files.push(m));
         for file in files {
             d.svc
                 .mesh

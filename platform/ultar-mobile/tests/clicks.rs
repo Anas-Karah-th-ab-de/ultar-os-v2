@@ -423,24 +423,22 @@ fn mesh_from_recents_and_the_choice(a: &mut ultar_mobile::MobileApp) {
     );
 }
 
+/// The offer 7 of `files` went to the first device and waits.
+fn offer_seven(a: &mut ultar_mobile::MobileApp, files: &str, now: u64) {
+    let target = targets().remove(0);
+    let offered = ultar_bus::messages::mesh::SendOutcome::Offered { offer: 7, target };
+    a.model.mesh.sent(files, offered, now);
+}
+
 /// The buttons of the notices (board MeshStates) and the arrow of the choice: Cancel takes a
 /// waiting offer back, Retry sends again, Open opens the file that arrived, Close closes.
 #[test]
 fn the_notices_cancel_retry_open_and_close() {
-    use ultar_bus::messages::mesh::{HandoffProgress, OfferState, SendOutcome};
-    use ultar_mobile::model::mesh::Act;
+    use ultar_bus::messages::mesh::{HandoffProgress, OfferState};
     let mut a = home(Lang::Ar);
     let files = "org.ultar.files".to_owned();
     let now = a.model.now_ms;
-    let t = targets().remove(0);
-    a.model.mesh.sent(
-        &files,
-        SendOutcome::Offered {
-            offer: 7,
-            target: t,
-        },
-        now,
-    );
+    offer_seven(&mut a, &files, now);
     a.rebuild().unwrap();
     // Waiting: Cancel takes the offer back.
     assert_eq!(
@@ -455,15 +453,7 @@ fn the_notices_cancel_retry_open_and_close() {
         outgoing: true,
         state,
     };
-    let t = targets().remove(0);
-    a.model.mesh.sent(
-        &files,
-        SendOutcome::Offered {
-            offer: 7,
-            target: t,
-        },
-        now,
-    );
+    offer_seven(&mut a, &files, now);
     a.model.mesh.progress(&gone(OfferState::Expired), now);
     a.rebuild().unwrap();
     assert_eq!(
@@ -473,8 +463,25 @@ fn the_notices_cancel_retry_open_and_close() {
             device: Some("ultar-pc".into())
         }]
     );
-    // Declined and opened have no button; the notice closes.
-    a.model.mesh.progress(&gone(OfferState::Declined), now);
+}
+
+/// Declined and opened have no button and the notice closes; a file that arrived opens in
+/// Files; the arrow of the choice goes back and sends nothing.
+#[test]
+fn the_notices_close_open_and_the_arrow_goes_back() {
+    use ultar_bus::messages::mesh::{HandoffProgress, OfferState, SendOutcome};
+    use ultar_mobile::model::mesh::Act;
+    let mut a = home(Lang::Ar);
+    let files = "org.ultar.files".to_owned();
+    let now = a.model.now_ms;
+    offer_seven(&mut a, &files, now);
+    let declined = HandoffProgress {
+        offer: 7,
+        device: "ultar-pc".into(),
+        outgoing: true,
+        state: OfferState::Declined,
+    };
+    a.model.mesh.progress(&declined, now);
     a.rebuild().unwrap();
     assert!(a.built().node(&Click::MeshRetry).is_none());
     tap(&mut a, &Click::MeshNoticeClose);

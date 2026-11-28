@@ -110,8 +110,8 @@ impl DesktopApp {
         self.shell.d.open = crate::model::Open::None;
         let popup = self.popup.take().map(|p| p.id);
         let banners = self.banners.surface.take().map(|b| b.0);
-        let toasts = self.mesh_toasts.surface.take().map(|b| b.0);
-        self.mesh_toasts = Default::default();
+        let toasts = self.banners.toasts.surface.take().map(|b| b.0);
+        self.banners.toasts = Default::default();
         for id in [popup, banners, toasts, self.side.dock.take()]
             .into_iter()
             .flatten()

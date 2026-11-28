@@ -61,7 +61,7 @@ ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-web --test design_conforma
 # flow between two real mesh services (docs/integration/mesh-handoff.md).
 cargo test -p ultar-desktop --test mesh_conformance --test mesh_clicks --test mesh
 cargo test -p ultar-mobile --test mesh_conformance --test mesh_e2e --test clicks --test dialog_clicks
-cargo test -p ultar-mesh --test handoff_flow
+cargo test -p ultar-mobile --test handoff_flow
 # The Ultar Store app: screens per board (Store, SurfaceStates, CompactStore,
 # CompactStoreApp) in ar+en and dark+light, and one click test per store.*
 # action of docs/ui/CLICKS.md (design/conformance/coverage.toml names them).

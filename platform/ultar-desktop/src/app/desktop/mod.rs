@@ -48,6 +48,8 @@ struct BannerSurface {
     surface: Option<(SurfaceId, (i32, i32))>,
     /// When the banners' clocks were last looked at (ms).
     tick: u64,
+    /// The mesh's toasts (board MeshStates).
+    toasts: mesh_toasts::ToastSurface,
 }
 
 /// The running shell.
@@ -61,8 +63,6 @@ pub struct DesktopApp {
     popup: Option<PopupSurface>,
     /// The banners' surface and when their clocks were last looked at.
     banners: BannerSurface,
-    /// The mesh's toasts (board MeshStates).
-    mesh_toasts: mesh_toasts::ToastSurface,
     link: Option<Link>,
     displays: Vec<(OutputId, String)>,
     pending: Option<(String, Opening, u64)>,
@@ -169,7 +169,6 @@ impl DesktopApp {
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
-            mesh_toasts: mesh_toasts::ToastSurface::default(),
             link,
             displays: Vec::new(),
             pending: None,

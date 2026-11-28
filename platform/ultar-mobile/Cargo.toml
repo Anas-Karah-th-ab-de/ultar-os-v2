@@ -41,3 +41,5 @@ ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-ui = { path = "../ultar-ui" }
 ultar-compositor = { path = "../ultar-compositor" }
 ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-desktop = { path = "../ultar-desktop" }
+ultar-svckit = { path = "../../system/core/ultar-svckit", features = ["testkit"] }

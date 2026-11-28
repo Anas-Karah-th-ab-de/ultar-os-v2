@@ -65,6 +65,26 @@ fn free_port() -> u16 {
         .port()
 }
 
+/// The mesh service's binary: built on demand next to this test's own (the phone crate must
+/// not depend on a system service, so the real daemon is started as a process).
+fn mesh_binary() -> &'static str {
+    use std::sync::OnceLock;
+    static PATH: OnceLock<String> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+        let built = std::process::Command::new(cargo)
+            .args(["build", "-q", "-p", "ultar-mesh", "--bin", "ultar-mesh"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(built, "ultar-mesh did not build");
+        // target/<profile>/deps/handoff_flow-HASH -> target/<profile>/ultar-mesh
+        let exe = std::env::current_exe().expect("own path");
+        let profile = exe.parent().and_then(|d| d.parent()).expect("target dir");
+        profile.join("ultar-mesh").to_string_lossy().into_owned()
+    })
+}
+
 struct Device {
     world: World,
     _daemon: Daemon,
@@ -124,7 +144,7 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
     if let Some(peer) = &peer {
         args.extend(["--peer", peer]);
     }
-    let daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-mesh"), "system.mesh", &args);
+    let daemon = world.spawn(mesh_binary(), "system.mesh", &args);
     let shell = world.client("system.shell");
     Device {
         world,
@@ -195,39 +215,16 @@ fn desktop_dialog(question: AskHandoff) -> bool {
         .any(|e| matches!(e, DialogEffect::Reply(1, Answer::Handoff(true))))
 }
 
-#[test]
-fn a_phone_continues_an_app_on_a_desktop_at_the_same_place() {
-    use ultar_mobile::app::{apply_click, drag_click, Effect};
-    use ultar_mobile::click::Click;
-    use ultar_mobile::model::mesh::Act;
-    use ultar_mobile::Mobile;
-    use ultar_ui::geom::Point;
-
-    let (port_a, port_b) = (free_port(), free_port());
-    let b = device("flow-b", "Desk", port_b, None);
-    let a = device("flow-a", "Phone", port_a, Some(port_b));
-    // The desktop's system dialog: the real model and view answer.
-    let (tx, asked) = mpsc::channel();
-    b.world
-        .serve("system.sysdialog", "sysdialog", move |request| {
-            if let Ok(question) = request.decode::<AskHandoff>() {
-                let _ = tx.send(question.clone());
-                let _ = request.reply(&HandoffDecision {
-                    accept: desktop_dialog(question),
-                });
-            }
-        });
-    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
-    let state_a = a.shell.subscribe::<MeshState>().unwrap();
-    let peer = switch_on(&a, &b);
+/// Both devices on, the phone paired with the desktop by its code.
+fn pair(a: &Device, b: &Device) {
+    let peer = switch_on(a, b);
     let code = call(&b.shell, &PairBegin).unwrap().code;
-    let join = PairJoin {
-        device: peer.clone(),
-        code,
-    };
+    let join = PairJoin { device: peer, code };
     assert_eq!(call(&a.shell, &join).unwrap(), Done { ok: true });
+}
 
-    // The editor on the phone says what it shows: a document, at line 3.
+/// The editor on the phone says what it shows: a document, at line 3.
+fn editor_shows_a_letter(a: &Device) -> std::path::PathBuf {
     let editor = a.world.client("app.editor");
     let source = a.world.subdir("home").join("letter.txt");
     std::fs::write(&source, vec![b'x'; 200_000]).unwrap();
@@ -240,16 +237,25 @@ fn a_phone_continues_an_app_on_a_desktop_at_the_same_place() {
         }),
     };
     assert_eq!(call(&editor, &set).unwrap(), Done { ok: true });
+    source
+}
 
-    // The phone's model knows the mesh from its state topic: a paired device is connected.
-    let mut phone = Mobile::default();
+/// The phone's side: its model knows the mesh from the state topic, the card of the app in
+/// the recent apps is held and swiped up, and the shell makes the call.
+fn phone_swipes_the_card(a: &Device) -> ultar_mobile::Mobile {
+    use ultar_mobile::app::{apply_click, drag_click, Effect};
+    use ultar_mobile::click::Click;
+    use ultar_mobile::model::mesh::Act;
+    use ultar_ui::geom::Point;
+
+    let state_a = a.shell.subscribe::<MeshState>().unwrap();
+    let mut phone = ultar_mobile::Mobile::default();
     assert!(wait_until(WAIT, || {
         while let Ok(Some(state)) = state_a.try_recv() {
             phone.mesh.state = Some(state);
         }
         phone.mesh.can_send()
     }));
-    // The card of the app in the recent apps is held and swiped up.
     let swipe = Point { x: 0.0, y: -120.0 };
     let click = drag_click(Some(&Click::App("editor".into())), swipe).expect("the gesture");
     assert_eq!(click, Click::MeshSend("editor".into()));
@@ -280,6 +286,29 @@ fn a_phone_continues_an_app_on_a_desktop_at_the_same_place() {
         matches!(waiting.act, Some(Act::Cancel(_))),
         "Cancel is offered"
     );
+    phone
+}
+
+#[test]
+fn a_phone_continues_an_app_on_a_desktop_at_the_same_place() {
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("flow-b", "Desk", port_b, None);
+    let a = device("flow-a", "Phone", port_a, Some(port_b));
+    // The desktop's system dialog: the real model and view answer.
+    let (tx, asked) = mpsc::channel();
+    b.world
+        .serve("system.sysdialog", "sysdialog", move |request| {
+            if let Ok(question) = request.decode::<AskHandoff>() {
+                let _ = tx.send(question.clone());
+                let _ = request.reply(&HandoffDecision {
+                    accept: desktop_dialog(question),
+                });
+            }
+        });
+    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
+    pair(&a, &b);
+    editor_shows_a_letter(&a);
+    let mut phone = phone_swipes_the_card(&a);
 
     // The desktop asked its person, who pressed Accept.
     let question = asked.recv_timeout(WAIT).unwrap();

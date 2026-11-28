@@ -8907,14 +8907,10 @@ dependencies = [
  "tungstenite",
  "ultar-bus",
  "ultar-compositor",
- "ultar-desktop",
  "ultar-hal",
- "ultar-i18n",
- "ultar-mobile",
  "ultar-service",
  "ultar-surface",
  "ultar-svckit",
- "ultar-ui",
 ]
 
 [[package]]
@@ -8923,6 +8919,7 @@ version = "0.8.1"
 dependencies = [
  "ultar-bus",
  "ultar-compositor",
+ "ultar-desktop",
  "ultar-dialog-core",
  "ultar-hal",
  "ultar-hal-system",
@@ -8931,6 +8928,7 @@ dependencies = [
  "ultar-service",
  "ultar-shell-host",
  "ultar-surface",
+ "ultar-svckit",
  "ultar-ui",
 ]
 

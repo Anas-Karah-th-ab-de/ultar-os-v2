@@ -78,7 +78,7 @@ Das Wartehinweis-Fenster am Telefon dauert 65 s (die Frage dort endet nach 60 s)
 | `platform/ultar-mobile/tests/mesh_conformance.rs` | Tafeln `CompactMeshSend`, `CompactMeshIncoming` |
 | `platform/ultar-mobile/tests/mesh_e2e.rs` | echter Compositor + Bus mit Stellvertreter-Mesh |
 | `system/services/ultar-mesh/tests/handoff.rs` | `mesh.received` für eine angekommene Datei |
-| `system/services/ultar-mesh/tests/handoff_flow.rs` | zwei echte `ultar-mesh`-Dienste, je ein Bus: Geste am Telefon → Angebot → echte Dialog-Ansicht des Rechners, Annehmen gedrückt → Start derselben App an derselben Stelle (`#line=3`) → Hinweis „geöffnet“ am Telefon |
+| `platform/ultar-mobile/tests/handoff_flow.rs` | zwei echte `ultar-mesh`-Dienste, je ein Bus: Geste am Telefon → Angebot → echte Dialog-Ansicht des Rechners, Annehmen gedrückt → Start derselben App an derselben Stelle (`#line=3`) → Hinweis „geöffnet“ am Telefon |
 
 Die Konformanz-Tests sind in `tools/design-conformance/run.sh` eingetragen; die Tafel-Listen kommen aus
 `tools/design-conformance/make_board_manifest.py` (`design/conformance/boards/*.tsv`).
