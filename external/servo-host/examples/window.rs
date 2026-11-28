@@ -42,6 +42,7 @@ fn main() -> Result<(), Failure> {
             user_agent: "UltarWeb/0.8".into(),
             filter: None,
             proxy: Some(proxy.clone()),
+            proxy_socket: None,
         };
         std::fs::create_dir_all(&config.profile)?;
         let mut browser = Browser::new(

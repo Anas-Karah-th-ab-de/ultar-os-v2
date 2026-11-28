@@ -1,7 +1,7 @@
 //! The HTTP side of the port (RFC 9110 §9.3.6, `CONNECT` only) for engines that reach the
 //! internet through an HTTP proxy (the Servo engine of the browser). The app's secret comes as
 //! `Proxy-Authorization: Basic …`; the same refusals as the SOCKS side apply (this device, the
-//! local network); after `200` the bytes are copied both ways. TLS stays between the engine and
+//! local network); on the Unix socket front (`unix.rs`) no secret is asked. After `200` the bytes are copied both ways. TLS stays between the engine and
 //! the site: the port sees only the name and the port of the site.
 
 use std::future::Future;
@@ -14,7 +14,7 @@ const MAX_HEAD: usize = 8 * 1024;
 /// `connect(host, port)` and copies both ways until one side ends.
 pub async fn handle<C, F, Fut, S>(
     mut client: C,
-    secret: &(String, String),
+    secret: Option<&(String, String)>,
     connect: F,
 ) -> Result<(), &'static str>
 where
@@ -27,7 +27,8 @@ where
     let Some(request) = Request::parse(&head) else {
         return refuse(&mut client, "400 Bad Request", "").await;
     };
-    if !request.carries(&basic_token(secret)) {
+    // no secret: a Unix socket whose file mode is the protection (src/unix.rs)
+    if secret.is_some_and(|s| !request.carries(&basic_token(s))) {
         let challenge = "Proxy-Authenticate: Basic realm=\"ultar\"\r\n";
         return refuse(&mut client, "407 Proxy Authentication Required", challenge).await;
     }
@@ -178,7 +179,7 @@ mod tests {
     async fn ask(head: &str) -> String {
         let (mut ours, theirs) = duplex(4096);
         let server = tokio::spawn(async move {
-            let _ = handle(theirs, &secret(), |_host, _port| async {
+            let _ = handle(theirs, Some(&secret()), |_host, _port| async {
                 let (a, mut b) = duplex(64);
                 tokio::spawn(async move {
                     let mut x = [0u8; 4];

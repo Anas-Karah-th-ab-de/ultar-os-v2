@@ -2,7 +2,7 @@
 //! [--filter FILE] [--no-cell] [--lang ar|en|de] [--light] [--private]`
 //!
 //! The Ultar Browser: connects to the compositor, starts the engine host in its cell and
-//! shows a window. `--no-cell` (development only) starts the engine host unconfined.
+//! shows a window. The cell has no network; its only way out is the Tor client's Unix socket.\n//! `--no-cell` (development only) starts the engine host unconfined.
 //! Exit codes: 0 closed normally, 1 failed, 2 usage.
 
 use std::io::Write;
@@ -72,12 +72,15 @@ fn fail(message: &dyn std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-/// Starts the engine host in its cell; everything it fetches goes through `proxy` (Tor).
+/// Starts the engine host in its cell; everything it fetches goes through the Tor client of this
+/// process. The cell has no network: the way out is a Unix socket of the Tor client in the
+/// engine's folder (mode 0600, no secret). `--no-cell` (development) uses the TCP port with its
+/// secret instead.
 fn start_engine(
     a: &Args,
     profile: &std::path::Path,
     downloads: &std::path::Path,
-    proxy: String,
+    tor: &ultar_tor::Tor,
 ) -> Result<RemoteEngine, Box<dyn std::error::Error>> {
     let program = a
         .engine
@@ -87,26 +90,35 @@ fn start_engine(
         .parent()
         .and_then(|p| p.parent())
         .map_or_else(|| PathBuf::from(BUNDLE), PathBuf::from);
-    let cell = if a.no_cell {
-        None
+    // the engine's own folder: the only part of the profile its cell sees (not the Tor state)
+    let engine_dir = profile.join("engine");
+    std::fs::create_dir_all(&engine_dir)?;
+    let (cell, proxy, proxy_socket) = if a.no_cell {
+        (None, Some(tor.http_proxy_url()), None)
     } else {
-        Some(CellSpec::page(&bundle, profile, downloads)?)
+        let socket = ultar_web::cell::proxy_socket(&engine_dir);
+        tor.unix_proxy(&socket)?;
+        (
+            Some(CellSpec::page(&bundle, &engine_dir, downloads)?),
+            None,
+            Some(socket),
+        )
     };
     let mut agent = ultar_brand::release::Line::<160>::new();
     ultar_brand::release::write_user_agent(&mut agent, "UltarWeb", env!("CARGO_PKG_VERSION"))?;
     let config = HostConfig {
         program,
         cell,
-        profile: profile.join("engine"),
+        profile: engine_dir,
         downloads: downloads.to_path_buf(),
         user_agent: agent.as_str().to_string(),
         filter: a
             .filter
             .clone()
             .or_else(|| Some(bundle.join("share/ultar-web/filter.json")).filter(|p| p.is_file())),
-        proxy: Some(proxy),
+        proxy,
+        proxy_socket,
     };
-    std::fs::create_dir_all(&config.profile)?;
     Ok(RemoteEngine::start(&config)?)
 }
 
@@ -132,7 +144,7 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
             return show(OfflineEngine::new(), a, lang, Paths { profile, downloads });
         }
     };
-    match start_engine(&a, &profile, &downloads, tor.http_proxy_url()) {
+    match start_engine(&a, &profile, &downloads, &tor) {
         Ok(engine) => show(engine, a, lang, Paths { profile, downloads }),
         Err(e) => {
             // No full engine (bundle missing or refused to start, e.g. on the PC image): pages
