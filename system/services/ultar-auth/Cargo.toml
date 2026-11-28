@@ -1,6 +1,6 @@
 [package]
 name = "ultar-auth"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]

@@ -69,6 +69,10 @@ pub enum Act {
     FirmwareCheck,
     /// `drivers.fw.usb`.
     FirmwareUsb,
+    /// `updates.download`: download the release the check found.
+    UpdateDownload,
+    /// `updates.install`: install the downloaded release.
+    UpdateInstall,
     /// `drivers.selftest`.
     SelfTest,
     /// `account.back`.

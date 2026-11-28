@@ -23,6 +23,7 @@ desk.apps.search = Apps suchen
 desk.apps.title = Alle Apps
 desk.apps.uninstall = App entfernen …
 desk.bar.apps = Alle Apps
+desk.bar.battery = {level} %
 desk.bar.clock = Kalender und Benachrichtigungen: {date} {time}
 desk.bar.date = {weekday} {day}. {month}
 desk.bar.overview = Übersicht
@@ -441,3 +442,7 @@ volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du n
 volumed.drive.title = Laufwerk „{arg0}“ verbunden
 volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
 volumed.drive.mount = Einhängen
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Auf {arg0} kopiert
+mesh.clip.body = Mit Strg+V einfügen

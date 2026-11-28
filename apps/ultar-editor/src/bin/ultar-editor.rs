@@ -81,7 +81,8 @@ fn open(o: Options) -> Result<(UiWindow, Editor), String> {
     } else {
         ThemeKind::Dark
     };
-    let env = PaintEnv::new(o.lang, theme);
+    // the person's theme, accent and text size, handed over by the app launcher
+    let env = PaintEnv::new(o.lang, theme).with_session(o.light);
     let tr = ultar_editor::i18n::translator;
     let ui = |lang| {
         Ui::new(env, InputMode::Pointer, Size::new(1.0, 1.0), tr(lang)).map_err(|e| e.to_string())

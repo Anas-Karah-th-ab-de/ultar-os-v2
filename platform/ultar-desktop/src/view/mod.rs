@@ -16,6 +16,7 @@ pub mod note;
 pub mod overview;
 pub mod projection;
 pub mod quick;
+pub mod wallpaper;
 pub mod wifi;
 
 use crate::model::quick::{PowerMode, TileId};
@@ -257,6 +258,8 @@ pub struct Look {
     pub reduce_motion: bool,
     /// accessibility.double_click_ms: two clicks of a double click this far apart (ms).
     pub double_click_ms: u16,
+    /// appearance.accent_color.
+    pub accent: ultar_ui::tokens::Accent,
 }
 
 /// Text factor of accessibility.large_text.
@@ -267,6 +270,14 @@ impl Look {
     pub fn with_access(mut self, high_contrast: bool, large_text: bool) -> Look {
         self.high_contrast = high_contrast;
         self.text_scale = if large_text { LARGE_TEXT } else { 1.0 };
+        self
+    }
+
+    /// With the person's preferences applied: the accent colour and the text size
+    /// (`appearance.font_size`, on top of `large_text`).
+    pub fn with_prefs(mut self, prefs: &crate::model::prefs::Prefs) -> Look {
+        self.accent = prefs.accent;
+        self.text_scale *= prefs.font_factor();
         self
     }
 
@@ -281,6 +292,7 @@ impl Look {
             text_scale: 1.0,
             reduce_motion: false,
             double_click_ms: ultar_ui::tokens::motion::DOUBLE_CLICK as u16,
+            accent: ultar_ui::tokens::Accent::Gold,
         }
     }
 }
@@ -291,6 +303,7 @@ pub fn new_ui(look: Look, size: Size, tr: &Translator) -> Result<Ui, UiError> {
     env.scale = look.scale;
     env.high_contrast = look.high_contrast;
     env.text_scale = look.text_scale;
+    env.accent = look.accent;
     let mut ui = Ui::new(env, look.mode, size, tr.clone())?;
     ui.set_reduce_motion(look.reduce_motion);
     ui.set_double_click_ms(look.double_click_ms);

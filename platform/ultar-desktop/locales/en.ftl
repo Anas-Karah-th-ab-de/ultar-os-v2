@@ -23,6 +23,7 @@ desk.apps.search = Search apps
 desk.apps.title = All apps
 desk.apps.uninstall = Remove app…
 desk.bar.apps = All apps
+desk.bar.battery = {level}%
 desk.bar.clock = Calendar and notifications: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = Overview
@@ -441,3 +442,7 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Copied on {arg0}
+mesh.clip.body = Paste with Ctrl+V

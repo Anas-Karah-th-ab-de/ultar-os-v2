@@ -197,6 +197,8 @@ pub struct Desktop {
     pub overview: OverviewState,
     /// What the system services report (and the main display's settings id).
     pub svc: super::services::Services,
+    /// Accent, text size, clock, time zone and bar icons as set in Settings.
+    pub prefs: super::prefs::Prefs,
 }
 
 impl Desktop {
@@ -220,6 +222,7 @@ impl Desktop {
             calendar: None,
             overview: OverviewState::default(),
             svc: super::services::Services::default(),
+            prefs: super::prefs::Prefs::default(),
         }
     }
 

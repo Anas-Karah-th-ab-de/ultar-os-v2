@@ -23,6 +23,7 @@ desk.apps.search = ابحث في التطبيقات
 desk.apps.title = كل التطبيقات
 desk.apps.uninstall = إزالة التطبيق…
 desk.bar.apps = كل التطبيقات
+desk.bar.battery = {level}%
 desk.bar.clock = التقويم والإشعارات: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = نظرة عامة
@@ -441,3 +442,7 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = تم النسخ على {arg0}
+mesh.clip.body = للصق اضغط Ctrl+V

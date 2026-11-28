@@ -33,6 +33,10 @@ fn renders_the_boards() {
             true,
         ),
         ("Account", "accounts", Lang::Ar, ThemeKind::Dark, true),
+        ("About", "about", Lang::Ar, ThemeKind::Dark, true),
+        ("AboutLight", "about", Lang::En, ThemeKind::Light, true),
+        ("Appearance", "appearance", Lang::De, ThemeKind::Dark, true),
+        ("Desktop", "desktop", Lang::De, ThemeKind::Dark, true),
         (
             "Account-signedout",
             "accounts",

@@ -177,6 +177,20 @@ impl Client {
         self.stream.write_all(&frame).map_err(ClientError::from)
     }
 
+    /// Offers a selection whose data this client provides (clipboard bridge).
+    pub fn bridge_set_selection(&mut self, mimes: &[String]) -> Result<(), ClientError> {
+        self.send(&Request::BridgeSetSelection {
+            mimes: mimes.to_vec(),
+        })
+    }
+
+    /// Asks for the current selection's data (clipboard bridge).
+    pub fn bridge_read_selection(&mut self, mime: &str) -> Result<(), ClientError> {
+        self.send(&Request::BridgeReadSelection {
+            mime: mime.to_owned(),
+        })
+    }
+
     /// Sends a request with a descriptor attached.
     pub fn send_with_fd(
         &mut self,
