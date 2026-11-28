@@ -123,6 +123,8 @@ fn devices(root: &Path, mode: DevMode, sound: bool) -> Result<(), CellFailure> {
             if sound {
                 bind_node(dev, &target, sys_cell::SOUND_NODE)?;
             }
+            // terminals (a terminal app, apt's log): the cell's own only, see mount_ptys
+            let _ = sys_cell::mount_ptys(&target);
             Ok(())
         }
     }

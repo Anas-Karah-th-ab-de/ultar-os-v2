@@ -135,6 +135,10 @@ pub fn of(path: &str) -> Option<Attr> {
             let mode = if path == "/dev/ultar/medium" { 0o440 } else { 0o660 };
             return Some(Attr { mode: S_IFBLK | mode, uid: 0, gid: crate::rawpart::INSTALLER_ID });
         }
+        // a terminal's slave: its owner's, group tty, like devpts' mode=0620
+        if let Some(owner) = path.strip_prefix("/dev/pts/").and_then(|n| n.parse().ok()).and_then(crate::pty::owner) {
+            return Some(Attr { mode: S_IFCHR | 0o620, uid: owner, gid: 5 });
+        }
         return Some(Attr { mode: S_IFCHR | if raw_device(path) { 0o600 } else { 0o666 }, uid: 0, gid: 0 });
     }
     // a link itself (only reached without following it): the disk lookup below would follow it

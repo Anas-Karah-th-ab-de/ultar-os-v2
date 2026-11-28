@@ -35,6 +35,8 @@
 #       the "internet only" barrier, PR_SET_PDEATHSIG,
 #   5j. single files in a cell's view and chown inside a cell (zell-bind-e2e.sh, ZELL-BIND: ALLES OK): binds
 #       of device nodes, files and socket nodes onto files, mount points stay (EBUSY), the right CELL_CHOWN,
+#   5k. what programs of other systems need (fremd-kern.sh, FREMD-KERN: ALLES OK): execve resets caught
+#       signals, rmdir/unlink each only their own kind, close_range, sync_file_range, msync, fchdir, /dev/ptmx,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -170,6 +172,17 @@ else
     echo "ok    ZELL-BIND: ALLES OK ($(grep -c '^ok ' "$BLOG.out") checks)"
   else
     echo "FAIL  ZELL-BIND"; tail -40 "$BLOG.out"; exit 1
+  fi
+fi
+# What programs of other systems need (fremd-kern.sh): exec signal reset, rmdir/unlink, close_range, fchdir, ptys.
+if [ "${FREMD_KERN:-1}" = 0 ]; then
+  echo "skip  FREMD-KERN (FREMD_KERN=0)"
+else
+  FLOG="${FREMD_KERN_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" FREMD_KERN_LOG="$FLOG" bash tools/kern-test/fremd-kern.sh > "$FLOG.out" 2>&1 && grep -q "^FREMD-KERN: ALLES OK" "$FLOG.out"; then
+    echo "ok    FREMD-KERN: ALLES OK ($(grep -c '^ok ' "$FLOG.out") checks)"
+  else
+    echo "FAIL  FREMD-KERN"; tail -40 "$FLOG.out"; exit 1
   fi
 fi
 # USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is

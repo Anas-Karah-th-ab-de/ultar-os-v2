@@ -55,6 +55,7 @@ mod pci;
 mod perm;
 mod pipe;
 mod proc;
+mod pty;
 mod procfs;
 mod rawpart;
 mod shell;

@@ -56,7 +56,7 @@ pub static RAM: Mutex<BTreeMap<String, Arc<Vec<u8>>>> = Mutex::new(BTreeMap::new
 
 static FATCACHE: Mutex<(u64, Vec<u8>, usize)> = Mutex::new((0, Vec::new(), 0));
 
-const DEVS: [&str; 6] = ["null", "zero", "tty", "console", "urandom", "random"];
+const DEVS: [&str; 7] = ["null", "zero", "tty", "console", "urandom", "random", "ptmx"];
 /// Geräte für Oberflächenprogramme (nur mit Bildschirm)
 const UI_DEVS: [&str; 3] = ["fb0", "input/event0", "input/event1"];
 
@@ -528,6 +528,13 @@ pub fn open(path: &str) -> Option<Node> {
     if tmpfs::is_private(path) {
         return tmpfs::open(path);
     }
+    // pseudo-terminals (pty.rs): /dev/pts lists the live ones, a slave opens for its owner only
+    if path == "/dev/pts" {
+        return Some(Node::Dir(crate::pty::all().into_iter().map(|n| DirEnt { name: alloc::format!("{n}"), dir: false, size: 0 }).collect()));
+    }
+    if let Some(n) = path.strip_prefix("/dev/pts/").and_then(|n| n.parse::<u32>().ok()) {
+        return crate::pty::all().contains(&n).then_some(Node::Dev("pts"));
+    }
     if let Some(d) = path.strip_prefix("/dev/") {
         if let Some(n) = DEVS.iter().find(|&&x| x == d) {
             return Some(Node::Dev(n));
@@ -556,8 +563,9 @@ pub fn open(path: &str) -> Option<Node> {
         if !crate::input::all().is_empty() {
             v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
         }
-        // the service nodes (svcdev) are always there
+        // the service nodes (svcdev) and the pseudo-terminals are always there
         v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
+        v.push(DirEnt { name: "pts".into(), dir: true, size: 0 });
         if crate::svcdev::dri::present() {
             v.push(DirEnt { name: "dri".into(), dir: true, size: 0 });
         }

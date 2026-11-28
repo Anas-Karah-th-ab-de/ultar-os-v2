@@ -284,6 +284,8 @@ fn devices(root: &Path) -> Result<(), ()> {
         std::fs::File::create(&at).map_err(|_| ())?;
         sys_cell::bind(&source, &at, BindMode::Device).map_err(|_| ())?;
     }
+    // apt logs dpkg through a terminal; without one it only warns
+    let _ = sys_cell::mount_ptys(&dev);
     Ok(())
 }
 

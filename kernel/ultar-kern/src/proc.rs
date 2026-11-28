@@ -44,6 +44,8 @@ pub enum FdKind {
     SigFd(u64),
     /// verbundener Unix-Socket: liest aus rx, schreibt in tx
     UnixConn(Arc<Pipe>, Arc<Pipe>),
+    /// Pseudo-terminal end (pty.rs): reads from rx, writes into tx through the line discipline
+    Pty(Arc<Pipe>, Arc<Pipe>, Arc<crate::pty::End>),
     /// Unix-Socket ohne Verbindung (ungebunden oder lauschend)
     UnixSock(Arc<Mutex<UnixState>>),
     /// epoll: beobachtete (fd, Ereignisse, Daten)
@@ -134,6 +136,11 @@ impl Fd {
                 w.writers.fetch_add(1, Ordering::SeqCst);
                 FdKind::UnixConn(r.clone(), w.clone())
             }
+            FdKind::Pty(r, w, e) => {
+                r.readers.fetch_add(1, Ordering::SeqCst);
+                w.writers.fetch_add(1, Ordering::SeqCst);
+                FdKind::Pty(r.clone(), w.clone(), e.clone())
+            }
             FdKind::UnixSock(s) => FdKind::UnixSock(s.clone()),
             FdKind::Epoll(e) => FdKind::Epoll(e.clone()),
             FdKind::RawPart(r) => FdKind::RawPart(r.clone()),
@@ -164,7 +171,7 @@ impl Drop for Fd {
                 p.writers.fetch_sub(1, Ordering::SeqCst);
                 crate::socket::bump();
             }
-            FdKind::UnixConn(r, w) => {
+            FdKind::UnixConn(r, w) | FdKind::Pty(r, w, _) => {
                 r.readers.fetch_sub(1, Ordering::SeqCst);
                 w.writers.fetch_sub(1, Ordering::SeqCst);
                 crate::socket::bump();

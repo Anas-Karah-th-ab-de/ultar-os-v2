@@ -88,6 +88,24 @@ TOOL
 done
 dpkg-deb --root-owner-group -Zxz --build "$X" "$WORK/xdg-utils.deb" >/dev/null
 
+# --- the bwrap replacement: the app's cell is the sandbox (tools/foreign/bwrap-shim.c) ---------
+# GTK's image loader glycin starts its loaders through bwrap, which needs user namespaces (the Ultar
+# kernel has none). The replacement starts the program in the same cell with the same user.
+B="$WORK/bubblewrap"
+mkdir -p "$B/DEBIAN" "$B/usr/bin"
+${CC:-gcc} -Os -static -Wall -Wextra -o "$B/usr/bin/bwrap" "$(dirname "$0")/bwrap-shim.c" || fail "bwrap-shim.c does not build"
+strip "$B/usr/bin/bwrap"
+cat >"$B/DEBIAN/control" <<CONTROL
+Package: bubblewrap
+Version: 99:0.11-ultar1
+Architecture: $ARCH
+Maintainer: KM Code Craft <os@code-craft.tech>
+Description: bwrap for the Ultar Linux area (no namespaces: the app's cell is the sandbox)
+ Understands bwrap's command line and starts the program in the same cell with the same user;
+ namespace, mount and capability requests are ignored.
+CONTROL
+dpkg-deb --root-owner-group -Zxz --build "$B" "$WORK/bubblewrap.deb" >/dev/null
+
 # --- the tree ----------------------------------------------------------------------------
 PACKAGES="apt,dpkg,ca-certificates,locales,libgtk-3-0t64,libgtk-4-1,qt6-wayland,libgl1-mesa-dri,libegl-mesa0,libegl1,libgles2,fonts-noto-core,fonts-dejavu-core,gsettings-desktop-schemas,adwaita-icon-theme,hicolor-icon-theme,shared-mime-info,libglib2.0-bin"
 rm -rf "$TREE"
@@ -114,7 +132,7 @@ Package: systemd systemd-sysv systemd-resolved systemd-timesyncd udev init opens
 Pin: version *
 Pin-Priority: -1
 
-Package: xdg-utils
+Package: xdg-utils bubblewrap
 Pin: version 99:*
 Pin-Priority: 1001
 PIN" \
@@ -122,6 +140,10 @@ PIN" \
   --customize-hook='chroot "$1" dpkg --purge --force-depends xdg-utils >/dev/null 2>&1 || true' \
   --customize-hook='chroot "$1" dpkg -i /tmp/xdg-utils.deb' \
   --customize-hook='rm -f "$1/tmp/xdg-utils.deb"' \
+  --customize-hook="copy-in $WORK/bubblewrap.deb /tmp" \
+  --customize-hook='chroot "$1" dpkg --purge --force-depends bubblewrap >/dev/null 2>&1 || true' \
+  --customize-hook='chroot "$1" dpkg -i /tmp/bubblewrap.deb' \
+  --customize-hook='rm -f "$1/tmp/bubblewrap.deb"' \
   --customize-hook='printf "ar_SY.UTF-8 UTF-8\nen_US.UTF-8 UTF-8\nde_DE.UTF-8 UTF-8\n" >"$1/etc/locale.gen"' \
   --customize-hook='chroot "$1" locale-gen >/dev/null' \
   "$SUITE" "$TREE" "deb $MIRROR $SUITE main universe" "deb $MIRROR $SUITE-updates main universe" "deb $MIRROR $SUITE-security main universe"
@@ -196,6 +218,9 @@ done
 # --- what the apps need is there -----------------------------------------------------------
 need() { [ -e "$TREE/$1" ] || fail "missing in the area: $1"; }
 need usr/bin/apt-get
+need usr/bin/bwrap
+chroot "$TREE" bwrap --unshare-all --die-with-parent --ro-bind / / --chdir /tmp --setenv ULTAR_SHIM 1 -- sh -c 'test "$ULTAR_SHIM" = 1 && test "$(pwd)" = /tmp' \
+  || fail "the bwrap replacement does not start its program"
 need usr/bin/dpkg-deb
 need "usr/lib/$TRIPLET/libgtk-3.so.0"
 need "usr/lib/$TRIPLET/libgtk-4.so.1"

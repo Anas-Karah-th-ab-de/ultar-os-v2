@@ -33,6 +33,7 @@ const ENOTDIR: i64 = 20;
 const EISDIR: i64 = 21;
 const EINVAL: i64 = 22;
 const ENOTTY: i64 = 25;
+const EIO: i64 = 5;
 const ESPIPE: i64 = 29;
 const ENOSPC: i64 = 28;
 const EROFS: i64 = 30;
@@ -723,7 +724,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 None if d.flags & 0x800 != 0 => Src::Err(-11),
                 None => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
             },
-            FdKind::PipeR(pp) | FdKind::UnixConn(pp, _) => {
+            FdKind::PipeR(pp) | FdKind::UnixConn(pp, _) | FdKind::Pty(pp, _, _) => {
                 let timeout = pp.read_timeout_ms.load(Ordering::Relaxed);
                 let mut b = pp.buf.lock();
                 if b.is_empty() {
@@ -898,6 +899,41 @@ fn sys_write(fd: u64, buf: u64, n: u64) -> i64 {
     }
 }
 
+/// Where a `write` goes once the descriptor was looked at (under the process lock).
+enum Out {
+    Echo,
+    Done(usize),
+    Sock(usize),
+    Fb,
+    Group(String),
+    Res(Res),
+}
+
+/// A write to a pseudo-terminal end (pty.rs): through the line discipline, its echo back to the writer
+/// (dropped when the writer's side is full, as a terminal does), a key that signals is reported in
+/// `signal`. The count is that of the caller's bytes: a short write after `ONLCR` grew the data is
+/// counted in the caller's bytes as far as they went out unchanged.
+fn pty_write(rx: &Pipe, tx: &Pipe, end: &crate::pty::End, data: &[u8], nonblock: bool, signal: &mut Option<(u64, u64)>) -> Out {
+    let cooked = crate::pty::cook(end, data);
+    if !cooked.echo.is_empty() {
+        let _ = pipe_write(rx, &cooked.echo, true);
+    }
+    *signal = cooked.signal;
+    if tx.read_closed() {
+        return Out::Res(Res::Val(-EIO));
+    }
+    if cooked.data.is_empty() {
+        return Out::Done(data.len());
+    }
+    let seen = crate::socket::gen();
+    match pipe_write(tx, &cooked.data, nonblock) {
+        Ok(k) if k == cooked.data.len() => Out::Done(data.len()),
+        Ok(k) if nonblock => Out::Done(k.min(data.len())),
+        Ok(k) => Out::Res(Res::Partial(k.min(data.len()) as u64, Wait::Net(seen))),
+        Err(r) => Out::Res(r),
+    }
+}
+
 /// `write`: the result can be "wait and repeat" (full pipe) – see [`Res::Partial`].
 fn write_res(fd: u64, buf: u64, n: u64) -> Res {
     if let Some(r) = crate::rawpart::sys_write(fd, buf, n, None) {
@@ -927,14 +963,8 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
         want
     };
     let Some(data) = get(buf, piece) else { return Res::Val(-EFAULT) };
-    enum Out {
-        Echo,
-        Done(usize),
-        Sock(usize),
-        Fb,
-        Group(String),
-        Res(Res),
-    }
+    // a key of a terminal's line discipline that signals its foreground group (^C …)
+    let mut tty_signal: Option<(u64, u64)> = None;
     let r = with(|p| {
         let Some(d) = p.fd(fd) else { return Out::Res(Res::Val(-EBADF)) };
         let nonblock = d.flags & 0x800 != 0;
@@ -980,6 +1010,7 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 crate::socket::bump();
                 Out::Done(data.len())
             }
+            FdKind::Pty(rx, tx, end) => pty_write(rx, tx, end, &data, nonblock, &mut tty_signal),
             FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
                 // a blocking write that was continued (see `Res::Partial`) reports everything it
                 // delivered, also when the rest fails
@@ -1005,6 +1036,10 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
         }
     })
     .unwrap_or(Out::Res(Res::Val(-EBADF)));
+    if let Some((group, sig)) = tty_signal.filter(|(g, _)| *g != 0) {
+        // the terminal signals its foreground group (a missing group: nothing to signal)
+        let _ = sys_kill(-(group as i64), sig);
+    }
     Res::Val(match r {
         Out::Echo => {
             // the console's own buffers belong to the kernel, not to the writer
@@ -1199,6 +1234,10 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                     Err(e) => return e,
                 }
             }
+            "ptmx" | "pts" => match open_pty(&path, rights) {
+                Ok(k) => k,
+                Err(e) => return e,
+            },
             d if crate::svcdev::node(d).is_some() => match crate::svcdev::open(d, rights) {
                 Ok(k) => k,
                 Err(e) => return e,
@@ -1401,6 +1440,8 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Sock(h) => Ok(stat_buf(0o140777, 0, 6 + h.0 as u64, 0)),
             FdKind::SigFd(_) => Ok(stat_buf(0o000600, 0, 7, 0)),
             FdKind::UnixConn(..) | FdKind::UnixSock(_) => Ok(stat_buf(0o140777, 0, 8, 0)),
+            FdKind::Pty(_, _, e) if e.master => Ok(stat_buf(0o020666, 0, 15, 5 << 8 | 2)),
+            FdKind::Pty(_, _, e) => Ok(stat_buf(0o020620, 0, 15, 136 << 8 | (e.pty.num as u64 & 0xff))),
             FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => Ok(stat_buf(0o000600, 0, 9, 0)),
             FdKind::Fb(_) => Err((String::from("/dev/fb0"), 0o020600, 0)),
             FdKind::Eingabe(e) => Err((alloc::format!("/dev/input/event{}", e.0), 0o020600, 0)),
@@ -1589,7 +1630,7 @@ fn write_bytes(fd: u64, data: &[u8]) -> Res {
                 }
                 Err(e) => Err(Res::Val(e)),
             },
-            FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
+            FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) | FdKind::Pty(_, pp, _) => {
                 if pp.read_closed() {
                     p.pending |= 1 << (crate::signal::SIGPIPE - 1);
                     return Err(Res::Val(-EPIPE));
@@ -1926,6 +1967,60 @@ fn sys_chdir(path: u64) -> i64 {
     }
 }
 
+/// `open` of `/dev/ptmx` (a new terminal, its master) or `/dev/pts/<n>` (that terminal's slave, for the
+/// user that opened its master – or a holder of `FILE_ADMIN`).
+fn open_pty(path: &str, rights: Rights) -> Result<FdKind, i64> {
+    let uid = with(|p| p.g.iso.cred.uid[1]).unwrap_or(u32::MAX);
+    let ends = match path.strip_prefix("/dev/pts/").and_then(|n| n.parse::<u32>().ok()) {
+        Some(n) => crate::pty::open_slave(n, uid, rights.has(Rights::FILE_ADMIN))?,
+        None => crate::pty::open_master(uid)?,
+    };
+    Ok(FdKind::Pty(ends.0, ends.1, ends.2))
+}
+
+/// Terminal requests on a pseudo-terminal end (`None`: the descriptor is not one).
+fn pty_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
+    let (end, pending, pgid) = with(|p| {
+        let pgid = p.pgid;
+        match p.fd(fd).map(|d| &d.kind) {
+            Some(FdKind::Pty(rx, _, e)) => Some((e.clone(), rx.buf.lock().len(), pgid)),
+            _ => None,
+        }
+    })
+    .flatten()?;
+    let input = match req {
+        0x5402..=0x5404 => get(arg, 36),
+        0x402c_542b..=0x402c_542d => get(arg, 44),
+        0x5414 => get(arg, 8),
+        0x4004_5431 | 0x5410 => get(arg, 4),
+        _ => None,
+    };
+    Some(match crate::pty::ioctl(&end, req, input.as_deref(), pgid, pending) {
+        crate::pty::Answer::Val(v) => v,
+        crate::pty::Answer::Bytes(b) => {
+            if put(arg, &b) {
+                0
+            } else {
+                -EFAULT
+            }
+        }
+        crate::pty::Answer::Resized(group) => {
+            if group != 0 {
+                let _ = sys_kill(-(group as i64), 28);
+            }
+            0
+        }
+        // TIOCGPTPEER: the slave of this master as a new descriptor (`arg`: open flags)
+        crate::pty::Answer::OpenPeer => {
+            let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::NONE);
+            match open_pty(&alloc::format!("/dev/pts/{}", end.pty.num), rights) {
+                Ok(kind) => with(|p| p.add_fd(Fd { kind, cloexec: arg & 0x80000 != 0, flags: arg as u32 }, 0)).unwrap_or(-EBADF),
+                Err(e) => e,
+            }
+        }
+    })
+}
+
 fn sys_dup(old: u64, new: Option<u64>, flags: u64) -> i64 {
     with(|p| {
         let Some(d) = p.fd(old) else { return -EBADF };
@@ -2122,6 +2217,9 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             None => -EINVAL,
         };
     }
+    if let Some(r) = pty_ioctl(fd, req, arg) {
+        return r;
+    }
     let console = with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Console))).unwrap_or(false);
     if !console {
         return if with(|p| p.fd(fd).is_some()).unwrap_or(false) { -ENOTTY } else { -EBADF };
@@ -2232,7 +2330,7 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
         FdKind::SigFd(m) => r(pending & *m != 0),
         // end of file: readable; POLLRDHUP when the peer stopped sending (or we shut reading down),
         // POLLHUP when both directions are closed
-        FdKind::UnixConn(rx, tx) => {
+        FdKind::UnixConn(rx, tx) | FdKind::Pty(rx, tx, _) => {
             r(!rx.buf.lock().is_empty() || rx.write_closed())
                 | w(!tx.read_closed() && tx.writable())
                 | if rx.write_closed() { ev & 0x2000 } else { 0 }

@@ -35,6 +35,8 @@ pub fn rdev(path: &str) -> u64 {
         "urandom" => 1 << 8 | 9,
         "tty" => 5 << 8,
         "console" => 5 << 8 | 1,
+        "ptmx" => 5 << 8 | 2,
+        d if d.starts_with("pts/") => d[4..].parse::<u64>().map(|n| 136 << 8 | (n & 0xff)).unwrap_or(0),
         "fb0" => 29 << 8,
         _ => 0,
     }
@@ -46,6 +48,10 @@ pub(super) fn dev_gate(path: &str, want: u32) -> Result<(), i64> {
     if let Some(right) = crate::svcdev::right_for(path) {
         let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::ALL);
         return if rights.has(right) { Ok(()) } else { Err(-EACCES) };
+    }
+    // a terminal's slave: it checks its owner itself when it opens (pty.rs), root included
+    if path.starts_with("/dev/pts/") {
+        return Ok(());
     }
     let (cred, admin, _) = subject();
     let raw = with(|p| p.g.iso.rights.has(Rights::RAW_DEVICE)).unwrap_or(true);
