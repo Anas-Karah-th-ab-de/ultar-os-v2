@@ -195,19 +195,22 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64
 
 /// `mount(source, target, fstype, flags, data)`.
 pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -> i64 {
-    let Some(mut iso) = snapshot() else { return -ESRCH };
+    let Some(iso) = snapshot() else { return -ESRCH };
     if !iso.rights.has(Rights::MOUNT) {
         return -EPERM;
     }
-    // The initial namespace is the kernel's base tree: unchanged behaviour (accepted, no effect). A
-    // chrooted program that mounts (ART in the Android area mounts proc at its /proc) gets a namespace
-    // of its own for that, as after unshare(CLONE_NEWNS) – the base tree still never changes.
+    // The initial namespace is the kernel's base tree: unchanged behaviour (accepted, no effect) – but
+    // proc mounted on a directory there shows the kernel's /proc for every process, as on Linux (ART in
+    // the Android area: chroot, then `mount -t proc proc /proc`, then dalvikvm reads /proc/self/…)
     if iso.mnt.is_initial() {
-        if iso.root == "/" || sys_unshare(CLONE_NEWNS) != 0 {
-            return 0;
+        let proc_fs = ustr(fstype).is_some_and(|t| t == "proc") && flags & (MS_BIND | MS_REMOUNT) == 0;
+        if proc_fs {
+            match dir_in_ns(&iso, target, true) {
+                Ok(at) => crate::isolation::mount::initial_proc(&at, true),
+                Err(e) => return e,
+            }
         }
-        let Some(own) = snapshot() else { return -ESRCH };
-        iso = own;
+        return 0;
     }
     // a single file may be a mount point too (a bind of a device node, a socket, a file)
     let (at, at_dir) = match node_in_ns(&iso, target, true) {
@@ -241,6 +244,9 @@ pub fn sys_umount(target: u64, flags: u64) -> i64 {
         return -EPERM;
     }
     if iso.mnt.is_initial() {
+        if let Ok(at) = dir_in_ns(&iso, target, flags & UMOUNT_NOFOLLOW == 0) {
+            crate::isolation::mount::initial_proc(&at, false);
+        }
         return 0;
     }
     let at = match node_in_ns(&iso, target, flags & UMOUNT_NOFOLLOW == 0) {

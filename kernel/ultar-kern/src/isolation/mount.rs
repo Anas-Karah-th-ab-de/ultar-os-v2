@@ -13,6 +13,32 @@ pub const MAX_MOUNTS: usize = 256;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static INITIAL: spin::Once<Arc<MountNs>> = spin::Once::new();
+/// Directories of the initial namespace that show the kernel's /proc (proc mounted there by a
+/// process holding the mount right; the initial table itself never changes).
+static INITIAL_PROC: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// At most this many such directories.
+const INITIAL_PROC_MAX: usize = 64;
+
+/// proc mounted on (`on`) or unmounted from the directory `at` of the initial namespace.
+pub fn initial_proc(at: &str, on: bool) {
+    if at == "/proc" || below(at, "/proc").is_some() {
+        return;
+    }
+    let mut l = INITIAL_PROC.lock();
+    if on {
+        if !l.iter().any(|d| d == at) && l.len() < INITIAL_PROC_MAX && l.try_reserve(1).is_ok() {
+            l.push(at.to_string());
+        }
+    } else {
+        l.retain(|d| d != at);
+    }
+}
+
+/// The kernel's /proc path for a path of the initial namespace below such a directory.
+fn initial_proc_path(path: &str) -> Option<String> {
+    let l = INITIAL_PROC.lock();
+    l.iter().find_map(|d| below(path, d).map(|rest| join("/proc", rest)))
+}
 
 /// Why a change of the mount table was refused.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -165,6 +191,11 @@ impl MountNs {
 
     /// Host path for the namespace path `path` (absolute, normalised).
     pub fn translate(&self, path: &str) -> Target {
+        if self.initial {
+            if let Some(host) = initial_proc_path(path) {
+                return Target { host, opts: Opts::default(), mount_point: false, whole_host: false };
+            }
+        }
         let mounts = self.mounts.lock();
         let mut best: Option<(&Mount, &str)> = None;
         for m in mounts.iter() {
