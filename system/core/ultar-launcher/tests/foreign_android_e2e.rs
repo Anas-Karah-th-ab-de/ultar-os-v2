@@ -321,7 +321,7 @@ fn in_its_cell(env: &Env, uid: u32) {
     let exec = line(&probe, "home-exec");
     assert_eq!(exec, "refused", "the app's data is not executable");
     let devices: Vec<&str> = line(&probe, "devices").split_whitespace().collect();
-    let allowed = ["null", "zero", "full", "random", "urandom", "tty"];
+    let allowed = ["null", "zero", "full", "random", "urandom", "tty", "ptmx"];
     assert!(devices.iter().all(|d| allowed.contains(d)), "{devices:?}");
     let ids = line(&probe, "id-files");
     assert!(
