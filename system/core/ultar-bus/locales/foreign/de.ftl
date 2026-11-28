@@ -3,6 +3,8 @@
 foreign.confirm.install = „{arg0}“ ({arg1}) installieren. Dieses Programm stammt aus einem anderen System und wurde von KM Code Craft nicht geprüft. Es läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
 foreign.confirm.archive = Das Paket „{arg0}“ aus den Quellen des Linux-Bereichs installieren. Das Programm läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
 foreign.confirm.update = Die Pakete des Linux-Bereichs aus seinen signierten Quellen aktualisieren.
+foreign.confirm.runtime = Die Komponente „Linux-Programme“ (Version {arg0}, signiert von {arg1}) als Linux-Bereich installieren. Darin laufen Linux-Programme, jedes abgeschottet in seiner eigenen Zelle.
+foreign.confirm.runtime.windows = Die Komponente „Windows-Programme“ (Linux-Bereich mit Wine, Version {arg0}, signiert von {arg1}) installieren. Darin laufen Linux- und Windows-Programme, jedes abgeschottet in seiner eigenen Zelle.
 foreign.confirm.change = „{arg0}“ mehr erlauben. Dieses Programm stammt aus einem anderen System und wurde von KM Code Craft nicht geprüft; Netz: {arg2}; Ordner: {arg3}.
 foreign.source.deb = Linux-Paket
 foreign.source.exe = Windows-Programm

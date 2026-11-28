@@ -17,6 +17,7 @@
 #![warn(missing_docs)]
 
 pub mod cellrun;
+pub mod component;
 pub mod desktop;
 pub mod detect;
 pub mod harvest;

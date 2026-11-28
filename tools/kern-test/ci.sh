@@ -39,6 +39,9 @@
 #       signals, rmdir/unlink each only their own kind, close_range, sync_file_range, msync, fchdir, /dev/ptmx,
 #   5l. what Wine needs (wine-kern.sh, WINE-KERN: ALLES OK): mmap address wishes, waitid, GS base,
 #       sigaltstack, fault siginfo, MAP_SHARED on files,
+#   5m. a program from another system as a person gets it (foreign-app-kern.sh, FOREIGN-APP-KERN: ALLES OK):
+#       mousepad.deb through foreign.install (dialog authorized), started by the launcher in its cell behind
+#       ultar-wayland with its own user, screenshot, stop ends the cell, removal leaves nothing,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -197,6 +200,18 @@ else
     echo "ok    WINE-KERN: ALLES OK ($(grep -c '^ok ' "$WLOG.out") checks)"
   else
     echo "FAIL  WINE-KERN"; tail -40 "$WLOG.out"; exit 1
+  fi
+fi
+# A program from another system the way a person gets it (foreign-app-kern.sh): install through the service,
+# start through the launcher in its cell behind the bridge, screenshot, stop, removal.
+if [ "${FOREIGN_APP:-1}" = 0 ]; then
+  echo "skip  FOREIGN-APP-KERN (FOREIGN_APP=0)"
+else
+  ALOG="${FOREIGN_APP_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" LOG="$ALOG" bash tools/kern-test/foreign-app-kern.sh > "$ALOG.out" 2>&1 && grep -q "^ok    FOREIGN-APP-KERN: ALLES OK" "$ALOG.out"; then
+    grep "^ok    FOREIGN-APP-KERN" "$ALOG.out"
+  else
+    echo "FAIL  FOREIGN-APP-KERN"; tail -40 "$ALOG.out"; exit 1
   fi
 fi
 # USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is

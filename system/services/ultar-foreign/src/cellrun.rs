@@ -105,6 +105,12 @@ pub enum Mode {
     Inspect,
     /// Writable area, root of the cell.
     Install,
+    /// A new area, writable, root of the cell: the service itself unpacks the component's
+    /// archive (shown read-only at [`INBOX_IN_CELL`]) into it; no `/proc`, no devices, no
+    /// program of the area runs (`component.rs`).
+    Unpack,
+    /// An area, writable, root of the cell: the service itself empties it.
+    Clear,
 }
 
 impl Mode {
@@ -112,6 +118,8 @@ impl Mode {
         match self {
             Self::Inspect => "inspect",
             Self::Install => "install",
+            Self::Unpack => "unpack",
+            Self::Clear => "clear",
         }
     }
 }
@@ -160,6 +168,8 @@ impl CellJob {
                     mode = Some(match value.as_str() {
                         "inspect" => Mode::Inspect,
                         "install" => Mode::Install,
+                        "unpack" => Mode::Unpack,
+                        "clear" => Mode::Clear,
                         _ => return None,
                     })
                 }
@@ -317,17 +327,21 @@ fn build_view(job: &CellJob) -> Result<(), SetupStep> {
     let root = &job.runtime;
     sys_cell::make_mounts_private().map_err(|_| S::Private)?;
     match job.mode {
-        Mode::Install => bind_writable(root).map_err(|()| S::Area)?,
+        Mode::Install | Mode::Unpack | Mode::Clear => bind_writable(root).map_err(|()| S::Area)?,
         Mode::Inspect => sys_cell::bind(root, root, BindMode::ReadOnly).map_err(|_| S::Area)?,
     }
-    let run = mount_point(root, "/run").map_err(|()| S::Tmpfs)?;
-    sys_cell::mount_tmpfs(&run, "size=8388608,mode=0755").map_err(|_| S::Tmpfs)?;
-    let tmp = mount_point(root, "/tmp").map_err(|()| S::Tmpfs)?;
-    sys_cell::mount_tmpfs(&tmp, "size=268435456,mode=1777").map_err(|_| S::Tmpfs)?;
-    let proc = mount_point(root, "/proc").map_err(|()| S::Proc)?;
-    sys_cell::mount_proc(&proc).map_err(|_| S::Proc)?;
-    protect_proc(&proc).map_err(|()| S::ProcReadOnly)?;
-    devices(root).map_err(|()| S::Devices)?;
+    // the cells that unpack or empty an area run nothing of it: the area alone (and the
+    // archive), nothing of the kernel's
+    if matches!(job.mode, Mode::Install | Mode::Inspect) {
+        let run = mount_point(root, "/run").map_err(|()| S::Tmpfs)?;
+        sys_cell::mount_tmpfs(&run, "size=8388608,mode=0755").map_err(|_| S::Tmpfs)?;
+        let tmp = mount_point(root, "/tmp").map_err(|()| S::Tmpfs)?;
+        sys_cell::mount_tmpfs(&tmp, "size=268435456,mode=1777").map_err(|_| S::Tmpfs)?;
+        let proc = mount_point(root, "/proc").map_err(|()| S::Proc)?;
+        sys_cell::mount_proc(&proc).map_err(|_| S::Proc)?;
+        protect_proc(&proc).map_err(|()| S::ProcReadOnly)?;
+        devices(root).map_err(|()| S::Devices)?;
+    }
     if let Some(inbox) = &job.inbox {
         let at = mount_point(root, INBOX_IN_CELL).map_err(|()| S::Inbox)?;
         sys_cell::bind(inbox, &at, BindMode::ReadOnly).map_err(|_| S::Inbox)?;
@@ -379,7 +393,7 @@ fn confine(mode: Mode) -> Result<(), SetupStep> {
     let ultar = ultar_sys::ultar_rights().is_ok();
     if !ultar {
         let keep = match mode {
-            Mode::Install => install_caps(),
+            Mode::Install | Mode::Unpack | Mode::Clear => install_caps(),
             Mode::Inspect => rustix::thread::CapabilitySet::empty(),
         };
         cut_capabilities(keep).map_err(|()| S::Capabilities)?;
@@ -396,7 +410,7 @@ fn confine(mode: Mode) -> Result<(), SetupStep> {
     }
     if ultar {
         // every right but `cell_chown` in the installation cell; none in the inspection cell
-        let keep = if mode == Mode::Install { CELL_CHOWN } else { 0 };
+        let keep = if mode == Mode::Inspect { 0 } else { CELL_CHOWN };
         ultar_sys::ultar_drop_rights(!keep).map_err(|_| S::Rights)?;
         if ultar_sys::ultar_rights().map_err(|_| S::Rights)? & !keep != 0 {
             return Err(S::Rights);
@@ -429,6 +443,22 @@ pub fn stage_two(words: &[String]) -> i32 {
     };
     if let Err(step) = build_view(&job).and_then(|()| confine(job.mode)) {
         return step.code();
+    }
+    match job.mode {
+        Mode::Unpack => {
+            let archive = Path::new(&job.program[0]);
+            let ok = archive.starts_with(INBOX_IN_CELL)
+                && crate::component::unpack(archive, Path::new("/"), true).is_ok();
+            return if ok { 0 } else { SETUP_FAILED + 3 };
+        }
+        Mode::Clear => {
+            return if crate::component::empty(Path::new("/")).is_ok() {
+                0
+            } else {
+                SETUP_FAILED + 3
+            };
+        }
+        Mode::Inspect | Mode::Install => {}
     }
     let mut command = Command::new(&job.program[0]);
     // the installation cell's messages (apt and dpkg write their errors there) go with its

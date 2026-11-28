@@ -30,6 +30,10 @@ doc = false
 name = "launchtest"
 path = "examples/launchtest/main.rs"
 
+[[example]]
+name = "foreignapp"
+path = "examples/foreignapp/main.rs"
+
 [dev-dependencies]
 # The clean-up tests ask for the person's own id (and, as root, another owner's).
 rustix = { version = "1", default-features = false, features = ["std", "process"] }

@@ -8750,10 +8750,14 @@ dependencies = [
 name = "ultar-foreign"
 version = "0.8.1"
 dependencies = [
+ "flate2",
  "rustix",
  "serde",
+ "sha2 0.10.9",
+ "tar",
  "toml 0.8.23",
  "ultar-bus",
+ "ultar-pkg",
  "ultar-service",
  "ultar-svckit",
  "ultar-sys",

@@ -19,6 +19,10 @@ ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
 ultar-svckit = { path = "../../core/ultar-svckit" }
 ultar-sys = { path = "../../hal/ultar-sys" }
+ultar-pkg = { path = "../../core/ultar-pkg" }
+sha2 = "0.10"
+tar = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 rustix = { version = "1", default-features = false, features = ["std", "thread", "process", "mount", "fs"] }
