@@ -430,6 +430,7 @@ pub fn tick() {
                     let got = NET.lock().get_mut(n).and_then(|d| d.recv(&mut buf));
                     match got {
                         Some(len) => {
+                            crate::net::count_rx(len);
                             input(n, &buf[..len]);
                         }
                         None => break,
@@ -469,6 +470,7 @@ pub fn dhcp(n: usize) -> Option<Config> {
         let got = NET.lock().get_mut(n).and_then(|d| d.recv(&mut buf));
         match got {
             Some(len) => {
+                crate::net::count_rx(len);
                 input(n, &buf[..len]);
             }
             None => crate::arch::pause(),

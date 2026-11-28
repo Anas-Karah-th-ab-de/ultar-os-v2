@@ -119,6 +119,7 @@ fn wait_frame(n: usize, ms: u64, mut f: impl FnMut(&[u8]) -> bool) -> bool {
     while crate::arch::uptime_ms() < end {
         let got = NET.lock().get_mut(n).and_then(|d| d.recv(&mut buf));
         if let Some(len) = got {
+            count_rx(len);
             if f(&buf[..len]) {
                 return true;
             }
