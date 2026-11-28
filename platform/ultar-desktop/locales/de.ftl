@@ -442,6 +442,9 @@ volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du n
 volumed.drive.title = Laufwerk „{arg0}“ verbunden
 volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
 volumed.drive.mount = Einhängen
+desk.note.screend = {arg0} sieht diesen Bildschirm
+desk.note.screend.body = Alles, was du hier tust, ist auf diesem Gerät sichtbar, und es kann hier tippen.
+desk.note.screend.stop = Beenden
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = Neue Verknüpfung…
@@ -474,3 +477,8 @@ desk.desk.no_app.body = Installiere im Store eine App für diese Art Datei.
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert
 mesh.clip.body = Mit Strg+V einfügen
+desk.app.remote = Fernansicht
+dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
+dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
+dialog.view.accept = Erlauben
+dialog.view.decline = Ablehnen

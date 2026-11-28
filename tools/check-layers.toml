@@ -136,6 +136,19 @@ from = "system-services"
 to = "system-services"
 crates = ["system/services/ultar-vpnd"]
 
+# ultar-screend (remote view): reads the screen like the screenshot service, through the
+# compositor's client library (compositor right ui.capture for its own user only); its
+# end-to-end tests run the real headless compositor and two mesh nodes (dev-dependencies).
+[[allow]]
+from = "system-services"
+to = "platform"
+crates = ["platform/ultar-surface", "platform/ultar-compositor"]
+
+[[allow]]
+from = "system-services"
+to = "system-services"
+crates = ["system/services/ultar-mesh"]
+
 # ultar-cloud: the device client of the account server (library, no process of its own:
 # device key, signed registration and sessions). The account service signs in with it.
 [[allow]]

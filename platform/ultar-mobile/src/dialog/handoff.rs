@@ -108,7 +108,11 @@ fn assurances(b: &mut Sheet<'_>, body: NodeId) -> Result<(), UiError> {
 /// Builds the question into the sheet `body`.
 pub fn handoff(b: &mut Sheet<'_>, body: NodeId, p: &AskHandoff) -> Result<(), UiError> {
     let name = p.from_name.chars().take(MAX_NAME).collect::<String>();
-    let (title, text) = if p.app.is_empty() {
+    // A device that wants to see and operate this screen has its own words (remote view).
+    let seeing = p.stage == ultar_bus::messages::mesh::Stage::RemoteView;
+    let (title, text) = if seeing {
+        ("mobile.dialog.view.title", "mobile.dialog.view.text")
+    } else if p.app.is_empty() {
         (
             "mobile.dialog.handoff.file",
             "mobile.dialog.handoff.file.text",
@@ -118,10 +122,19 @@ pub fn handoff(b: &mut Sheet<'_>, body: NodeId, p: &AskHandoff) -> Result<(), Ui
     };
     let who = [("name", name.as_str())];
     b.texts(Label::key_with(title, &who), Label::key_with(text, &who))?;
-    offered(b, body, p)?;
+    if !seeing {
+        offered(b, body, p)?;
+    }
     assurances(b, body)?;
-    let accept = ("mobile.dialog.handoff.accept", DialogClick::Accept);
-    b.yes_no(Some(accept), "mobile.dialog.handoff.decline")?;
+    let (yes, no) = if seeing {
+        ("mobile.dialog.view.accept", "mobile.dialog.view.decline")
+    } else {
+        (
+            "mobile.dialog.handoff.accept",
+            "mobile.dialog.handoff.decline",
+        )
+    };
+    b.yes_no(Some((yes, DialogClick::Accept)), no)?;
     Ok(())
 }
 

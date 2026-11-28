@@ -442,6 +442,9 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+desk.note.screend = {arg0} is looking at this screen
+desk.note.screend.body = Everything you do here is visible to that device, and it can type here.
+desk.note.screend.stop = Stop
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = New shortcut…
@@ -474,3 +477,8 @@ desk.desk.no_app.body = Install an app for this kind of file from the Store.
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}
 mesh.clip.body = Paste with Ctrl+V
+desk.app.remote = Remote view
+dialog.view.title = {name} wants to see and control this screen
+dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
+dialog.view.accept = Allow
+dialog.view.decline = Deny

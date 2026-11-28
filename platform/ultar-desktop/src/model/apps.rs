@@ -111,6 +111,12 @@ fn more_base_apps() -> Vec<AppInfo> {
             IconId::Phone,
             Category::Communication,
         ),
+        base(
+            "org.ultar.remote",
+            "desk.app.remote",
+            IconId::Monitor,
+            Category::Tools,
+        ),
     ]
 }
 

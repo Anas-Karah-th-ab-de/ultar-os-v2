@@ -101,6 +101,7 @@ pub mod mesh;
 pub mod mesh_dialog;
 pub mod mesh_model;
 pub mod mesh_remote;
+pub mod mesh_view;
 pub mod modem;
 pub mod net;
 pub mod notify;

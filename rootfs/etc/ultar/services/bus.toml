@@ -57,6 +57,8 @@ args = [
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The graphical installer (installation medium, user and group 840).
     "--listen", "/run/ultar/bus/installer.sock=system.installer", "--mode", "0660", "--group", "840", "--max-connections", "2",
+    # Remote view source (841): the screen service of the viewed device.
+    "--listen", "/run/ultar/bus/screend.sock=system.screend", "--mode", "0660", "--group", "841", "--max-connections", "4",
     # The service manager (root).
     "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
     # The apps' socket (bound read-only only into the cell of an app whose signed manifest declares

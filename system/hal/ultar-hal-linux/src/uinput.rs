@@ -19,6 +19,7 @@ const UI_DEV_DESTROY: Opcode = opcode::none(b'U', 2);
 const UI_SET_EVBIT: Opcode = opcode::write::<i32>(b'U', 100);
 const UI_SET_KEYBIT: Opcode = opcode::write::<i32>(b'U', 101);
 const UI_SET_RELBIT: Opcode = opcode::write::<i32>(b'U', 102);
+const UI_SET_ABSBIT: Opcode = opcode::write::<i32>(b'U', 103);
 /// `sizeof(struct uinput_user_dev)`.
 pub const USER_DEV_SIZE: usize = 80 + 8 + 4 + 4 * 64 * 4;
 
@@ -29,6 +30,14 @@ pub enum Shape {
     Keyboard,
     /// Three buttons, X/Y and the wheel.
     Mouse,
+    /// A pointer placed at absolute positions (`0..width`, `0..height`): three buttons,
+    /// absolute X/Y and the wheel; for remote control of a screen.
+    Tablet {
+        /// Width of the area in pixels.
+        width: u16,
+        /// Height of the area in pixels.
+        height: u16,
+    },
 }
 
 /// A virtual input device (destroyed on drop).
@@ -56,6 +65,15 @@ fn set(file: &File, which: Opcode, value: u16) -> std::io::Result<()> {
                 )
             }?
         }
+        UI_SET_ABSBIT => {
+            // SAFETY: the argument is an integer, not a pointer.
+            unsafe {
+                ioctl(
+                    file,
+                    IntegerSetter::<UI_SET_ABSBIT>::new_usize(usize::from(value)),
+                )
+            }?
+        }
         _ => {
             // SAFETY: the argument is an integer, not a pointer.
             unsafe {
@@ -77,6 +95,18 @@ pub fn user_dev(name: &str) -> Vec<u8> {
     rec[..len].copy_from_slice(&n[..len]);
     rec[80..82].copy_from_slice(&5u16.to_ne_bytes());
     rec[82..84].copy_from_slice(&0x1d6bu16.to_ne_bytes());
+    rec
+}
+
+/// [`user_dev`] with the ranges of the absolute axes X (0) and Y (1): `0..=width-1` and
+/// `0..=height-1` (`absmax` starts at byte 92 of the legacy record, one `i32` per axis).
+pub fn user_dev_tablet(name: &str, width: u16, height: u16) -> Vec<u8> {
+    let mut rec = user_dev(name);
+    let max = [width.saturating_sub(1), height.saturating_sub(1)];
+    for (axis, value) in max.iter().enumerate() {
+        let at = 92 + 4 * axis;
+        rec[at..at + 4].copy_from_slice(&i32::from(*value).to_ne_bytes());
+    }
     rec
 }
 
@@ -117,6 +147,17 @@ impl VirtualInput {
                     set(&file, UI_SET_KEYBIT, k)?;
                 }
             }
+            Shape::Tablet { .. } => {
+                set(&file, UI_SET_EVBIT, 2)?; // EV_REL
+                set(&file, UI_SET_EVBIT, 3)?; // EV_ABS
+                for b in 0x110..=0x112 {
+                    set(&file, UI_SET_KEYBIT, b)?;
+                }
+                set(&file, UI_SET_RELBIT, 8)?; // REL_WHEEL
+                for axis in [0, 1] {
+                    set(&file, UI_SET_ABSBIT, axis)?; // ABS_X, ABS_Y
+                }
+            }
             Shape::Mouse => {
                 set(&file, UI_SET_EVBIT, 2)?; // EV_REL
                 for b in 0x110..=0x112 {
@@ -127,7 +168,11 @@ impl VirtualInput {
                 }
             }
         }
-        (&file).write_all(&user_dev(name))?;
+        let record = match shape {
+            Shape::Tablet { width, height } => user_dev_tablet(name, width, height),
+            _ => user_dev(name),
+        };
+        (&file).write_all(&record)?;
         // SAFETY: no argument.
         unsafe { ioctl(&file, NoArg::<UI_DEV_CREATE>::new()) }?;
         Ok(Self { file })
@@ -162,6 +207,16 @@ mod tests {
         assert_eq!(rec.len(), 1116);
         assert_eq!(rec[79], 0, "name is NUL-terminated");
         assert_eq!(u16::from_ne_bytes([rec[80], rec[81]]), 5);
+        let tablet = user_dev_tablet("t", 1920, 1080);
+        assert_eq!(tablet.len(), USER_DEV_SIZE);
+        assert_eq!(
+            i32::from_ne_bytes([tablet[92], tablet[93], tablet[94], tablet[95]]),
+            1919
+        );
+        assert_eq!(
+            i32::from_ne_bytes([tablet[96], tablet[97], tablet[98], tablet[99]]),
+            1079
+        );
         let e = event_record(1, 30, 1);
         assert_eq!(&e[..16], &[0; 16]);
         assert_eq!(u16::from_ne_bytes([e[18], e[19]]), 30);

@@ -40,6 +40,7 @@ args = [
     "--listen", "/run/ultar/log/netd.sock=system.netd", "--mode", "0660", "--group", "826",
     "--listen", "/run/ultar/log/btd.sock=system.btd", "--mode", "0660", "--group", "827",
     "--listen", "/run/ultar/log/volumed.sock=system.volumed", "--mode", "0660", "--group", "828",
+    "--listen", "/run/ultar/log/screend.sock=system.screend", "--mode", "0660", "--group", "841",
     "--listen", "/run/ultar/log/mesh.sock=system.mesh", "--mode", "0660", "--group", "833",
     "--listen", "/run/ultar/log/agentd.sock=system.agentd", "--mode", "0660", "--group", "834",
     "--listen", "/run/ultar/log/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835",

@@ -159,3 +159,7 @@ mobile.dialog.handoff.encrypted = Ende-zu-Ende verschlüsselt
 mobile.dialog.handoff.system = Frage des Systems · ohne Antwort nach einer Minute abgelehnt
 mobile.dialog.handoff.accept = Annehmen
 mobile.dialog.handoff.decline = Ablehnen
+mobile.dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
+mobile.dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
+mobile.dialog.view.accept = Erlauben
+mobile.dialog.view.decline = Ablehnen

@@ -185,6 +185,60 @@ pub enum Frame {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// See this device's screen (remote view): a viewer asks a source to stream its
+    /// picture and take its pointer and keys.
+    ViewStart {
+        /// Session id chosen by the viewer.
+        id: u64,
+    },
+    /// The source refuses (no right, busy, or its person said no).
+    ViewRefuse {
+        /// The session.
+        id: u64,
+    },
+    /// The source accepts and will stream `width` × `height` pixels.
+    ViewAccept {
+        /// The session.
+        id: u64,
+        /// Picture width in pixels.
+        width: u32,
+        /// Picture height in pixels.
+        height: u32,
+    },
+    /// One damaged rectangle of the picture, QOI-compressed (base64).
+    ViewFrame {
+        /// The session.
+        id: u64,
+        /// Rising counter; the viewer acknowledges the frames it has rendered.
+        seq: u32,
+        /// `x, y, width, height` of the rectangle in pixels.
+        region: [u32; 4],
+        /// The pixels of that rectangle, QOI-compressed, base64.
+        data: String,
+    },
+    /// The viewer has rendered everything up to (and including) `seq` (flow control).
+    ViewAck {
+        /// The session.
+        id: u64,
+        /// Sequence rendered.
+        seq: u32,
+    },
+    /// The viewer's pointer and keys on the source (a short word code, see
+    /// `ultar-screend`).
+    ViewInput {
+        /// The session.
+        id: u64,
+        /// The event.
+        input: String,
+    },
+    /// Either side ends the session.
+    ViewStop {
+        /// The session.
+        id: u64,
+        /// The source ended it because its screen locked.
+        #[serde(default)]
+        locked: bool,
+    },
     /// Anything this version does not know.
     #[serde(other)]
     Unknown,
@@ -245,5 +299,17 @@ mod tests {
             text: "x".repeat(MAX_FRAME),
         };
         assert!(pack(&huge).is_none());
+    }
+
+    #[test]
+    fn a_view_frame_survives_the_wire() {
+        let frame = Frame::ViewFrame {
+            id: 3,
+            seq: 9,
+            region: [2, 3, 8, 6],
+            data: "AAAA".into(),
+        };
+        let bytes = pack(&frame).unwrap();
+        assert_eq!(unpack(&bytes), Some(frame));
     }
 }

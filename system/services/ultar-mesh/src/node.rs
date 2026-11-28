@@ -6,6 +6,7 @@
 use crate::device::{self, Device};
 use crate::offers::Offers;
 use crate::trust::{Joiner, Shower, Shown, Trust};
+use crate::view::{ViewEnd, Views};
 use crate::wire::{Frame, VERSION};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -127,6 +128,54 @@ pub enum Effect {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// A paired device with the right asks to see this device's screen (source: ask the
+    /// person, then [`Node::view_accept`] or [`Node::view_refuse`]).
+    ViewIncoming {
+        /// Who asks.
+        peer: String,
+        /// The session.
+        id: u64,
+    },
+    /// The session runs: the source streams and the viewer shows width x height pixels.
+    ViewStarted {
+        /// The other device.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// Picture width in pixels.
+        width: u32,
+        /// Picture height in pixels.
+        height: u32,
+    },
+    /// A damaged rectangle arrived (viewer; `data` are the raw RGBA bytes of `region`).
+    ViewFrame {
+        /// Who serves.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// `x, y, width, height` in pixels.
+        region: [u32; 4],
+        /// Raw pixels, four bytes each.
+        data: Vec<u8>,
+    },
+    /// The viewer's pointer/keys to inject (source).
+    ViewInput {
+        /// Who watches.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// The event.
+        input: String,
+    },
+    /// A session ended ([`ViewEnd`] says how) (either side).
+    ViewEnded {
+        /// The other device.
+        peer: String,
+        /// The session.
+        id: u64,
+        /// How it ended.
+        end: ViewEnd,
+    },
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -155,6 +204,7 @@ pub struct Node {
     pub(crate) clip: crate::clip_share::ClipState,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
+    pub(crate) views: Views,
 }
 
 impl Node {
@@ -176,6 +226,7 @@ impl Node {
             clip: crate::clip_share::ClipState::default(),
             thinking: 0,
             serving: 0,
+            views: Views::default(),
         }
     }
 
@@ -260,6 +311,7 @@ impl Node {
             return Vec::new();
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.view_clear(peer));
         effects.push(Effect::Changed);
         effects
     }
@@ -311,6 +363,7 @@ impl Node {
             return (false, Vec::new());
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.view_revoke(peer, true));
         effects.push(Effect::Changed);
         (true, effects)
     }
@@ -320,7 +373,14 @@ impl Node {
         if !self.trust.set_rights(peer, rights) {
             return (false, Vec::new());
         }
-        (true, vec![Effect::Changed])
+        // Taking the right back ends a running remote view at once.
+        let mut effects = if rights.contains(&Right::Control) {
+            Vec::new()
+        } else {
+            self.view_revoke(peer, false)
+        };
+        effects.push(Effect::Changed);
+        (true, effects)
     }
 
     fn on_hello(&mut self, peer: &str, frame: Frame) -> Vec<Effect> {
@@ -374,6 +434,13 @@ impl Node {
             }
             Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
             Frame::Act { .. } | Frame::Acted { .. } => self.on_remote_frame(peer, frame),
+            Frame::ViewStart { .. }
+            | Frame::ViewRefuse { .. }
+            | Frame::ViewAccept { .. }
+            | Frame::ViewFrame { .. }
+            | Frame::ViewAck { .. }
+            | Frame::ViewInput { .. }
+            | Frame::ViewStop { .. } => self.on_view_frame(peer, frame),
             other => self.on_offer_frame(peer, other, now),
         }
     }

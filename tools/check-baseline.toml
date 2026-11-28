@@ -2893,3 +2893,9 @@ rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
 
+# Node gained the remote view sessions (one field: the view sessions); the shared clipboard of main had
+# already brought it to the limit.
+[[entry]]
+rule = "size"
+path = "system/services/ultar-mesh/src/node.rs"
+count = 1

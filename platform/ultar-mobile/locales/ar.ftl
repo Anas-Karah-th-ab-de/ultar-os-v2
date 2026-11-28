@@ -167,3 +167,7 @@ mobile.dialog.handoff.encrypted = مشفّر من طرف إلى طرف
 mobile.dialog.handoff.system = سؤال من النظام · يُرفض تلقائياً إن لم تُجب خلال دقيقة
 mobile.dialog.handoff.accept = قبول
 mobile.dialog.handoff.decline = رفض
+mobile.dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم بها
+mobile.dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
+mobile.dialog.view.accept = سماح
+mobile.dialog.view.decline = رفض

@@ -159,3 +159,7 @@ mobile.dialog.handoff.encrypted = End-to-end encrypted
 mobile.dialog.handoff.system = Question of the system · declined when unanswered for a minute
 mobile.dialog.handoff.accept = Accept
 mobile.dialog.handoff.decline = Decline
+mobile.dialog.view.title = {name} wants to see and control this screen
+mobile.dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
+mobile.dialog.view.accept = Allow
+mobile.dialog.view.decline = Deny

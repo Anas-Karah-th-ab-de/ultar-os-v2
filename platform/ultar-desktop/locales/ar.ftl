@@ -442,6 +442,9 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+desk.note.screend = {arg0} يشاهد هذه الشاشة
+desk.note.screend.body = كل ما تفعله هنا ظاهر لذلك الجهاز، ويمكنه الكتابة هنا.
+desk.note.screend.stop = إيقاف
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = اختصار جديد…
@@ -474,3 +477,8 @@ desk.desk.no_app.body = ثبّت من المتجر تطبيقًا يفتح هذ�
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}
 mesh.clip.body = للصق اضغط Ctrl+V
+desk.app.remote = العرض عن بعد
+dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم بها
+dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
+dialog.view.accept = سماح
+dialog.view.decline = رفض
