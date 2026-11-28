@@ -13,7 +13,12 @@
 //! - A selection the bridge offers is marked as coming from another device.
 
 use super::{ClientId, State};
-use ultar_surface::proto::{ErrorCode, Event, Rights, CLIP_IMAGE_MIME, MAX_MIME};
+use ultar_surface::proto::{ErrorCode, Event, Rights, CLIP_IMAGE_MIME, CLIP_TEXT_MIME};
+
+/// The two types the bridge may read or offer.
+fn bridge_mime(mime: &str) -> bool {
+    mime == CLIP_TEXT_MIME || mime == CLIP_IMAGE_MIME
+}
 
 /// Kind code of a password field (`ultar-ime` `Purpose::password`).
 pub const PASSWORD_PURPOSE: u8 = 2;
@@ -36,13 +41,18 @@ impl State {
         client: ClientId,
         mimes: Vec<String>,
     ) -> Result<(), ErrorCode> {
-        if !self.has_bridge_right(client) {
+        if !self.is_bridge(client) {
             return Err(ErrorCode::Permission);
         }
         if self.locked() {
             return Err(ErrorCode::Permission);
         }
-        self.transfers.set_selection(client, mimes.clone(), false, true);
+        // Only the two types that travel; anything else is malformed.
+        if mimes.len() > 2 || mimes.iter().any(|m| !bridge_mime(m)) {
+            return Err(ErrorCode::Malformed);
+        }
+        self.transfers
+            .set_selection(client, mimes.clone(), false, true);
         if let Some(focus) = self.focused_client() {
             self.send(focus, Event::SelectionOffer { mimes });
         }
@@ -56,7 +66,7 @@ impl State {
         client: ClientId,
         mime: String,
     ) -> Result<(), ErrorCode> {
-        if !self.has_bridge_right(client) {
+        if !self.is_bridge(client) {
             return Err(ErrorCode::Permission);
         }
         if self.locked() {
@@ -64,12 +74,16 @@ impl State {
         }
         let confidential = self.transfers.selection_confidential();
         let offered = self.transfers.selection_mimes();
-        if confidential || mime.len() > MAX_MIME || !offered.contains(&mime) {
-            let transfer = self.transfers.empty();
-            self.send(client, Event::TransferCancelled { transfer });
-            return Ok(());
-        }
-        let Some(owner) = self.transfers.selection_owner() else {
+        // Never the bridge's own offer (that would loop), never a password,
+        // only the two types that travel.
+        let owner = self
+            .transfers
+            .selection_owner()
+            .filter(|&o| o != client && !self.transfers.selection_remote());
+        let (true, Some(owner)) = (
+            !confidential && bridge_mime(&mime) && offered.contains(&mime),
+            owner,
+        ) else {
             let transfer = self.transfers.empty();
             self.send(client, Event::TransferCancelled { transfer });
             return Ok(());
@@ -82,7 +96,7 @@ impl State {
         self.begin_transfer(owner, client, &offered, mime, limit)
     }
 
-    fn has_bridge_right(&self, client: ClientId) -> bool {
+    fn is_bridge(&self, client: ClientId) -> bool {
         self.clients
             .get(&client)
             .is_some_and(|c| c.rights.contains(Rights::CLIPBOARD_BRIDGE))
@@ -92,6 +106,10 @@ impl State {
     /// [`Request::SetSelection`], which already needs the focus, a recent
     /// user action and (indirectly) an unlocked session.
     pub(super) fn notify_bridge_selection(&mut self, mimes: Vec<String>, confidential: bool) {
+        // A lock screen may copy too: nothing of that reaches the bridge.
+        if self.locked() {
+            return;
+        }
         let ids: Vec<ClientId> = self
             .clients
             .iter()

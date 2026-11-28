@@ -134,10 +134,7 @@ fn encode_data(event: &Event, w: &mut Writer) {
         Event::SelectionChange {
             mimes,
             confidential,
-        } => {
-            encode_mimes(w, mimes);
-            w.bool(*confidential);
-        }
+        } => encode_change(w, mimes, *confidential),
         Event::SendRequest { transfer, mime } => {
             w.u32(transfer.0).str(mime, MAX_MIME);
         }
@@ -234,9 +231,24 @@ fn decode_outputs(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
     })
 }
 
-/// The overview's events: a thumbnail (39) or the workspaces (40); any other opcode is refused.
+/// The clipboard bridge's change (42): the offered types and whether a password is behind them.
+fn encode_change(w: &mut Writer, mimes: &[String], confidential: bool) {
+    encode_mimes(w, mimes);
+    w.bool(confidential);
+}
+
+fn decode_change(r: &mut Reader<'_>) -> Result<Event, WireError> {
+    Ok(Event::SelectionChange {
+        mimes: decode_mimes(r)?,
+        confidential: r.bool()?,
+    })
+}
+
+/// The overview's events: a thumbnail (39) or the workspaces (40), the edge swipe (41) and
+/// the clipboard bridge's change (42); any other opcode is refused.
 fn decode_overview(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
     match opcode {
+        42 => decode_change(r),
         39 => decode_thumbnail(r),
         40 => decode_workspaces(r),
         41 => Ok(Event::EdgeSwipe {
@@ -406,10 +418,6 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         },
         20 => Event::SelectionOffer {
             mimes: decode_mimes(r)?,
-        },
-        42 => Event::SelectionChange {
-            mimes: decode_mimes(r)?,
-            confidential: r.bool()?,
         },
         21 => Event::SendRequest {
             transfer: TransferId(r.u32()?),

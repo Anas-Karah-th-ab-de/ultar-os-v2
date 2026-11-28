@@ -441,3 +441,7 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Copied on {arg0}
+mesh.clip.body = Paste with Ctrl+V

@@ -18,6 +18,7 @@ path = "src/bin/ultar-mesh.rs"
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
 ultar-svckit = { path = "../../core/ultar-svckit" }
+ultar-surface = { path = "../../../platform/ultar-surface", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 snow = { version = "0.9", default-features = false, features = ["default-resolver"] }
@@ -29,5 +30,7 @@ base64 = "0.22"
 tungstenite = { version = "0.23", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+ultar-compositor = { path = "../../../platform/ultar-compositor" }
+ultar-hal = { path = "../../hal/ultar-hal" }
 tungstenite = { version = "0.23", default-features = false, features = ["handshake"] }
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

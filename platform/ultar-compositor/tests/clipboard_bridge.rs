@@ -42,9 +42,7 @@ fn serial(peer: &mut Peer, comp: &mut ultar_compositor::Compositor) -> u32 {
         .rev()
         .find_map(|e| match e {
             Event::Key {
-                serial,
-                state: 1,
-                ..
+                serial, state: 1, ..
             } => Some(*serial),
             _ => None,
         })
@@ -147,7 +145,10 @@ fn a_password_is_never_offered_to_the_bridge() {
     let change = bridge.take();
     assert!(change.iter().any(|e| matches!(
         e,
-        Event::SelectionChange { confidential: true, .. }
+        Event::SelectionChange {
+            confidential: true,
+            ..
+        }
     )));
 
     bridge.send(&Request::BridgeReadSelection {
@@ -264,4 +265,129 @@ fn a_text_entry_over_sixteen_kib_is_cancelled() {
         .take()
         .iter()
         .any(|e| matches!(e, Event::TransferCancelled { .. })));
+}
+#[test]
+fn a_copy_on_the_lock_screen_does_not_reach_the_bridge() {
+    let mut comp = compositor(config(), &[(320, 200)]);
+    let mut app = focused_app(&mut comp);
+    let mut bridge = Peer::hello_as(&mut comp, BRIDGE_UID);
+    let s = serial(&mut app, &mut comp);
+    comp.state.session.locked = true;
+    app.send(&Request::SetSelection {
+        serial: s,
+        mimes: txt("text/plain;charset=utf-8"),
+    });
+    app.pump(&mut comp);
+    bridge.pump(&mut comp);
+    assert!(!bridge
+        .take()
+        .iter()
+        .any(|e| matches!(e, Event::SelectionChange { .. })));
+}
+
+#[test]
+fn other_types_are_never_read_or_offered_by_the_bridge() {
+    let mut comp = compositor(config(), &[(320, 200)]);
+    let mut bridge = Peer::hello_as(&mut comp, BRIDGE_UID);
+    let mut app = focused_app(&mut comp);
+    let s = serial(&mut app, &mut comp);
+    app.send(&Request::SetSelection {
+        serial: s,
+        mimes: txt("application/x-secret"),
+    });
+    app.pump(&mut comp);
+    bridge.pump(&mut comp);
+    bridge.take();
+    bridge.send(&Request::BridgeReadSelection {
+        mime: "application/x-secret".into(),
+    });
+    bridge.pump(&mut comp);
+    assert!(bridge
+        .take()
+        .iter()
+        .any(|e| matches!(e, Event::TransferCancelled { .. })));
+    bridge.send(&Request::BridgeSetSelection {
+        mimes: txt("application/x-secret"),
+    });
+    bridge.pump(&mut comp);
+    assert_eq!(
+        bridge.error(),
+        Some(ultar_surface::proto::ErrorCode::Malformed)
+    );
+}
+
+#[test]
+fn the_bridge_cannot_read_back_its_own_offer() {
+    let mut comp = compositor(config(), &[(320, 200)]);
+    let mut bridge = Peer::hello_as(&mut comp, BRIDGE_UID);
+    bridge.send(&Request::BridgeSetSelection {
+        mimes: txt("text/plain;charset=utf-8"),
+    });
+    bridge.pump(&mut comp);
+    bridge.take();
+    bridge.send(&Request::BridgeReadSelection {
+        mime: "text/plain;charset=utf-8".into(),
+    });
+    bridge.pump(&mut comp);
+    assert!(bridge
+        .take()
+        .iter()
+        .any(|e| matches!(e, Event::TransferCancelled { .. })));
+}
+
+/// Sends `size` bytes of a picture from the focused app to the bridge; true when it arrived whole.
+fn picture_arrives(size: usize) -> bool {
+    let mut comp = compositor(config(), &[(320, 200)]);
+    let mut bridge = Peer::hello_as(&mut comp, BRIDGE_UID);
+    let mut app = focused_app(&mut comp);
+    let s = serial(&mut app, &mut comp);
+    app.send(&Request::SetSelection {
+        serial: s,
+        mimes: txt("image/png"),
+    });
+    app.pump(&mut comp);
+    bridge.pump(&mut comp);
+    bridge.take();
+    bridge.send(&Request::BridgeReadSelection {
+        mime: "image/png".into(),
+    });
+    app.pump(&mut comp);
+    let transfer = app
+        .events
+        .iter()
+        .find_map(|e| match e {
+            Event::SendRequest { transfer, .. } => Some(*transfer),
+            _ => None,
+        })
+        .expect("source is asked");
+    app.take();
+    let mut sent = 0;
+    let mut got = 0;
+    let mut cancelled = false;
+    while sent < size && !cancelled {
+        let n = (size - sent).min(64 * 1024);
+        sent += n;
+        app.send(&Request::SendData {
+            transfer,
+            data: vec![7; n],
+            last: sent == size,
+        });
+        app.pump(&mut comp);
+        bridge.pump(&mut comp);
+        for e in bridge.take() {
+            match e {
+                Event::Data { data, .. } => got += data.len(),
+                Event::TransferCancelled { .. } => cancelled = true,
+                _ => {}
+            }
+        }
+        app.take();
+    }
+    !cancelled && got == size
+}
+
+#[test]
+fn a_picture_up_to_four_mib_arrives_and_one_byte_more_is_cancelled() {
+    assert!(picture_arrives(4 * 1024 * 1024));
+    assert!(!picture_arrives(4 * 1024 * 1024 + 1));
 }

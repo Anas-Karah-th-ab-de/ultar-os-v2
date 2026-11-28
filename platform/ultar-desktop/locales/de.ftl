@@ -441,3 +441,7 @@ volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du n
 volumed.drive.title = Laufwerk „{arg0}“ verbunden
 volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
 volumed.drive.mount = Einhängen
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Auf {arg0} kopiert
+mesh.clip.body = Mit Strg+V einfügen

@@ -82,6 +82,11 @@ impl Transfers {
         self.selection.as_ref().is_some_and(|s| s.confidential)
     }
 
+    /// The current selection was offered on behalf of another device.
+    pub(crate) fn selection_remote(&self) -> bool {
+        self.selection.as_ref().is_some_and(|s| s.remote)
+    }
+
     /// Who owns the current selection (provides its data).
     pub(crate) fn selection_owner(&self) -> Option<ClientId> {
         self.selection.as_ref().map(|s| s.owner)
@@ -95,7 +100,7 @@ impl Transfers {
         confidential: bool,
         remote: bool,
     ) {
-        self.selection = (!mimes.is_empty()).then(|| Selection {
+        self.selection = (!mimes.is_empty()).then_some(Selection {
             owner,
             mimes,
             confidential,
@@ -228,7 +233,12 @@ impl State {
                 self.transfers
                     .set_selection(client, mimes.clone(), confidential, false);
                 if let Some(focus) = self.focused_client() {
-                    self.send(focus, Event::SelectionOffer { mimes: mimes.clone() });
+                    self.send(
+                        focus,
+                        Event::SelectionOffer {
+                            mimes: mimes.clone(),
+                        },
+                    );
                 }
                 self.notify_bridge_selection(mimes, confidential);
                 Ok(())
