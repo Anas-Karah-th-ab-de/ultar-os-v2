@@ -45,6 +45,7 @@ mod raw;
 mod tests;
 
 pub mod cell;
+pub mod cellnet;
 mod identity;
 pub mod inherit;
 pub mod machine;

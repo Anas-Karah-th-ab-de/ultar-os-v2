@@ -209,12 +209,32 @@ fn updates(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         .last();
     let row = cx.ui.add(card, row)?;
     let end = buttons(cx, row)?;
-    let check = Button::new(k("app.settings.updates.check")).variant(ButtonVariant::Primary);
+    // The next step of the release the check found: download it, then install it (a restart
+    // from the power menu starts it; the state line says so). That step is the primary button.
+    let phase = cx.state.drivers.firmware.as_ref().map(|(p, _)| p.as_str());
+    let next = match phase {
+        Some("update.state.available" | "update.state.paused") => {
+            Some((k("app.settings.updates.download"), Act::UpdateDownload))
+        }
+        Some("update.state.staged") => {
+            Some((k("app.settings.updates.install"), Act::UpdateInstall))
+        }
+        _ => None,
+    };
+    let check = Button::new(k("app.settings.updates.check"));
+    let check = if next.is_some() {
+        check
+    } else {
+        check.variant(ButtonVariant::Primary)
+    };
     cx.act(end, check, Act::FirmwareCheck)?;
     cx.act(
         end,
         Button::new(k("app.settings.updates.usb")),
         Act::FirmwareUsb,
     )?;
+    if let Some((label, act)) = next {
+        cx.act(end, Button::new(label).variant(ButtonVariant::Primary), act)?;
+    }
     Ok(())
 }

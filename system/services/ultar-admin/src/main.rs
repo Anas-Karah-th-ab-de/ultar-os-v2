@@ -596,9 +596,11 @@ async fn api_apt(State(st): State<St>, Json(r): Json<AptReq>) -> Response {
 // ------------------------------------------------------------ SSH-Schlüssel
 
 fn ssh_keys_path() -> PathBuf {
+    // ultar-sshd (der SSH-Server beider Ausgaben) liest genau diese Datei (dir()/authorized_keys):
+    // dieselbe Schlüsselliste wie die Entwickleroptionen der Oberfläche (`ultar-sshd schluessel`).
     std::env::var("ULTAR_SSH_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| "/data/ultar/ssh".into())
+        .unwrap_or_else(|_| "/data/ultar/entwickler".into())
         .join("authorized_keys")
 }
 

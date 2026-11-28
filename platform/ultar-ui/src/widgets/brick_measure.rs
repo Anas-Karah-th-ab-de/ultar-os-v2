@@ -56,15 +56,8 @@ impl Brick {
                     36.0 * Space::S4.points(),
                 )
             }
-            BrickKind::Avatar
-            | BrickKind::UserCard { .. }
-            | BrickKind::Art(_)
-            | BrickKind::WindowPreview { .. }
-            | BrickKind::WorkspaceCard { .. }
-            | BrickKind::Handle { .. }
-            | BrickKind::Scrim
-            | BrickKind::Rule
-            | BrickKind::Mark { .. } => brick_overview::measure_kind(cx, self),
+            // the overview's cards, the pictures, the rule, the scrim and the handle
+            _ => brick_overview::measure_kind(cx, self),
         }
     }
 }

@@ -43,6 +43,8 @@ pub struct LocalTime {
     pub hour: u8,
     /// Minute 0–59.
     pub minute: u8,
+    /// Second 0–59.
+    pub second: u8,
 }
 
 impl LocalTime {
@@ -55,6 +57,7 @@ impl LocalTime {
             date,
             hour: (local / 3600) as u8,
             minute: ((local % 3600) / 60) as u8,
+            second: (local % 60) as u8,
         })
     }
 
@@ -88,6 +91,74 @@ pub fn bar_lines(t: LocalTime, style: ClockStyle, tr: &Translator) -> (String, S
         ],
     );
     (time, date)
+}
+
+/// The bar's two lines as the person set them (`datetime.clock_format`, `bar.clock.*`):
+/// the time (with seconds when wanted), the date line with or without the weekday, the
+/// Hijri date after it; an empty second line when neither date nor weekday is wanted.
+pub fn bar_lines_with(
+    t: LocalTime,
+    clock: crate::model::prefs::ClockPrefs,
+    tr: &Translator,
+) -> (String, String) {
+    let (time, full) = bar_lines(t, clock.style, tr);
+    let time = if clock.seconds {
+        time_with_seconds(t, clock.style, tr)
+    } else {
+        time
+    };
+    let weekday = tr.t(&weekday_key("bar", t.date.weekday())).into_owned();
+    let mut date = match (clock.date, clock.weekday) {
+        (true, true) => full,
+        (true, false) => {
+            let month = tr.t(&month_key("bar", t.date.month())).into_owned();
+            let line = tr.t_args(
+                "desk.bar.date",
+                &[
+                    ("weekday", Arg::Str("")),
+                    ("day", Arg::Int(i64::from(t.date.day()))),
+                    ("month", Arg::Str(&month)),
+                ],
+            );
+            line.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+        (false, true) => weekday,
+        (false, false) => String::new(),
+    };
+    if clock.hijri {
+        let hijri = hijri_line(t.date, tr);
+        if !hijri.is_empty() {
+            date = if date.is_empty() {
+                hijri
+            } else {
+                format!("{date} · {hijri}")
+            };
+        }
+    }
+    (time, date)
+}
+
+/// `16:52:07` or `4:52:07 م`.
+fn time_with_seconds(t: LocalTime, style: ClockStyle, tr: &Translator) -> String {
+    match style {
+        ClockStyle::H24 => format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second),
+        ClockStyle::H12 => {
+            let shown = match t.hour % 12 {
+                0 => 12,
+                other => other,
+            };
+            let time = format!("{shown}:{:02}:{:02}", t.minute, t.second);
+            let period = tr.t(if t.hour < 12 {
+                "cal.time.am"
+            } else {
+                "cal.time.pm"
+            });
+            tr.t_args(
+                "cal.format.time12",
+                &[("time", Arg::Str(&time)), ("period", Arg::Str(&period))],
+            )
+        }
+    }
 }
 
 /// The lock screen's date line and Hijri line (board Lock: `الأحد 22 تشرين الثاني 2026`,
@@ -130,6 +201,31 @@ mod tests {
 
     /// 22 November 2026, 16:52 UTC (a Sunday).
     pub const BOARD_TIME_MS: u64 = 1_795_366_320_000;
+
+    #[test]
+    fn the_bar_clock_follows_the_settings() {
+        use crate::model::prefs::ClockPrefs;
+        let tr = crate::i18n::translator(Lang::En).expect("catalogs");
+        let t = LocalTime::at(BOARD_TIME_MS + 7_000, 0).unwrap();
+        let standard = bar_lines_with(t, ClockPrefs::default(), &tr);
+        assert_eq!(standard, bar_lines(t, ClockStyle::H24, &tr));
+        let mut c = ClockPrefs {
+            seconds: true,
+            style: ClockStyle::H12,
+            ..ClockPrefs::default()
+        };
+        let (time, _) = bar_lines_with(t, c, &tr);
+        assert!(time.starts_with("4:52:07"), "{time}");
+        c.weekday = false;
+        let (_, date) = bar_lines_with(t, c, &tr);
+        assert!(date.starts_with("22"), "{date}");
+        c.date = false;
+        c.hijri = true;
+        let (_, date) = bar_lines_with(t, c, &tr);
+        assert!(date.contains("1448"), "{date}");
+        c.hijri = false;
+        assert_eq!(bar_lines_with(t, c, &tr).1, "");
+    }
 
     #[test]
     fn the_board_moment_formats_like_the_boards() {

@@ -21,6 +21,7 @@ pub mod geom;
 pub mod icon;
 pub mod layout;
 pub mod paint;
+pub mod session;
 #[cfg(feature = "snapshot")]
 pub mod snapshot;
 pub mod text;

@@ -3,6 +3,7 @@
 //! ```text
 //! ultar-firstboot --bootctl PATH [--auth-dir DIR] [--owner UID]
 //!                 [--settings-dir DIR] [--settings-user NAME] [--install-dir DIR]
+//!                 [--developer-dir DIR]
 //!                                                                  apply the record once
 //! ultar-firstboot --list [--auth-dir DIR]                          print the accounts
 //! ```
@@ -10,7 +11,8 @@
 //! defaults to `/data/ultar/auth`. With `--settings-dir` the other choices (language,
 //! keyboard, time zone, accessibility, device name) go into the settings service's store
 //! (`user-<--settings-user, default "default">.toml` / `system.toml`) and edition and
-//! components into `<--install-dir, default /data/ultar/install>/selection.toml`. Lines go to standard error
+//! components into `<--install-dir, default /data/ultar/install>/selection.toml`, the SSH key of
+//! the PC into `<--developer-dir, default /data/ultar/entwickler>/authorized_keys`. Lines go to standard error
 //! (`[firstboot] …`, never a hash). Exit status: 0 done or nothing to do, 1 failure, 2 usage.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
@@ -39,16 +41,17 @@ fn list_accounts(auth: &std::path::Path) -> ExitCode {
 /// One line of what part 2 did (key names only, never a value).
 fn report_settings(r: &SettingsReport) {
     eprintln!(
-        "[firstboot] settings stored={} kept={} refused=[{}] damaged=[{}] selection={}",
+        "[firstboot] settings stored={} kept={} refused=[{}] damaged=[{}] selection={} ssh_key={:?}",
         r.stored.len(),
         r.kept.len(),
         r.refused.join(","),
         r.damaged.join(","),
-        r.selection
+        r.selection,
+        r.ssh_key
     );
 }
 
-const USAGE: &str = "[firstboot] usage: ultar-firstboot --bootctl PATH [--auth-dir DIR] [--owner UID] [--settings-dir DIR] [--settings-user NAME] [--install-dir DIR] | --list";
+const USAGE: &str = "[firstboot] usage: ultar-firstboot --bootctl PATH [--auth-dir DIR] [--owner UID] [--settings-dir DIR] [--settings-user NAME] [--install-dir DIR] [--developer-dir DIR] | --list";
 
 /// The command line.
 struct Args {
@@ -59,6 +62,7 @@ struct Args {
     settings: Option<PathBuf>,
     settings_user: String,
     install: PathBuf,
+    developer: PathBuf,
 }
 
 /// Reads the command line; `None` on a usage error.
@@ -71,6 +75,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Option<Args> {
         settings: None,
         settings_user: String::from("default"),
         install: PathBuf::from("/data/ultar/install"),
+        developer: PathBuf::from("/data/ultar/entwickler"),
     };
     while let Some(a) = args.next() {
         if a == "--list" {
@@ -85,6 +90,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Option<Args> {
             "--settings-dir" => out.settings = Some(value.into()),
             "--settings-user" => out.settings_user = value,
             "--install-dir" => out.install = value.into(),
+            "--developer-dir" => out.developer = value.into(),
             _ => return None,
         }
     }
@@ -107,6 +113,7 @@ fn main() -> ExitCode {
         settings_dir,
         settings_user: args.settings_user,
         install_dir: args.install,
+        developer_dir: args.developer,
     });
     let result = apply_all(&bootctl, &args.auth, args.owner, extras.as_ref());
     match result {

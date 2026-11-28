@@ -169,6 +169,20 @@ pub enum Request {
         /// Last chunk.
         last: bool,
     },
+    /// Offers a selection whose content this client provides (needs
+    /// [`Rights::CLIPBOARD_BRIDGE`]; the mesh service copies from another
+    /// device into the local clipboard). The data follows on `SendRequest`.
+    BridgeSetSelection {
+        /// Offered types.
+        mimes: Vec<String>,
+    },
+    /// Asks for the current selection's data as the clipboard bridge (needs
+    /// [`Rights::CLIPBOARD_BRIDGE`]; a confidential selection is never
+    /// offered and answers with `TransferCancelled`). Delivered like a paste.
+    BridgeReadSelection {
+        /// Wanted type.
+        mime: String,
+    },
     /// Starts dragging data from a pointer press.
     StartDrag {
         /// Serial of the press.
@@ -374,6 +388,17 @@ pub enum Request {
         /// How long the flash stays, in milliseconds, 1 to [`super::MAX_FLASH_MS`].
         ms: u32,
     },
+    /// The language and the theme of the compositor's own drawing – the title bars and their
+    /// buttons (which side they stand on follows the language), the system dialog frames and
+    /// the ground (needs [`Rights::OUTPUT_CONFIG`]: the display service passes
+    /// `region.language` and `appearance.theme` on, so a change shows at once on every
+    /// window).
+    ConfigureLook {
+        /// The language ([`super::LookLang`]).
+        lang: super::LookLang,
+        /// The light theme instead of the dark one.
+        light: bool,
+    },
     /// The keyboard helpers of the accessibility page and the compose key (needs
     /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
     /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
@@ -464,6 +489,9 @@ impl Request {
             Request::ConfigureKeyboard { .. } => 47,
             Request::ConfigureVisual { .. } => 56,
             Request::VisualAlert { .. } => 57,
+            Request::ConfigureLook { .. } => 58,
+            Request::BridgeSetSelection { .. } => 59,
+            Request::BridgeReadSelection { .. } => 60,
         }
     }
 
@@ -563,6 +591,12 @@ impl Request {
             }
             Request::ReadSelection { serial, mime } => {
                 w.u32(*serial).str(mime, MAX_MIME);
+            }
+            Request::BridgeSetSelection { mimes } => {
+                encode_mimes(w, mimes);
+            }
+            Request::BridgeReadSelection { mime } => {
+                w.str(mime, MAX_MIME);
             }
             Request::SendData {
                 transfer,
@@ -673,17 +707,9 @@ impl Request {
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
             }
-            Request::ConfigureVisual {
-                zoom,
-                zoom_percent,
-                filter,
-            } => {
-                w.bool(*zoom).u16(*zoom_percent);
-                filter.encode(w);
-            }
-            Request::VisualAlert { ms } => {
-                w.u32(*ms);
-            }
+            r @ (Request::ConfigureVisual { .. }
+            | Request::VisualAlert { .. }
+            | Request::ConfigureLook { .. }) => super::visual::encode(r, w),
             Request::ConfigureKeyHelpers {
                 sticky_keys,
                 slow_keys,

@@ -100,6 +100,16 @@ pub enum BrickKind {
     },
     /// A round picture of a person (lock and login screens).
     Avatar,
+    /// A shortcut on the desktop background: the app's tile of `side` points with its name
+    /// below in up to two lines; quiet until hovered, filled and edged while `selected`.
+    DeskIcon {
+        /// The app icon.
+        icon: IconId,
+        /// Edge of the tile in logical points (desktop.icons.size).
+        side: u16,
+        /// The selected shortcut.
+        selected: bool,
+    },
     /// A cell of the phone's home screen and app grid: the icon in a box above the name
     /// (boards CompactHome, CompactApps); `open` while its menu is shown.
     PhoneCell {
@@ -168,6 +178,16 @@ pub enum BrickKind {
         /// Edge length in logical points (at least 16).
         points: u16,
     },
+    /// The company logo of KM Code Craft (docs/BRAND.md §3: installer welcome, About, the
+    /// desktop background, the lock screen) at most `width` points wide, proportions kept,
+    /// never above the bitmap's own size; on a dark plate in the light theme; a picture.
+    Logo {
+        /// Largest width in logical points.
+        width: u16,
+        /// Drawn quietly (the desktop background): at half strength, so it never competes
+        /// with the windows and icons above it.
+        quiet: bool,
+    },
 }
 
 /// A shell brick: its kind and its label (visible text, or accessible name of icon-only
@@ -216,7 +236,11 @@ impl Brick {
     pub fn is_static(&self) -> bool {
         matches!(
             self.kind,
-            BrickKind::Rule | BrickKind::Art(_) | BrickKind::Mark { .. } | BrickKind::Avatar
+            BrickKind::Rule
+                | BrickKind::Art(_)
+                | BrickKind::Mark { .. }
+                | BrickKind::Logo { .. }
+                | BrickKind::Avatar
         )
     }
 
@@ -255,7 +279,10 @@ impl Brick {
             BrickKind::QuickTile { on, .. } => Some(on),
             BrickKind::ModeCard { chosen, .. }
             | BrickKind::UserCard { chosen }
-            | BrickKind::WorkspaceCard { chosen, .. } => Some(chosen),
+            | BrickKind::WorkspaceCard { chosen, .. }
+            | BrickKind::DeskIcon {
+                selected: chosen, ..
+            } => Some(chosen),
             _ => None,
         }
     }
@@ -296,17 +323,8 @@ impl Brick {
                 p.fill(rect, None, line);
             }
             BrickKind::Art(picture) => brick_art::paint_picture(p, *picture, rect, size::ICON),
-            BrickKind::WindowPreview { .. }
-            | BrickKind::WorkspaceCard { .. }
-            | BrickKind::Mark { .. } => brick_overview::paint_kind(p, cx, rect, v, self),
-            BrickKind::Avatar => {
-                let bg = p.color(ColorRole::Raised);
-                let border = p.color(ColorRole::ControlBorder);
-                p.fill(rect, Some(Radius::Round), bg);
-                p.stroke(rect, Some(Radius::Round), p.hairline(), border);
-                let fg = p.color(ColorRole::Text);
-                p.icon(IconId::User, rect, size::ICON, QuarterTurns::None, fg);
-            }
+            // the overview's cards and the pictures (avatar, brand mark, company logo)
+            _ => brick_overview::paint_kind(p, cx, rect, v, self),
         }
         if v.focused && self.kind != BrickKind::Scrim {
             let ring = match self.kind {

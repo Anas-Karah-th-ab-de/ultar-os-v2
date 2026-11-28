@@ -5,6 +5,7 @@ pub mod desktop;
 pub mod keyboard;
 pub mod lock;
 mod lock_follow;
+pub mod look_follow;
 pub mod osk;
 pub mod sysdialog;
 
@@ -33,6 +34,9 @@ pub struct Options {
     /// The shell's own folder (`--state DIR`): the search history is kept beside it, per
     /// person. Without it nothing is remembered across restarts.
     pub state: Option<PathBuf>,
+    /// The desktop folder (`--desk-folder DIR`, the file area `desktop`): its items are
+    /// shown on the background. Without it only the shortcuts, home and drives are.
+    pub desk_folder: Option<PathBuf>,
 }
 
 /// Why a program stopped.
@@ -77,6 +81,7 @@ pub fn parse_options(args: impl Iterator<Item = String>) -> Option<(Options, Vec
         light: false,
         bar: None,
         state: None,
+        desk_folder: None,
     };
     let mut rest = Vec::new();
     let mut args = args.peekable();
@@ -88,6 +93,7 @@ pub fn parse_options(args: impl Iterator<Item = String>) -> Option<(Options, Vec
             "--light" => o.light = true,
             "--bar" => o.bar = Some(BarPlace::parse(&args.next()?)?),
             "--state" => o.state = Some(PathBuf::from(args.next()?)),
+            "--desk-folder" => o.desk_folder = Some(PathBuf::from(args.next()?)),
             _ => rest.push(word),
         }
     }

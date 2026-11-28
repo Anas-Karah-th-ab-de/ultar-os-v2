@@ -73,12 +73,15 @@ pub(super) fn measure_kind(cx: &mut MeasureCx<'_>, brick: &Brick) -> Size {
             Size::new(40.0 * Space::S4.points(), 26.0 * Space::S4.points())
         }
         BrickKind::Art(_) => Size::new(size::ICON, size::ICON),
+        BrickKind::Logo { width, .. } => super::brick_logo::measure(cx, *width),
+        BrickKind::DeskIcon { side, .. } => super::brick_desk::measure(cx, *side),
         BrickKind::Handle { width } => Size::new(*width, super::brick::TARGET),
         _ => Size::new(0.0, 0.0),
     }
 }
 
-/// Paints the overview's bricks and the sized brand mark.
+/// Paints the overview's bricks and the pictures: the sized brand mark, the company logo,
+/// the avatar.
 pub(super) fn paint_kind(
     p: &mut Painter<'_>,
     cx: &PaintCx<'_>,
@@ -99,6 +102,20 @@ pub(super) fn paint_kind(
         BrickKind::Mark { points } => {
             let edge = f32::from((*points).max(16));
             brick_art::paint_picture(p, Picture::Mark, rect, edge)
+        }
+        BrickKind::Logo { width, quiet } => super::brick_logo::paint(p, rect, *width, *quiet, v),
+        BrickKind::DeskIcon {
+            icon,
+            side,
+            selected,
+        } => super::brick_desk::paint(p, cx, rect, v, (label, *icon, *side, *selected)),
+        BrickKind::Avatar => {
+            let bg = p.color(ColorRole::Raised);
+            let border = p.color(ColorRole::ControlBorder);
+            p.fill(rect, Some(Radius::Round), bg);
+            p.stroke(rect, Some(Radius::Round), p.hairline(), border);
+            let fg = p.color(ColorRole::Text);
+            p.icon(IconId::User, rect, size::ICON, QuarterTurns::None, fg);
         }
         _ => {}
     }

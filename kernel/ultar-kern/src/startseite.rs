@@ -124,6 +124,12 @@ pub fn startbild(prozent: u32, schritt: &str) {
     let Some((fb, mut cv)) = leinwand() else { return };
     let (w, h) = (cv.w as i32, cv.h as i32);
     let my = h / 2 - 90;
+    // das Firmenlogo über dem Namen (wie der Startbildschirm des ersten Systems)
+    let lw = 360.min(w - 80);
+    let lh = lw * ultar_brand::logo::HEIGHT as i32 / ultar_brand::logo::WIDTH as i32;
+    if my - lh - 24 >= 8 {
+        cv.logo((w - lw) / 2, my - lh - 24, lw);
+    }
     cv.text_c(w / 2, my, ultar_brand::product_caps!(), 6, GOLD2);
     cv.text_c(w / 2, my + 96, s("unter"), 1, MUTED);
     let bw = 360.min(w - 80);

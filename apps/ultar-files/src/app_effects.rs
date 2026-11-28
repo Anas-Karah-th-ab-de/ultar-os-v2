@@ -1,7 +1,7 @@
 //! Executing effects and following background work (part of [`crate::app::App`]).
 
-use crate::action::Effect;
 use crate::action::Target;
+use crate::action::{Command, Effect};
 use crate::app::{drive_of, running, App};
 use crate::fs::copy::Cancel;
 use crate::fs::undo::Undo;
@@ -11,6 +11,7 @@ use crate::model::{Dialog, JobKind, Notice};
 use crate::service::bus::STORE;
 use crate::service::PortError;
 use crate::update;
+use crate::uri::UriAction;
 use std::sync::Arc;
 use ultar_ui::event::ActionKind;
 use ultar_ui::ui::UiError;
@@ -40,6 +41,30 @@ impl App {
                 Effect::FocusItems => {}
             }
         }
+    }
+
+    /// The action a URI asked for (`?action=`, the desktop's menus): a new folder in the
+    /// folder shown; for an item, its folder is shown with the item selected and the command
+    /// runs (the rename dialog, the trash with undo, the properties). An area itself only
+    /// shows its properties.
+    pub(crate) fn uri_action(&mut self, action: UriAction) -> Vec<Effect> {
+        let cmd = match action {
+            UriAction::NewFolder => return update::command(&mut self.state, Command::NewFolder),
+            UriAction::Rename => Command::Rename,
+            UriAction::Trash => Command::Trash,
+            UriAction::Properties => Command::Properties,
+        };
+        let item = self.state.folder.clone();
+        if let (Some(parent), Some(name)) = (item.parent(), item.name()) {
+            let name = name.to_owned();
+            self.state.folder = parent;
+            self.reload();
+            if self.state.item(&name).is_none() {
+                return Vec::new();
+            }
+            self.state.selected = vec![name];
+        }
+        update::command(&mut self.state, cmd)
     }
 
     /// Opens a file with its default app: the launcher resolves the URI through

@@ -100,6 +100,8 @@ mod tests {
     fn only_changed_rows_are_written_and_reported() {
         let mut fb = FrameBuffer::new(2, 3).unwrap();
         let mut pic = vec![0u8; 2 * 3 * 4];
+        let d = fb.update(&pic).unwrap().unwrap();
+        assert_eq!((d.y0, d.y1, d.x1), (0, 3, 2), "the first picture fills the new buffer");
         pic[8..12].copy_from_slice(&[10, 20, 30, 0]); // row 1, pixel 0
         let d = fb.update(&pic).unwrap().unwrap();
         assert_eq!((d.y0, d.y1, d.x1), (1, 2, 2));

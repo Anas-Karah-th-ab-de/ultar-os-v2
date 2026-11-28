@@ -163,6 +163,10 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
         37 => Request::DetectOutputs,
         44..=47 => decode_input(opcode, r)?,
         56 | 57 => super::visual::decode(opcode, r)?,
+        58 => Request::ConfigureLook {
+            lang: super::LookLang::decode(r.u8()?)?,
+            light: r.bool()?,
+        },
         48 => Request::ImeKey {
             key: super::ImeKey::decode(r)?,
         },
@@ -176,6 +180,12 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             },
         },
         43 => decode_layouts(r)?,
+        59 => Request::BridgeSetSelection {
+            mimes: decode_mimes(r)?,
+        },
+        60 => Request::BridgeReadSelection {
+            mime: r.str(MAX_MIME)?,
+        },
         _ => return Err(WireError::BadValue),
     })
 }
