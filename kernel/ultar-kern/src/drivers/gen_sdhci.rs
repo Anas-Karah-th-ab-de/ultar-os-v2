@@ -66,24 +66,29 @@ struct Mmio {
     base: u64,
 }
 impl Mmio {
-    // SICHERHEIT: `base` ist der identisch und ungepuffert abgebildete BAR0 des Controllers; alle
+    // SAFETY: `base` ist der identisch und ungepuffert abgebildete BAR0 des Controllers; alle
     // Offsets liegen in dessen Registerfenster (< 0x100 bzw. 0xFE).
     fn r8(&self, o: u64) -> u8 {
         unsafe { core::ptr::read_volatile((self.base + o) as *const u8) }
     }
     fn r16(&self, o: u64) -> u16 {
+        // SAFETY: `base` is the identity-mapped, uncached BAR0 of the controller; every offset lies in its register window.
         unsafe { core::ptr::read_volatile((self.base + o) as *const u16) }
     }
     fn r32(&self, o: u64) -> u32 {
+        // SAFETY: `base` is the identity-mapped, uncached BAR0 of the controller; every offset lies in its register window.
         unsafe { core::ptr::read_volatile((self.base + o) as *const u32) }
     }
     fn w8(&self, o: u64, v: u8) {
+        // SAFETY: `base` is the identity-mapped, uncached BAR0 of the controller; every offset lies in its register window.
         unsafe { core::ptr::write_volatile((self.base + o) as *mut u8, v) }
     }
     fn w16(&self, o: u64, v: u16) {
+        // SAFETY: `base` is the identity-mapped, uncached BAR0 of the controller; every offset lies in its register window.
         unsafe { core::ptr::write_volatile((self.base + o) as *mut u16, v) }
     }
     fn w32(&self, o: u64, v: u32) {
+        // SAFETY: `base` is the identity-mapped, uncached BAR0 of the controller; every offset lies in its register window.
         unsafe { core::ptr::write_volatile((self.base + o) as *mut u32, v) }
     }
 }
@@ -169,7 +174,7 @@ impl Driver for Drv {
         // Vollständiger Reset
         m.w8(R_SWRESET, 0x01);
         if !wait(|| m.r8(R_SWRESET) & 0x01 == 0, 100) {
-            return Err("SDHCI: Reset hängt".into());
+            return Err("SDHCI: reset hangs".into());
         }
         // Timeout auf Maximum
         m.w8(R_TIMEOUT, 0x0e);
@@ -250,7 +255,7 @@ fn init_card(sd: &mut Sd, base_mhz: u32) -> Result<()> {
     sd.cmd(9, (sd.rca as u32) << 16, RESP_136, false)?; // SEND_CSD
     sd.sectors = csd_sectors(sd);
     if sd.sectors == 0 {
-        return Err("SD: Kapazität aus CSD nicht lesbar".into());
+        return Err("SD: capacity not readable from the CSD".into());
     }
     // schnellerer Takt (25 MHz Normalgeschwindigkeit)
     set_clock(&sd.m, base_mhz, 25_000)?;
@@ -293,7 +298,7 @@ impl BlockDev for Sd {
     }
     fn read(&mut self, lba: u64, buf: &mut [u8]) -> Result<()> {
         if buf.len() % 512 != 0 {
-            return Err("Länge nicht durch 512 teilbar".into());
+            return Err("length not a multiple of 512".into());
         }
         let count = buf.len() / 512;
         if count == 0 {
@@ -327,7 +332,7 @@ impl BlockDev for Sd {
             }
         }
         if !wait(|| self.m.r16(R_NORMINT) & (NI_XFER_DONE | NI_ERROR) != 0, 1000) {
-            return Err("SD: Übertragung nicht abgeschlossen".into());
+            return Err("SD: transfer not completed".into());
         }
         self.m.w16(R_NORMINT, NI_XFER_DONE);
         Ok(())

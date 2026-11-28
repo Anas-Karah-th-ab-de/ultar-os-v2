@@ -78,9 +78,11 @@ static NICS: Mutex<Vec<Nic>> = Mutex::new(Vec::new());
 const RX_MAX: usize = 256;
 
 fn rd32(p: u64, off: usize) -> u32 {
+    // SAFETY: callers pass a buffer (a page or a local array) holding at least `off + 4` bytes; unaligned access.
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u32) }
 }
 fn wr32(p: u64, off: usize, v: u32) {
+    // SAFETY: callers pass a buffer (a page or a local array) holding at least `off + 4` bytes; unaligned access.
     unsafe { core::ptr::write_unaligned((p + off as u64) as *mut u32, v) }
 }
 
@@ -101,7 +103,7 @@ pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, 
             if data_off + data_len <= got && data_len > 0 && nic.rx.len() < RX_MAX {
                 let mut f: Vec<u8> = Vec::new();
                 if !crate::heap::kernel(|| f.try_reserve_exact(data_len).is_err()) {
-                    // SICHERHEIT: Quelle liegt im Teil `part` der DMA-Fläche innerhalb `got`.
+                    // SAFETY: Quelle liegt im Teil `part` der DMA-Fläche innerhalb `got`.
                     unsafe { f.extend_from_slice(core::slice::from_raw_parts((base + data_off as u64) as *const u8, data_len)) };
                     nic.rx.push_back(f);
                 }
@@ -149,11 +151,11 @@ impl NetDev for RndisHandle {
         for off in (16..44).step_by(4) {
             wr32(self.tx, off, 0);
         }
-        // SICHERHEIT: tx ist eine ≥ TX Byte große, identisch abgebildete Seite.
+        // SAFETY: tx ist eine ≥ TX Byte große, identisch abgebildete Seite.
         unsafe { core::ptr::copy_nonoverlapping(frame.as_ptr(), (self.tx + 44) as *mut u8, n) };
         let mut hcs = super::HC.lock();
-        let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB-Controller weg")?;
-        hc.transfer(self.slot, self.out_dci, self.tx, 44 + n, 100).ok_or("USB-Senden fehlgeschlagen")?;
+        let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB controller gone")?;
+        hc.transfer(self.slot, self.out_dci, self.tx, 44 + n, 100).ok_or("USB send failed")?;
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
@@ -176,12 +178,77 @@ impl NetDev for RndisHandle {
 
 /// Steuerbefehl einkapseln (SEND_ENCAPSULATED_COMMAND, Klassen-Anfrage auf EP0).
 fn send_cmd(hc: &mut Hc, slot: u32, iface: u16, buf: u64, msg: &[u8]) -> bool {
+    // SAFETY: `buf` is the driver's identity-mapped control page (4 KiB); every RNDIS message is shorter.
     unsafe { core::ptr::copy_nonoverlapping(msg.as_ptr(), buf as *mut u8, msg.len()) };
     hc.control(slot, 0x21, 0x00, 0, iface, msg.len() as u16, buf).is_some()
 }
 /// Antwort abholen (GET_ENCAPSULATED_RESPONSE), Länge zurück.
 fn get_resp(hc: &mut Hc, slot: u32, iface: u16, buf: u64, len: u16) -> Option<usize> {
     hc.control(slot, 0xA1, 0x01, 0, iface, len, buf)
+}
+
+/// RNDIS INITIALIZE and its completion.
+fn rndis_init(hc: &mut Hc, slot: u32, iface: u16, buf: u64) -> core::result::Result<(), String> {
+    let mut msg = [0u8; 24];
+    wr32(msg.as_mut_ptr() as u64, 0, INIT_MSG);
+    wr32(msg.as_mut_ptr() as u64, 4, 24);
+    wr32(msg.as_mut_ptr() as u64, 8, 1);
+    wr32(msg.as_mut_ptr() as u64, 12, 1);
+    wr32(msg.as_mut_ptr() as u64, 16, 0);
+    wr32(msg.as_mut_ptr() as u64, 20, 0x4000);
+    if !send_cmd(hc, slot, iface, buf, &msg) {
+        return Err("RNDIS: INIT not accepted".into());
+    }
+    let r = get_resp(hc, slot, iface, buf, 1025).ok_or("RNDIS: no INIT answer")?;
+    if r < 16 || rd32(buf, 0) != INIT_CMPLT || rd32(buf, 12) != 0 {
+        return Err("RNDIS: INIT failed".into());
+    }
+    Ok(())
+}
+
+/// Sets the packet filter (turns the data path on). The status is not enforced: some devices do
+/// not need the filter.
+fn set_packet_filter(hc: &mut Hc, slot: u32, iface: u16, buf: u64) {
+    let mut set = [0u8; 28];
+    wr32(set.as_mut_ptr() as u64, 0, SET_MSG);
+    wr32(set.as_mut_ptr() as u64, 4, 28);
+    wr32(set.as_mut_ptr() as u64, 8, 2);
+    wr32(set.as_mut_ptr() as u64, 12, OID_PACKET_FILTER);
+    wr32(set.as_mut_ptr() as u64, 16, 4);
+    wr32(set.as_mut_ptr() as u64, 20, 20);
+    wr32(set.as_mut_ptr() as u64, 24, 0x2F);
+    if send_cmd(hc, slot, iface, buf, &set) {
+        let _ = get_resp(hc, slot, iface, buf, 1025);
+        let _ = SET_CMPLT;
+    }
+}
+
+/// The permanent MAC address of the device; a locally administered one from the slot when the
+/// device does not answer.
+fn query_mac(hc: &mut Hc, slot: u32, iface: u16, buf: u64) -> [u8; 6] {
+    let mut mac = [0u8; 6];
+    let mut q = [0u8; 28];
+    wr32(q.as_mut_ptr() as u64, 0, QUERY_MSG);
+    wr32(q.as_mut_ptr() as u64, 4, 28);
+    wr32(q.as_mut_ptr() as u64, 8, 3);
+    wr32(q.as_mut_ptr() as u64, 12, OID_PERMANENT_ADDR);
+    wr32(q.as_mut_ptr() as u64, 16, 0);
+    wr32(q.as_mut_ptr() as u64, 20, 0);
+    if send_cmd(hc, slot, iface, buf, &q) {
+        if let Some(rl) = get_resp(hc, slot, iface, buf, 1025) {
+            if rl >= 24 && rd32(buf, 0) == QUERY_CMPLT && rd32(buf, 12) == 0 {
+                let off = rd32(buf, 20) as usize + 8;
+                if rd32(buf, 16) as usize >= 6 && off + 6 <= rl {
+                    // SAFETY: `off + 6 <= rl`, and `rl` bytes of the answer lie in the page `buf`.
+                    unsafe { core::ptr::copy_nonoverlapping((buf + off as u64) as *const u8, mac.as_mut_ptr(), 6) };
+                }
+            }
+        }
+    }
+    if mac == [0; 6] {
+        mac = [0x02, 0x55, 0x53, 0x42, 0x00, slot as u8];
+    }
+    mac
 }
 
 /// Daten-Schnittstelle (CDC-Daten, Klasse 0x0A) einer RNDIS-Funktion anbinden: Bulk-Endpunkte
@@ -207,64 +274,15 @@ pub(super) fn attach(
     let in_dci = (ina as u32 & 0xf) * 2 + 1;
     let out_dci = (outa as u32 & 0xf) * 2;
     super::config_ep(hc, slot, ctx.0, ctx.1, ctx.2, &[(in_dci, 6, inmp as u32, 0), (out_dci, 2, outmp as u32, 0)])
-        .map_err(|_| "RNDIS: Bulk-Endpunkte nicht eingerichtet")?;
+        .map_err(|_| "RNDIS: bulk endpoints not set up")?;
 
-    // RNDIS INITIALIZE
-    let mut msg = [0u8; 24];
-    wr32(msg.as_mut_ptr() as u64, 0, INIT_MSG);
-    wr32(msg.as_mut_ptr() as u64, 4, 24);
-    wr32(msg.as_mut_ptr() as u64, 8, 1);
-    wr32(msg.as_mut_ptr() as u64, 12, 1);
-    wr32(msg.as_mut_ptr() as u64, 16, 0);
-    wr32(msg.as_mut_ptr() as u64, 20, 0x4000);
-    if !send_cmd(hc, slot, ctrl_iface, buf, &msg) {
-        return Err("RNDIS: INIT nicht angenommen".into());
-    }
-    let r = get_resp(hc, slot, ctrl_iface, buf, 1025).ok_or("RNDIS: keine INIT-Antwort")?;
-    if r < 16 || rd32(buf, 0) != INIT_CMPLT || rd32(buf, 12) != 0 {
-        return Err("RNDIS: INIT fehlgeschlagen".into());
-    }
-
-    // Paketfilter setzen → Datenpfad an
-    let mut set = [0u8; 28];
-    wr32(set.as_mut_ptr() as u64, 0, SET_MSG);
-    wr32(set.as_mut_ptr() as u64, 4, 28);
-    wr32(set.as_mut_ptr() as u64, 8, 2);
-    wr32(set.as_mut_ptr() as u64, 12, OID_PACKET_FILTER);
-    wr32(set.as_mut_ptr() as u64, 16, 4);
-    wr32(set.as_mut_ptr() as u64, 20, 20);
-    wr32(set.as_mut_ptr() as u64, 24, 0x2F);
-    if send_cmd(hc, slot, ctrl_iface, buf, &set) {
-        let _ = get_resp(hc, slot, ctrl_iface, buf, 1025);
-        let _ = SET_CMPLT; // Status wird nicht erzwungen (manche Geräte brauchen den Filter nicht)
-    }
-
-    // MAC abfragen
-    let mut mac = [0u8; 6];
-    let mut q = [0u8; 28];
-    wr32(q.as_mut_ptr() as u64, 0, QUERY_MSG);
-    wr32(q.as_mut_ptr() as u64, 4, 28);
-    wr32(q.as_mut_ptr() as u64, 8, 3);
-    wr32(q.as_mut_ptr() as u64, 12, OID_PERMANENT_ADDR);
-    wr32(q.as_mut_ptr() as u64, 16, 0);
-    wr32(q.as_mut_ptr() as u64, 20, 0);
-    if send_cmd(hc, slot, ctrl_iface, buf, &q) {
-        if let Some(rl) = get_resp(hc, slot, ctrl_iface, buf, 1025) {
-            if rl >= 24 && rd32(buf, 0) == QUERY_CMPLT && rd32(buf, 12) == 0 {
-                let off = rd32(buf, 20) as usize + 8;
-                if rd32(buf, 16) as usize >= 6 && off + 6 <= rl {
-                    unsafe { core::ptr::copy_nonoverlapping((buf + off as u64) as *const u8, mac.as_mut_ptr(), 6) };
-                }
-            }
-        }
-    }
-    if mac == [0; 6] {
-        mac = [0x02, 0x55, 0x53, 0x42, 0x00, slot as u8];
-    }
+    rndis_init(hc, slot, ctrl_iface, buf)?;
+    set_packet_filter(hc, slot, ctrl_iface, buf);
+    let mac = query_mac(hc, slot, ctrl_iface, buf);
 
     // Empfangsfläche + Sendepuffer, Empfang armieren
-    let in_buf = alloc_pages(TDS * TD as usize / 4096).ok_or("kein Speicher")?;
-    let tx = alloc_pages(1).ok_or("kein Speicher")?;
+    let in_buf = alloc_pages(TDS * TD as usize / 4096).ok_or("no memory")?;
+    let tx = alloc_pages(1).ok_or("no memory")?;
     let mut in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
     in_ep.arm_all(hc, slot);
     NICS.lock().push(Nic { hc_index: hc.index, slot, in_ep, rx: VecDeque::new() });

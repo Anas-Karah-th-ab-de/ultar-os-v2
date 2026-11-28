@@ -129,13 +129,55 @@ pub(super) fn any(hc: usize) -> bool {
     BTS.lock().iter().any(|b| b.hc == hc)
 }
 
+/// Reads the Command Complete event of "Intel Read Version": (hardware variant, image type,
+/// firmware file name). Layout: [0]=0x0E [1]=plen [2]=num [3..5]=opcode [5]=status [6..]=TLVs.
+fn parse_version(event: &[u8], plen: usize) -> Option<(u8, u8, alloc::string::String)> {
+    let rd = |o: u64| event.get(o as usize).copied().unwrap_or(0);
+    let got = event.len();
+    if got < 7 || rd(0) != 0x0e {
+        return None;
+    }
+    if u16::from_le_bytes([rd(3), rd(4)]) != 0xfc05 || rd(5) != 0 {
+        return None;
+    }
+    let end = (plen + 2).min(4096);
+    let (mut cnvi_top, mut cnvr_top, mut cnvi_bt, mut img) = (0u32, 0u32, 0u32, 0u8);
+    let mut o = 6usize;
+    while o + 2 <= end {
+        let t = rd(o as u64);
+        let l = rd(o as u64 + 1) as usize;
+        if o + 2 + l > end {
+            break;
+        }
+        let val = |n: usize| {
+            let mut v = 0u32;
+            for i in 0..n.min(4) {
+                v |= (rd(o as u64 + 2 + i as u64) as u32) << (8 * i);
+            }
+            v
+        };
+        match t {
+            0x10 => cnvi_top = val(4),
+            0x11 => cnvr_top = val(4),
+            0x12 => cnvi_bt = val(4),
+            0x1c => img = val(1) as u8,
+            _ => {}
+        }
+        o += 2 + l;
+    }
+    let variant = ((cnvi_bt >> 16) & 0x3f) as u8;
+    // CNVi/CNVr: swab16((TYPE<<4)|STEP), TYPE=Bit 0..11, STEP=Bit 24..27 (btintel)
+    let pack = |top: u32| -> u16 { (((top & 0xfff) as u16) << 4 | ((top >> 24) & 0xf) as u16).swap_bytes() };
+    Some((variant, img, alloc::format!("intel/ibt-{:04x}-{:04x}.sfi", pack(cnvi_top), pack(cnvr_top))))
+}
+
 /// Intel-Controller erkennen: HCI „Intel Read Version" (TLV, Opcode 0xFC05, Parameter 0xFF) über
 /// Endpunkt 0 senden und das Command-Complete-Ereignis vom Ereignis-Endpunkt lesen. Gibt
 /// (Hardware-Variante, Image-Typ 1=Bootloader/2=IML/3=operativ, nötiger Firmware-Dateiname) zurück.
 /// Nach der Norm btintel (Linux) als Beschreibung; eigener Code. Grundlage für die Firmware-Ladung.
 fn intel_version(hc: &mut Hc, slot: u32, ev_dci: u32, ev_mps: usize) -> Option<(u8, u8, alloc::string::String)> {
     let buf = alloc_pages(1)?;
-    // SICHERHEIT: `buf` ist eine zugeteilte, identisch abgebildete Seite; 4 Byte beschrieben.
+    // SAFETY: `buf` ist eine zugeteilte, identisch abgebildete Seite; 4 Byte beschrieben.
     unsafe {
         let p = buf as *mut u8;
         core::ptr::write(p, 0x05);
@@ -153,6 +195,7 @@ fn intel_version(hc: &mut Hc, slot: u32, ev_dci: u32, ev_mps: usize) -> Option<(
             let n = hc.transfer(slot, ev_dci, ev + got as u64, ev_mps, 500)?;
             got += n;
             if got >= 2 {
+                // SAFETY: `ev` is a whole, identity-mapped page; byte 1 is inside it.
                 plen = unsafe { *((ev + 1) as *const u8) } as usize;
                 if got >= plen + 2 {
                     break;
@@ -162,43 +205,9 @@ fn intel_version(hc: &mut Hc, slot: u32, ev_dci: u32, ev_mps: usize) -> Option<(
                 break;
             }
         }
-        // Command Complete: [0]=0x0E [1]=plen [2]=num [3..5]=Opcode [5]=Status [6..]=TLVs
-        let rd = |o: u64| unsafe { *((ev + o) as *const u8) };
-        if got < 7 || rd(0) != 0x0e {
-            return None;
-        }
-        if u16::from_le_bytes([rd(3), rd(4)]) != 0xfc05 || rd(5) != 0 {
-            return None;
-        }
-        let end = (plen + 2).min(4096);
-        let (mut cnvi_top, mut cnvr_top, mut cnvi_bt, mut img) = (0u32, 0u32, 0u32, 0u8);
-        let mut o = 6usize;
-        while o + 2 <= end {
-            let t = rd(o as u64);
-            let l = rd(o as u64 + 1) as usize;
-            if o + 2 + l > end {
-                break;
-            }
-            let val = |n: usize| {
-                let mut v = 0u32;
-                for i in 0..n.min(4) {
-                    v |= (rd(o as u64 + 2 + i as u64) as u32) << (8 * i);
-                }
-                v
-            };
-            match t {
-                0x10 => cnvi_top = val(4),
-                0x11 => cnvr_top = val(4),
-                0x12 => cnvi_bt = val(4),
-                0x1c => img = val(1) as u8,
-                _ => {}
-            }
-            o += 2 + l;
-        }
-        let variant = ((cnvi_bt >> 16) & 0x3f) as u8;
-        // CNVi/CNVr: swab16((TYPE<<4)|STEP), TYPE=Bit 0..11, STEP=Bit 24..27 (btintel)
-        let pack = |top: u32| -> u16 { (((top & 0xfff) as u16) << 4 | ((top >> 24) & 0xf) as u16).swap_bytes() };
-        Some((variant, img, alloc::format!("intel/ibt-{:04x}-{:04x}.sfi", pack(cnvi_top), pack(cnvr_top))))
+        // SAFETY: `ev` is a whole, identity-mapped page; `got` bytes of it were written by the device.
+        let event = unsafe { core::slice::from_raw_parts(ev as *const u8, got.min(4096)) };
+        parse_version(event, plen)
     })();
     crate::mem::free_page(buf);
     if let Some(e) = ev {
