@@ -116,6 +116,29 @@ const UC_SIZE: usize = 304;
 const INFO: usize = UC + UC_SIZE;
 const FRAME: usize = INFO + 128;
 
+/// The bytes of a signal frame (rt_sigframe): return address, ucontext (registers, mask, `uc_stack`,
+/// the FPU state at `fx_addr`) and siginfo (with the address and code of a fault).
+fn frame_bytes(f: &TrapFrame, restorer: u64, sig: u64, old_mask: u64, (alt, fault): (&proc::AltStack, Option<(u64, i32)>), fx_addr: u64) -> alloc::vec::Vec<u8> {
+    let mut b = alloc::vec![0u8; FRAME];
+    w64(&mut b, 0, restorer);
+    let cr2 = fault.map_or(0, |x| x.0);
+    let regs = [
+        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx, f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, cr2,
+    ];
+    for (i, r) in regs.iter().enumerate() {
+        w64(&mut b, UC + 40 + i * 8, *r);
+    }
+    w64(&mut b, UC + 224, fx_addr);
+    w64(&mut b, UC + 296, old_mask);
+    write_uc_stack(&mut b, alt, f.rsp);
+    b[INFO..INFO + 4].copy_from_slice(&(sig as i32).to_le_bytes());
+    if let Some((addr, code)) = fault {
+        b[INFO + 8..INFO + 12].copy_from_slice(&code.to_le_bytes());
+        w64(&mut b, INFO + 16, addr);
+    }
+    b
+}
+
 /// Offenes Signal zustellen: Rahmen auf den Benutzerstapel legen und `f` auf den Handler umstellen.
 /// Liefert false, wenn nichts zuzustellen war. Bei Standardaktion „beenden“ wird die Gruppe beendet.
 pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
@@ -146,23 +169,7 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     let fx_addr = sp;
     sp -= FRAME as u64;
     let frame = (sp & !15) - 8;
-    let mut b = alloc::vec![0u8; FRAME];
-    w64(&mut b, 0, act.restorer);
-    let cr2 = fault.map_or(0, |x| x.0);
-    let regs = [
-        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx, f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, cr2,
-    ];
-    for (i, r) in regs.iter().enumerate() {
-        w64(&mut b, UC + 40 + i * 8, *r);
-    }
-    w64(&mut b, UC + 224, fx_addr);
-    w64(&mut b, UC + 296, old_mask);
-    write_uc_stack(&mut b, &alt, f.rsp);
-    b[INFO..INFO + 4].copy_from_slice(&(sig as i32).to_le_bytes());
-    if let Some((addr, code)) = fault {
-        b[INFO + 8..INFO + 12].copy_from_slice(&code.to_le_bytes());
-        w64(&mut b, INFO + 16, addr);
-    }
+    let b = frame_bytes(f, act.restorer, sig, old_mask, (&alt, fault), fx_addr);
     let sp_ok = {
         let space = p.space();
         proc::write_user(space, fx_addr, &f.fx) && proc::write_user(space, frame, &b)
