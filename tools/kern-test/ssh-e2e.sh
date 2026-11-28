@@ -119,6 +119,13 @@ t3=$(date +%s.%N)
 t4=$(date +%s.%N)
 cat_s=$(awk "BEGIN{printf \"%.1f\", $t4-$t3}")
 echo "info  ssh receive-only 16 MiB (cat>/dev/null): ${cat_s}s"
+# receiving must not fall far behind sending: a receive path that drops segments ahead of a gap made
+# uploads ~15x slower than downloads (58.7 s against 3.8 s for 16 MiB before the reassembly queue)
+if awk "BEGIN{exit !($up_s <= 3 * $down_s + 5)}"; then
+  ok "upload keeps up with download (up ${up_s}s, down ${down_s}s)"
+else
+  bad "upload far slower than download (up ${up_s}s, down ${down_s}s)"
+fi
 
 # d) sftp ls
 if printf 'ls /\nbye\n' | sftp -P "$PORT" -i "$KEY" -o IdentitiesOnly=yes \
