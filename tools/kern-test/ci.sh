@@ -126,6 +126,18 @@ else
     echo "FAIL  NETZ"; tail -40 "$NLOG"; exit 1
   fi
 fi
+# USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is
+# skipped in QEMU (the driver, like Linux, picks the device's RNDIS configuration first).
+if [ "${USBNET:-1}" = 0 ]; then
+  echo "skip  USBNET (USBNET=0)"
+else
+  ULOG="${USBNET_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/usb-net-e2e.sh > "$ULOG" 2>&1 && grep -qE "^USBNET: (ALLES OK|TEILWEISE)" "$ULOG"; then
+    echo "ok    $(grep -oE '^USBNET:.*' "$ULOG")"
+  else
+    echo "FAIL  USBNET"; tail -40 "$ULOG"; exit 1
+  fi
+fi
 HLOG="${HLOG:-$(mktemp)}"
 SMP="${SMP:-2}" WAIT=180 timeout 360 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true
 if grep -q "GERAETETEST-USB: ALLES OK" "$HLOG" && ! grep -qiE "kernel panic|PANIK" "$HLOG"; then

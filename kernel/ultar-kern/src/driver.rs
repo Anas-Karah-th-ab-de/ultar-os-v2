@@ -77,6 +77,40 @@ pub trait NetDev: Send {
 pub static BLOCK: Mutex<Vec<Box<dyn BlockDev>>> = Mutex::new(Vec::new());
 pub static NET: Mutex<Vec<Box<dyn NetDev>>> = Mutex::new(Vec::new());
 
+/// Platzhalter einer Netzkarte, deren Gerät abgezogen wurde: nichts geht mehr rein oder raus. Er
+/// hält den Listenplatz (und damit den Index der aktiven Karte und des DHCP-Zustands) stabil.
+pub struct NetGone(String);
+
+impl NetDev for NetGone {
+    fn name(&self) -> String {
+        self.0.clone()
+    }
+    fn mac(&self) -> [u8; 6] {
+        [0; 6]
+    }
+    fn send(&mut self, _frame: &[u8]) -> Result<()> {
+        Err(String::from("device detached"))
+    }
+    fn recv(&mut self, _buf: &mut [u8]) -> Option<usize> {
+        None
+    }
+    fn link(&self) -> Option<bool> {
+        Some(false)
+    }
+    fn detached(&self) -> bool {
+        true
+    }
+}
+
+/// The network interface `name` lost its device: a placeholder takes its place under the list's
+/// lock (so no other CPU is inside the driver's code when it is dropped); the old entry is returned
+/// for the caller to drop. Call it only from a device-removal path, not from inside `NetDev`.
+pub fn remove_net(name: &str) -> Option<Box<dyn NetDev>> {
+    let mut nl = NET.lock();
+    let i = nl.iter().position(|d| d.name() == name)?;
+    Some(core::mem::replace(&mut nl[i], Box::new(NetGone(String::from(name)))))
+}
+
 /// Ergebnis der Treibersuche je Gerät (für Anzeige und Werkstatt)
 pub struct Bound {
     pub dev: PciDev,
