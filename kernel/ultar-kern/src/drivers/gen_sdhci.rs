@@ -25,7 +25,6 @@ const R_CMD: u64 = 0x0e; // 16 Bit
 const R_RESP0: u64 = 0x10;
 const R_BUFDATA: u64 = 0x20;
 const R_PRESENT: u64 = 0x24;
-const R_HOSTCTL1: u64 = 0x28; // 8 Bit
 const R_PWRCTL: u64 = 0x29; // 8 Bit
 const R_CLKCTL: u64 = 0x2c; // 16 Bit
 const R_TIMEOUT: u64 = 0x2e; // 8 Bit
@@ -265,7 +264,6 @@ fn init_card(sd: &mut Sd, base_mhz: u32) -> Result<()> {
 /// Kapazität in 512-Byte-Sektoren aus dem 136-Bit-CSD. SDHCI legt die Antwort ohne CRC ab, also
 /// stehen die CSD-Bits [127:8] in RESP[119:0] (RESP0 Bit 0 = CSD-Bit 8).
 fn csd_sectors(sd: &Sd) -> u64 {
-    let r0 = sd.m.r32(R_RESP0);
     let r1 = sd.m.r32(R_RESP0 + 4);
     let r2 = sd.m.r32(R_RESP0 + 8);
     let r3 = sd.m.r32(R_RESP0 + 12);
