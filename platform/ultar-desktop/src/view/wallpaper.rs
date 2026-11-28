@@ -1,7 +1,7 @@
 //! The desktop background (the system picture "ultar-noir" of `appearance.wallpaper.*`):
 //! the ground of the theme with the company logo of KM Code Craft in the middle of the work
-//! area, quiet, so it never competes with the windows above it (docs/BRAND.md §4), and the
-//! person's app shortcuts over it (`view::desk`).
+//! area, quiet, so it never competes with the windows above it (docs/BRAND.md §4), the icons
+//! over it (`view::desk`) and the system display in the opposite corner (`view::metrics`).
 
 use super::{new_ui, Look, View};
 use crate::model::{Desktop, Shape};
@@ -43,7 +43,14 @@ pub fn build(
     // Room of the bar and the dock above and below; the logo centred in what is left, the
     // shortcuts over it.
     ui.add_sized(root, Flex::column(), Sizing::AUTO.with_height(top))?;
-    let area = ui.add_sized(root, Flex::stack(), Sizing::grow(1))?;
+    // The overlay's own placement holds the system display: the top corner opposite the
+    // icons.
+    let opposite = if d.prefs.desk.corner.end() {
+        MainAlign::Start
+    } else {
+        MainAlign::End
+    };
+    let area = ui.add_sized(root, Flex::stack().main(opposite), Sizing::grow(1))?;
     ui.add_sized(root, Flex::column(), Sizing::AUTO.with_height(bottom))?;
     let middle = Flex::column()
         .main(MainAlign::Center)
@@ -60,6 +67,7 @@ pub fn build(
     let mut view = View::new(ui);
     let height = (screen.h - top - bottom).max(0.0);
     super::desk::shortcuts(&mut view, area, d, (look, height), tr)?;
+    super::metrics::add(&mut view, area, d, tr)?;
     Ok(view)
 }
 
@@ -77,9 +85,16 @@ mod tests {
         let look = Look::new(Lang::En, ThemeKind::Dark);
         let mut d = Desktop::new(Lang::En);
         let screen = Size::new(1280.0, 800.0);
+        use crate::model::metrics::Gauge;
         use crate::model::places::DeskItem;
         use crate::view::Target;
-        let targets = |v: &View| v.targets.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>();
+        let targets = |v: &View| {
+            v.targets
+                .iter()
+                .filter(|(_, t)| matches!(t, Target::Desk(_)))
+                .map(|(_, t)| t.clone())
+                .collect::<Vec<_>>()
+        };
         let view = build(&d, look, screen, Shape::default(), &tr).expect("view");
         assert_eq!(targets(&view), vec![Target::Desk(DeskItem::Home)]);
         d.places.add("org.ultar.files");
@@ -96,8 +111,18 @@ mod tests {
         d.prefs.desk.shown = false;
         let view = build(&d, look, screen, Shape::TOP, &tr).expect("view");
         assert!(
-            view.targets.is_empty(),
+            targets(&view).is_empty(),
             "desktop.icons.enabled off hides them"
+        );
+        assert!(
+            view.node(&Target::MetricValue(Gauge::Cpu)).is_some(),
+            "the system display stays"
+        );
+        d.prefs.desk.metrics = false;
+        let view = build(&d, look, screen, Shape::TOP, &tr).expect("view");
+        assert!(
+            view.targets.is_empty(),
+            "desktop.metrics.enabled off hides it"
         );
     }
 }

@@ -170,6 +170,8 @@ settings.desktop.icons.start_corner.choice.top_start = Top start
 settings.desktop.icons.start_corner.choice.top_end = Top end
 settings.desktop.icons.start_corner.choice.bottom_start = Bottom start
 settings.desktop.icons.start_corner.choice.bottom_end = Bottom end
+settings.desktop.metrics.enabled.label = System usage on the desktop
+settings.desktop.metrics.enabled.desc = Show processor, memory, graphics and network traffic on the background
 
 settings.bar.clock.show_seconds.label = Show seconds
 settings.bar.clock.show_seconds.desc = Show seconds in the clock of the bar

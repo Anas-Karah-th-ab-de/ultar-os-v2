@@ -224,6 +224,7 @@ impl DesktopApp {
         }
         self.poll_bus()?;
         self.scan_desk_folder()?;
+        self.sample_metrics();
         self.finish_slow()?;
         self.launch_due(None)?;
         self.tick_banners()?;

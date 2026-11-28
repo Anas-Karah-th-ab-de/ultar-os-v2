@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::String;
 use spin::Mutex;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Default)]
 pub struct Config {
@@ -36,7 +36,35 @@ pub fn active_mac() -> Option<[u8; 6]> {
 }
 
 pub fn active_send(frame: &[u8]) -> Result<(), String> {
+    count_tx(frame.len());
     NET.lock().get_mut(active_nic()).ok_or_else(|| String::from("no active network interface"))?.send(frame)
+}
+
+/// Traffic of the network interfaces: bytes and frames received and sent.
+static RX_BYTES: AtomicU64 = AtomicU64::new(0);
+static RX_FRAMES: AtomicU64 = AtomicU64::new(0);
+static TX_BYTES: AtomicU64 = AtomicU64::new(0);
+static TX_FRAMES: AtomicU64 = AtomicU64::new(0);
+
+/// A frame of `len` bytes was received.
+pub fn count_rx(len: usize) {
+    RX_BYTES.fetch_add(len as u64, Ordering::Relaxed);
+    RX_FRAMES.fetch_add(1, Ordering::Relaxed);
+}
+
+/// A frame of `len` bytes is sent.
+pub fn count_tx(len: usize) {
+    TX_BYTES.fetch_add(len as u64, Ordering::Relaxed);
+    TX_FRAMES.fetch_add(1, Ordering::Relaxed);
+}
+
+/// `/proc/net/dev`: the traffic in the Linux layout (one line for the interfaces together).
+pub fn dev_text() -> String {
+    let (rb, rf) = (RX_BYTES.load(Ordering::Relaxed), RX_FRAMES.load(Ordering::Relaxed));
+    let (tb, tf) = (TX_BYTES.load(Ordering::Relaxed), TX_FRAMES.load(Ordering::Relaxed));
+    alloc::format!(
+        "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth0: {rb} {rf} 0 0 0 0 0 0 {tb} {tf} 0 0 0 0 0 0\n"
+    )
 }
 
 pub fn csum(data: &[u8]) -> u16 {
@@ -107,7 +135,9 @@ fn arp_resolve(n: usize, mac: [u8; 6], my: [u8; 4], target: [u8; 4]) -> Option<[
     a.extend_from_slice(&my);
     a.extend_from_slice(&[0; 6]);
     a.extend_from_slice(&target);
-    NET.lock().get_mut(n)?.send(&eth([0xff; 6], mac, 0x0806, &a)).ok()?;
+    let frame = eth([0xff; 6], mac, 0x0806, &a);
+    count_tx(frame.len());
+    NET.lock().get_mut(n)?.send(&frame).ok()?;
     let mut res = None;
     wait_frame(n, 1000, |f| {
         if f.len() >= 42 && f[12..14] == [8, 6] && f[20..22] == [0, 2] && f[28..32] == target {
@@ -134,7 +164,9 @@ pub fn ping(n: usize, dst: [u8; 4]) -> Option<u64> {
     icmp[2] = (c >> 8) as u8;
     icmp[3] = c as u8;
     let t0 = crate::arch::uptime_ms();
-    NET.lock().get_mut(n)?.send(&eth(hmac, mac, 0x0800, &ipv4(cfg.ip, dst, 1, &icmp))).ok()?;
+    let frame = eth(hmac, mac, 0x0800, &ipv4(cfg.ip, dst, 1, &icmp));
+    count_tx(frame.len());
+    NET.lock().get_mut(n)?.send(&frame).ok()?;
     let ok = wait_frame(n, 2000, |f| f.len() >= 42 && f[12..14] == [8, 0] && f[23] == 1 && f[26..30] == dst && f[34] == 0);
     ok.then(|| crate::arch::uptime_ms() - t0)
 }

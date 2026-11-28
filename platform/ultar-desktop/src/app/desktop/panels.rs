@@ -3,6 +3,7 @@
 
 use super::{screen, DesktopApp};
 use crate::app::AppError;
+use crate::model::metrics::{Sampler, SAMPLE_MS};
 use crate::model::places::DeskItem;
 use crate::model::Shape;
 use crate::shell::{bar_panel, build_bar, build_second, second_panel, Outcome};
@@ -24,6 +25,8 @@ pub(super) struct SidePanels {
     pub(super) folder: Option<std::path::PathBuf>,
     /// When the desktop folder was last read (ms since the start).
     pub(super) scanned: Option<u64>,
+    /// Reads the system display's values; when it last did (ms since the start).
+    pub(super) sampler: Option<(Sampler, u64)>,
 }
 
 impl SidePanels {
@@ -211,6 +214,53 @@ impl DesktopApp {
                 };
                 let _ = view.ui.set_brick(node, kind);
             }
+        }
+    }
+
+    /// Reads the system display's values every [`SAMPLE_MS`] while it is shown and changes
+    /// its texts and charts in place.
+    pub(super) fn sample_metrics(&mut self) {
+        if !self.shell.d.prefs.desk.metrics {
+            return;
+        }
+        let now = self.now_ms();
+        let (sampler, last) = self
+            .side
+            .sampler
+            .get_or_insert_with(|| (Sampler::new("/"), 0));
+        if *last != 0 && now.saturating_sub(*last) < SAMPLE_MS {
+            return;
+        }
+        *last = now.max(1);
+        sampler.sample(now, &mut self.shell.d.places.metrics);
+        let Some((id, _)) = self.side.background else {
+            return;
+        };
+        let Some(view) = self.host.view_mut(id) else {
+            return;
+        };
+        let (m, tr) = (&self.shell.d.places.metrics, &self.shell.tr);
+        let nodes: Vec<(ultar_ui::ui::NodeId, crate::view::Target)> = view
+            .targets
+            .iter()
+            .filter(|(_, t)| {
+                matches!(
+                    t,
+                    crate::view::Target::MetricValue(_) | crate::view::Target::MetricGraph(_)
+                )
+            })
+            .cloned()
+            .collect();
+        for (node, target) in nodes {
+            let _ = match target {
+                crate::view::Target::MetricValue(g) => view
+                    .ui
+                    .set_label(node, crate::view::metrics::value(m, g, tr)),
+                crate::view::Target::MetricGraph(g) => {
+                    view.ui.set_brick(node, crate::view::metrics::meter(m, g))
+                }
+                _ => Ok(()),
+            };
         }
     }
 

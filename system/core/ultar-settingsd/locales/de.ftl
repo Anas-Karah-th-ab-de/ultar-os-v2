@@ -170,6 +170,8 @@ settings.desktop.icons.start_corner.choice.top_start = Oben am Anfang
 settings.desktop.icons.start_corner.choice.top_end = Oben am Ende
 settings.desktop.icons.start_corner.choice.bottom_start = Unten am Anfang
 settings.desktop.icons.start_corner.choice.bottom_end = Unten am Ende
+settings.desktop.metrics.enabled.label = Systemauslastung auf dem Schreibtisch
+settings.desktop.metrics.enabled.desc = Prozessor, Arbeitsspeicher, Grafik und Datenverkehr auf dem Hintergrund zeigen
 
 settings.bar.clock.show_seconds.label = Sekunden zeigen
 settings.bar.clock.show_seconds.desc = Sekunden in der Uhr der Leiste zeigen

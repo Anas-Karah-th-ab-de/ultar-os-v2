@@ -1,11 +1,11 @@
 //! The company logo of KM Code Craft (circuit cloud, the letters, the name below).
 //!
-//! The logo exists as a bitmap only (`assets/brand/logo.png`, 520 × 218; the picture alone:
-//! `assets/brand/mark-circuit.png`, 364 × 327). Its light grey name line and the pale cloud
-//! need a dark background: the logo is placed on the boot background ([`PLATE`]) or on a
-//! plate of that colour, never directly on a light surface. It is scaled with its proportions
-//! kept, never above its own size, never recoloured, cropped or mirrored (also not in
-//! right-to-left layouts: it is centred or stands at the start side unchanged).
+//! The logo exists as a bitmap only (`assets/brand/logo.png`, 520 × 218, transparent
+//! background; the picture alone: `assets/brand/mark-circuit.png`, 364 × 327). It stands
+//! directly on the surface in both themes (no plate); the boot picture draws it on the boot
+//! background ([`PLATE`]). It is scaled with its proportions kept, never above its own size,
+//! never recoloured, cropped or mirrored (also not in right-to-left layouts: it is centred
+//! or stands at the start side unchanged).
 
 /// Width of the logo bitmap in pixels.
 pub const WIDTH: u32 = 520;
@@ -16,7 +16,7 @@ pub const PICTURE_WIDTH: u32 = 364;
 /// Height of the picture-only bitmap in pixels.
 pub const PICTURE_HEIGHT: u32 = 327;
 
-/// Background the logo is made for (`0xRRGGBB`): the boot background.
+/// The boot background (`0xRRGGBB`) the boot picture draws the logo on.
 pub const PLATE: u32 = 0x0B0D11;
 
 /// Smallest logo width in physical pixels: below it the name line is not readable; use the
@@ -127,13 +127,13 @@ impl<'a> Bitmap<'a> {
     }
 }
 
-/// The embedded company logo (name line included), for a dark background.
+/// The embedded company logo (name line included), transparent background.
 #[cfg(feature = "bitmaps")]
 pub fn bitmap() -> Result<Bitmap<'static>, BitmapError> {
     Bitmap::parse(include_bytes!("../../../../assets/brand/logo.rgba"))
 }
 
-/// The embedded picture of the company logo alone, for a dark background.
+/// The embedded picture of the company logo alone, transparent background.
 #[cfg(feature = "bitmaps")]
 pub fn picture() -> Result<Bitmap<'static>, BitmapError> {
     Bitmap::parse(include_bytes!("../../../../assets/brand/mark-circuit.rgba"))

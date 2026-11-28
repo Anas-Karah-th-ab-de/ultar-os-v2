@@ -100,6 +100,15 @@ pub enum BrickKind {
     },
     /// A round picture of a person (lock and login screens).
     Avatar,
+    /// A small history chart (the desktop's system display): one bar per sample in percent,
+    /// oldest first, the newest at the end in full strength; `second`, when given, a line
+    /// over them (the upload beside the download). A picture.
+    Meter {
+        /// Samples in percent (0–100), oldest first.
+        values: Vec<u8>,
+        /// A second series as a line (same scale), or empty.
+        second: Vec<u8>,
+    },
     /// A shortcut on the desktop background: the app's tile of `side` points with its name
     /// below in up to two lines; quiet until hovered, filled and edged while `selected`.
     DeskIcon {
@@ -240,6 +249,7 @@ impl Brick {
                 | BrickKind::Art(_)
                 | BrickKind::Mark { .. }
                 | BrickKind::Logo { .. }
+                | BrickKind::Meter { .. }
                 | BrickKind::Avatar
         )
     }

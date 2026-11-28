@@ -470,6 +470,16 @@ desk.desk.show_in_files = Show in Files
 desk.desk.trash = Move to trash
 desk.desk.no_app = No app opens this file
 desk.desk.no_app.body = Install an app for this kind of file from the Store.
+desk.desk.metrics = Show system usage
+desk.metrics.title = System usage
+desk.metrics.cpu = Processor
+desk.metrics.ram = Memory
+desk.metrics.gpu = Graphics
+desk.metrics.net = Network traffic
+desk.metrics.memory = {used} of {total}
+desk.metrics.rate = {value}/s
+desk.metrics.rates = ↓ {down}  ↑ {up}
+desk.metrics.none = –
 
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}

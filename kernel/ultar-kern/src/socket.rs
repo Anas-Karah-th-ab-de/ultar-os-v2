@@ -391,7 +391,10 @@ fn poll_network() {
         if let Some(d) = nl.get_mut(crate::net::active_nic()) {
             for _ in 0..64 {
                 match d.recv(&mut buf) {
-                    Some(n) => frames.push(buf[..n].to_vec()),
+                    Some(n) => {
+                        crate::net::count_rx(n);
+                        frames.push(buf[..n].to_vec())
+                    }
                     None => break,
                 }
             }
