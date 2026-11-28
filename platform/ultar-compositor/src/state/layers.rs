@@ -47,6 +47,23 @@ fn panel_strip(area: Rect, edge: Edge, size: i32, rtl: bool) -> Rect {
     }
 }
 
+/// Share of the screen height the call screen gets while locked: a band at
+/// the top. Everything below – the lock screen's entry area (PIN pad,
+/// password) – stays the lock's, for drawing and for pointer and touch, so a
+/// call screen can never draw a copy of the PIN pad and harvest the taps
+/// (security review S-5).
+pub const CALL_BAND_PERCENT: i32 = 30;
+
+/// The band the call screen gets while locked.
+fn call_band(screen: Rect) -> Rect {
+    Rect::new(
+        screen.x,
+        screen.y,
+        screen.w,
+        screen.h * CALL_BAND_PERCENT / 100,
+    )
+}
+
 /// Stacking rank of non-window surfaces above the windows. The call screen is above the
 /// lock screen only while locked (a ringing call is answered without unlocking); unlocked
 /// it stays below system dialogs, so it can never hide a permission or password prompt
@@ -74,6 +91,10 @@ impl State {
         let margin = Space::S16.points() as i32;
         let rect = match s.role {
             Role::Toplevel | Role::SystemDialog => return None,
+            Role::CallScreen if self.locked() => {
+                let band = call_band(screen);
+                Rect::new(band.x, band.y, w.min(band.w), h.min(band.h))
+            }
             Role::Background | Role::Lock | Role::CallScreen => Rect::new(screen.x, screen.y, w, h),
             Role::Panel { edge, size } => {
                 let strip = panel_strip(screen, edge, size as i32, self.rtl());
@@ -213,6 +234,20 @@ impl State {
         }
     }
 
+    /// Sends every call screen its size again (the session was locked or
+    /// unlocked: band or full screen).
+    pub(super) fn configure_call_screens(&mut self) {
+        let calls: Vec<SurfaceKey> = self
+            .layers
+            .iter()
+            .copied()
+            .filter(|&k| self.surface(k).is_some_and(|s| s.role == Role::CallScreen))
+            .collect();
+        for key in calls {
+            self.configure_layer(key);
+        }
+    }
+
     /// Sends the size a layer surface should have.
     pub(super) fn configure_layer(&mut self, key: SurfaceKey) {
         let Some(role) = self.surface(key).map(|s| s.role) else {
@@ -224,6 +259,10 @@ impl State {
         let screen = output.logical_rect();
         let scale = output.scale_milli;
         let (w, h) = match role {
+            Role::CallScreen if self.locked() => {
+                let band = call_band(screen);
+                (band.w, band.h)
+            }
             Role::Background | Role::Lock | Role::CallScreen => (screen.w, screen.h),
             Role::Panel { edge, size } => {
                 let strip = panel_strip(screen, edge, size as i32, self.rtl());
