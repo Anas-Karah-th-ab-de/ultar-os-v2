@@ -33,22 +33,56 @@ pub struct PdfInfo {
     pub size_pt: (f32, f32),
 }
 
+/// Warum eine PDF nicht geöffnet werden konnte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenError {
+    /// Verschlüsselt: es fehlt das Kennwort (oder es war falsch).
+    Password,
+    /// Beschädigt oder kein lesbares PDF.
+    Damaged,
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            OpenError::Password => "password required",
+            OpenError::Damaged => "damaged pdf",
+        })
+    }
+}
+
+fn open_error(e: hayro::hayro_syntax::LoadPdfError) -> OpenError {
+    match e {
+        hayro::hayro_syntax::LoadPdfError::Decryption(_) => OpenError::Password,
+        hayro::hayro_syntax::LoadPdfError::Invalid => OpenError::Damaged,
+    }
+}
+
+/// Ein Wort einer Seite mit seinem Rahmen in PDF-Punkten (Ursprung unten links, y nach oben).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Word {
+    pub text: String,
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
+/// Eine Zeile in Lesereihenfolge mit ihren Wörtern (Rahmen in PDF-Punkten, y nach oben).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Line {
+    pub text: String,
+    pub words: Vec<Word>,
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
 fn lossy(b: &Option<Box<[u8]>>) -> String {
     match b {
         None => String::new(),
-        Some(v) => {
-            // UTF-16BE mit BOM (häufig in PDF-Metadaten)
-            if v.len() >= 2 && v[0] == 0xFE && v[1] == 0xFF {
-                let u: Vec<u16> = v[2..]
-                    .chunks(2)
-                    .filter(|c| c.len() == 2)
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                    .collect();
-                String::from_utf16_lossy(&u)
-            } else {
-                String::from_utf8_lossy(v).into_owned()
-            }
-        }
+        Some(v) => bytes_text(v),
     }
 }
 
@@ -58,14 +92,109 @@ impl PdfDoc {
     }
 
     pub fn open_with_password(bytes: Vec<u8>, pw: &str) -> Result<Self, String> {
-        let data = Arc::new(bytes);
-        let pdf = if pw.is_empty() {
-            Pdf::new(data)
-        } else {
-            Pdf::new_with_password(data, pw)
+        Self::open_with_password_kind(bytes, pw).map_err(|e| e.to_string())
+    }
+
+    /// Öffnet ohne Kennwort und meldet sauber, ob ein Kennwort fehlt oder die Datei kaputt ist.
+    pub fn open_kind(bytes: Vec<u8>) -> Result<Self, OpenError> {
+        open_impl(bytes, "")
+    }
+
+    /// Öffnet mit Kennwort (leeres Kennwort = wie [`Self::open_kind`]).
+    pub fn open_with_password_kind(bytes: Vec<u8>, pw: &str) -> Result<Self, OpenError> {
+        open_impl(bytes, pw)
+    }
+
+    /// Seite i mit fester Skalierung `scale` (Punkte → Pixel) rendern; beide Achsen gleich.
+    pub fn render_at(&self, i: usize, scale: f32) -> Option<PageImage> {
+        let page = self.pdf.pages().get(i)?;
+        let (pw, ph) = page.render_dimensions();
+        let s = scale.max(0.02).min((40_000_000.0 / (pw * ph).max(1.0)).sqrt());
+        let cache = RenderCache::new();
+        let pm = render(
+            page,
+            &cache,
+            &InterpreterSettings::default(),
+            &RenderSettings::default(),
+            &PixmapSettings {
+                x_scale: s,
+                y_scale: s,
+                bg_color: WHITE,
+            },
+        );
+        let (w, h) = (pm.width() as u32, pm.height() as u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for p in pm.data() {
+            rgba.extend_from_slice(&[p.r, p.g, p.b, 255]);
+        }
+        Some(PageImage { w, h, rgba })
+    }
+
+    /// Roh-Glyphen einer Seite (für Zeilen und Wort-Rahmen).
+    fn page_glyphs(&self, i: usize) -> Vec<G> {
+        let Some(page) = self.pdf.pages().get(i) else {
+            return Vec::new();
         };
-        let pdf = pdf.map_err(|e| format!("PDF: {e:?}"))?;
-        Ok(PdfDoc { pdf })
+        let cache = InterpreterCache::new();
+        let (w, h) = page.render_dimensions();
+        let tf = page.initial_transform(true).to_kurbo();
+        let mut ctx = Context::new(
+            tf,
+            Rect::new(0.0, 0.0, w as f64, h as f64),
+            &cache,
+            page.xref(),
+            InterpreterSettings::default(),
+        );
+        let mut dev = TextDev { glyphs: Vec::new() };
+        interpret_page(page, &mut ctx, &mut dev);
+        dev.glyphs
+    }
+
+    /// Wörter einer Seite mit ihren Rahmen (in PDF-Punkten, y nach oben).
+    pub fn page_words(&self, i: usize) -> Vec<Word> {
+        self.page_lines(i).into_iter().flat_map(|l| l.words).collect()
+    }
+
+    /// Zeilen einer Seite in Lesereihenfolge mit Wort-Rahmen.
+    pub fn page_lines(&self, i: usize) -> Vec<Line> {
+        arrange(self.page_glyphs(i))
+    }
+
+    /// Gliederung (Lesezeichen): Seitennummer und Titel, absteigend über die üblichen Blätter.
+    /// Leer, wenn das Dokument keine Gliederung hat oder sie nicht lesbar ist.
+    pub fn outline(&self) -> Vec<(usize, String)> {
+        use hayro::hayro_syntax::object::{Dict, ObjectIdentifier};
+        let xref = self.pdf.xref();
+        let Some(root) = xref.get::<Dict<'_>>(xref.root_id()) else {
+            return Vec::new();
+        };
+        let Some(outlines_ref) = root.get_ref(b"Outlines") else {
+            return Vec::new();
+        };
+        let Some(outlines) = xref.get::<Dict<'_>>(outlines_ref.into()) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut first: Option<ObjectIdentifier> = outlines.get_ref(b"First").map(Into::into);
+        // Seitennummern: Objektkennung jeder Seite (für /Dest [Seite ...]).
+        let page_ids: Vec<Option<ObjectIdentifier>> = (0..self.pages())
+            .map(|p| self.pdf.pages().get(p).and_then(|pg| pg.raw().obj_id()))
+            .collect();
+        let mut depth = 0usize;
+        while let Some(id) = first {
+            if depth > 512 {
+                break;
+            }
+            depth += 1;
+            let Some(item) = xref.get::<Dict<'_>>(id) else {
+                break;
+            };
+            if let Some(title) = item.get::<hayro::hayro_syntax::object::String<'_>>(b"Title") {
+                out.push((page_of_dest(&item, &page_ids), bytes_text(title.as_bytes())));
+            }
+            first = item.get_ref(b"Next").map(Into::into);
+        }
+        out
     }
 
     pub fn pages(&self) -> usize {
@@ -121,22 +250,7 @@ impl PdfDoc {
 
     /// Text einer Seite in Lesereihenfolge (Zeilen von oben nach unten)
     pub fn page_text(&self, i: usize) -> String {
-        let Some(page) = self.pdf.pages().get(i) else {
-            return String::new();
-        };
-        let cache = InterpreterCache::new();
-        let (w, h) = page.render_dimensions();
-        let tf = page.initial_transform(true).to_kurbo();
-        let mut ctx = Context::new(
-            tf,
-            Rect::new(0.0, 0.0, w as f64, h as f64),
-            &cache,
-            page.xref(),
-            InterpreterSettings::default(),
-        );
-        let mut dev = TextDev { glyphs: Vec::new() };
-        interpret_page(page, &mut ctx, &mut dev);
-        layout(dev.glyphs)
+        layout(self.page_glyphs(i))
     }
 
     /// Ganzer Text (mit Seitenmarken "--- Seite n ---")
@@ -175,6 +289,202 @@ impl PdfDoc {
     }
 }
 
+fn open_impl(bytes: Vec<u8>, pw: &str) -> Result<PdfDoc, OpenError> {
+    let data = Arc::new(bytes);
+    let pdf = Pdf::new_with_password(data, pw);
+    pdf.map(|pdf| PdfDoc { pdf }).map_err(open_error)
+}
+
+/// Seitennummer eines Ziels `[Seite /Fit …]` über die Objektkennung der Seite; 0 als Fallback.
+fn page_of_dest(
+    item: &hayro::hayro_syntax::object::Dict<'_>,
+    page_ids: &[Option<hayro::hayro_syntax::object::ObjectIdentifier>],
+) -> usize {
+    use hayro::hayro_syntax::object::{Array, MaybeRef};
+    let Some(arr) = item.get::<Array<'_>>(b"Dest") else {
+        return 0;
+    };
+    let target = match arr.raw_iter().next() {
+        Some(MaybeRef::Ref(r)) => r.into(),
+        _ => return 0,
+    };
+    page_ids.iter().position(|id| *id == Some(target)).unwrap_or(0)
+}
+
+/// Zeichenkette einer PDF (UTF-16BE mit BOM, sonst UTF-8).
+fn bytes_text(b: &[u8]) -> String {
+    if b.len() >= 2 && b[0] == 0xFE && b[1] == 0xFF {
+        let u: Vec<u16> = b[2..]
+            .chunks(2)
+            .filter(|c| c.len() == 2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        String::from_utf16_lossy(&u)
+    } else {
+        String::from_utf8_lossy(b).into_owned()
+    }
+}
+
+/// Rahmen eines Glyphs in PDF-Punkten (y nach oben): (x0, y0, x1, y1).
+fn gbox(g: &G) -> (f32, f32, f32, f32) {
+    let x0 = g.x;
+    let y0 = g.y;
+    let x1 = g.x + g.adv.unwrap_or(g.size).max(g.size * 0.1);
+    let y1 = g.y + g.size;
+    (x0 as f32, y0 as f32, x1 as f32, y1 as f32)
+}
+
+fn union_box(a: Option<(f32, f32, f32, f32)>, b: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    match a {
+        None => b,
+        Some((x0, y0, x1, y1)) => (
+            x0.min(b.0),
+            y0.min(b.1),
+            x1.max(b.2),
+            y1.max(b.3),
+        ),
+    }
+}
+
+fn push_word(words: &mut Vec<Word>, cur: &mut String, bx: &mut Option<(f32, f32, f32, f32)>) {
+    if cur.is_empty() {
+        *bx = None;
+        return;
+    }
+    let (x0, y0, x1, y1) = bx.unwrap_or((0.0, 0.0, 0.0, 0.0));
+    words.push(Word {
+        text: std::mem::take(cur),
+        x0,
+        y0,
+        x1,
+        y1,
+    });
+    *bx = None;
+}
+
+/// Arabische Zeile: Wortfolge umdrehen, arabische Wörter zeichenweise umdrehen,
+/// eingebettete lateinische Wortgruppen behalten ihre Reihenfolge.
+fn reorder_ar(mut words: Vec<Word>) -> Vec<Word> {
+    words.reverse();
+    let mut fixed: Vec<Word> = Vec::new();
+    let mut latin: Vec<Word> = Vec::new();
+    for mut w in words {
+        if arabic(&w.text) {
+            latin.reverse();
+            fixed.append(&mut latin);
+            w.text = normalize(&w.text.chars().rev().collect::<String>());
+            fixed.push(w);
+        } else {
+            w.text = normalize(&w.text);
+            latin.push(w);
+        }
+    }
+    latin.reverse();
+    fixed.append(&mut latin);
+    fixed
+}
+
+/// Glyphen zu Zeilen gruppieren und Wörter mit Rahmen bilden (y nach oben).
+fn arrange(mut gs: Vec<G>) -> Vec<Line> {
+    gs.retain(|g| !g.s.is_empty());
+    if gs.is_empty() {
+        return Vec::new();
+    }
+    gs.sort_by(|a, b| b.y.partial_cmp(&a.y).unwrap_or(std::cmp::Ordering::Equal));
+    let mut groups: Vec<Vec<G>> = Vec::new();
+    for g in gs {
+        match groups.last_mut() {
+            Some(l) if (l[0].y - g.y).abs() < l[0].size.max(g.size) * 0.45 => l.push(g),
+            _ => groups.push(vec![g]),
+        }
+    }
+    let mut out = Vec::new();
+    for mut l in groups {
+        let ar = l.iter().filter(|g| arabic(&g.s)).count() * 2 > l.len();
+        l.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+        let has_space = l.iter().any(|g| g.s == " ");
+        let mut d: Vec<f64> = l
+            .windows(2)
+            .map(|w| w[1].x - w[0].x)
+            .filter(|v| *v > 0.01)
+            .collect();
+        d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let med = d
+            .get(d.len() / 2)
+            .copied()
+            .unwrap_or(l[0].size * 0.5)
+            .min(l[0].size * 0.8);
+        let mut words: Vec<Word> = Vec::new();
+        let mut cur = String::new();
+        let mut bx: Option<(f32, f32, f32, f32)> = None;
+        let mut prev: Option<(f64, usize, Option<f64>)> = None;
+        for g in &l {
+            if let Some((px, n, padv)) = prev {
+                let dx = g.x - px;
+                let gap = match padv {
+                    Some(a) => (dx - a).abs() > g.size * 0.15 && dx > a,
+                    None if has_space => dx > g.size * (1.2 + 0.6 * (n as f64 - 1.0)),
+                    None => dx > med * (n as f64) * 1.45,
+                };
+                if gap && g.s != " " {
+                    push_word(&mut words, &mut cur, &mut bx);
+                }
+            }
+            if g.s == " " {
+                push_word(&mut words, &mut cur, &mut bx);
+            } else {
+                cur.push_str(&g.s);
+                bx = Some(union_box(bx, gbox(g)));
+            }
+            prev = Some((g.x, g.s.chars().count().max(1), g.adv));
+        }
+        push_word(&mut words, &mut cur, &mut bx);
+        words.retain(|w| !w.text.is_empty());
+        let words = if ar {
+            reorder_ar(words)
+        } else {
+            words
+                .into_iter()
+                .map(|mut w| {
+                    w.text = normalize(&w.text);
+                    w
+                })
+                .collect()
+        };
+        let mut x0 = f32::INFINITY;
+        let mut y0 = f32::INFINITY;
+        let mut x1 = f32::NEG_INFINITY;
+        let mut y1 = f32::NEG_INFINITY;
+        for w in &words {
+            x0 = x0.min(w.x0);
+            y0 = y0.min(w.y0);
+            x1 = x1.max(w.x1);
+            y1 = y1.max(w.y1);
+        }
+        if words.is_empty() {
+            x0 = 0.0;
+            y0 = 0.0;
+            x1 = 0.0;
+            y1 = 0.0;
+        }
+        let text = words
+            .iter()
+            .map(|w| w.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push(Line {
+            text,
+            words,
+            x0,
+            y0,
+            x1,
+            y1,
+        });
+    }
+    out
+}
+
+#[derive(Clone)]
 struct G {
     x: f64,
     y: f64,
@@ -406,5 +716,71 @@ mod tests {
             "مرحبا"
         );
         assert_eq!(normalize("\u{FEFB}"), "لا");
+    }
+
+    #[test]
+    fn kaputte_datei_meldet_damaged() {
+        assert_eq!(PdfDoc::open_kind(b"kein pdf".to_vec()).err(), Some(OpenError::Damaged));
+    }
+
+    /// Glyphen einer Zeile (y nach oben): zwei Wörter mit einem Leerraum dazwischen.
+    fn word_glyphs() -> Vec<G> {
+        let mut gs = Vec::new();
+        let y = 700.0;
+        let mut x = 50.0;
+        for ch in "hello world".chars() {
+            if ch == ' ' {
+                x += 10.0;
+                continue;
+            }
+            gs.push(G {
+                x,
+                y,
+                size: 12.0,
+                adv: Some(6.0),
+                s: ch.to_string(),
+            });
+            x += 6.0;
+        }
+        gs
+    }
+
+    #[test]
+    fn arrange_bildet_woerter_mit_rahmen() {
+        let lines = arrange(word_glyphs());
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        assert_eq!(line.text, "hello world");
+        assert_eq!(line.words.len(), 2);
+        assert_eq!(line.words[0].text, "hello");
+        assert_eq!(line.words[1].text, "world");
+        assert!(line.words[0].x0 < line.words[1].x0);
+        assert!(line.y1 > line.y0);
+    }
+
+    #[test]
+    fn arabischer_text_stimmt_mit_layout_ueberein() {
+        let mut gs = Vec::new();
+        let mut x = 50.0;
+        // Zwei arabische Wörter, gezeichnet in Bildreihenfolge (von links nach rechts).
+        for word in ["مَرْحَبًا", "بِكُمْ"] {
+            for ch in word.chars() {
+                gs.push(G {
+                    x,
+                    y: 700.0,
+                    size: 12.0,
+                    adv: Some(6.0),
+                    s: ch.to_string(),
+                });
+                x += 6.0;
+            }
+            x += 10.0;
+        }
+        let text = layout(gs.clone());
+        let lines = arrange(gs);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].words.len(), 2);
+        // `arrange` muss denselben Lesetext liefern wie die bestehende `layout`.
+        assert_eq!(&lines[0].text, text.trim_end());
     }
 }

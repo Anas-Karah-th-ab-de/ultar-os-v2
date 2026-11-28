@@ -1,0 +1,38 @@
+# Ultar PDF reader – app manifest (docs/APP-RULES.md §3).
+id          = "pdf"
+version     = "0.1.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.pdf.name"
+description = "app.pdf.desc"
+icon        = "office"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+# files://<area>/<path>[#page=N] – a PDF of the user (Files opens .pdf with it).
+schemes      = ["files"]
+multi_window = true
+
+[permissions]
+# The user's places: open PDF files (the cell binds each at /areas/<name>).
+files       = ["home:rw", "documents:rw", "downloads:rw", "desktop:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 120
+cpu         = "foreground"
+
+[agent]
+# What the helper may do with the app (APP-RULES §9), all free (open, look, search).
+actions     = ["open", "go_to_page", "search", "copy_text"]
+confirm     = []
