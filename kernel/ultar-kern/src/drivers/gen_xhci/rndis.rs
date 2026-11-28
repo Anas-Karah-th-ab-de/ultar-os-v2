@@ -8,9 +8,16 @@
 //!
 //! Empfang wie bei Bluetooth (`bt`): mehrere Bulk-IN-Übertragungen sind **dauerhaft** armiert; wenn
 //! eine fertig wird, ruft die Ereignisschleife `report`, das den Rahmen in eine Warteschlange legt
-//! und die Übertragung neu armiert. `recv` pumpt den Controller und nimmt aus der Warteschlange.
-//! (Ein erster Entwurf armierte nur kurz in `recv` – dann hatte das Gerät keinen Puffer, um
-//! Empfangenes abzulegen: „Slirp: Failed to send packet".) `send` schickt synchron über Bulk-OUT.
+//! und die Übertragung neu armiert. `recv` läutet die IN-Türklingel, pumpt den Controller und nimmt
+//! aus der Warteschlange. `send` schickt synchron über Bulk-OUT.
+//!
+//! STAND (28.11.2026): In QEMU sind **Binden, RNDIS-Steuerung (INIT/MAC) und Senden** belegt (die
+//! DISCOVER-Pakete erscheinen im Mitschnitt des netdev). Der **Empfang ist noch nicht bestätigt**:
+//! QEMUs `usb-net` ist ein **Full-Speed**-Gerät (speed=1, Bulk 64 Byte), und sein Bulk-IN liefert in
+//! QEMU weder synchron noch armiert eine Completion, obwohl slirp das Antwortpaket an das Gerät
+//! übergibt. Das ist eine Full-Speed-Eigenheit der QEMU-Emulation; echte RNDIS-Tethers laufen mit
+//! High Speed. Darum wird dieser Treiber erst nach einer Prüfung an echter Hardware nach `main`
+//! übernommen (`docs/integration/usb-net.md`).
 
 use super::{w32, Desc, Hc, TRB_NORMAL};
 use crate::driver::{NetDev, Result, NET};
@@ -70,19 +77,6 @@ struct Nic {
 static NICS: Mutex<Vec<Nic>> = Mutex::new(Vec::new());
 const RX_MAX: usize = 256;
 
-// Vorübergehende Zähler zur Fehlersuche (über `netz` sichtbar): report-Aufrufe für usb-net, davon
-// mit gutem Abschluss, davon als RNDIS-Paket erkannt, davon in die Warteschlange gelegt.
-use core::sync::atomic::{AtomicU64, Ordering};
-static DBG: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
-static SEEN: AtomicU64 = AtomicU64::new(0); // Bitmaske der dcis (<64), die report überhaupt sieht
-static WANT: AtomicU64 = AtomicU64::new(0); // in_ep.dci | (slot<<8) der angemeldeten Karte
-pub fn dbg() -> [u64; 4] {
-    core::array::from_fn(|i| DBG[i].load(Ordering::Relaxed))
-}
-pub fn dbg2() -> (u64, u64) {
-    (SEEN.load(Ordering::Relaxed), WANT.load(Ordering::Relaxed))
-}
-
 fn rd32(p: u64, off: usize) -> u32 {
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u32) }
 }
@@ -93,25 +87,18 @@ fn wr32(p: u64, off: usize, v: u32) {
 /// Eine fertige Bulk-IN-Übertragung der USB-Netzkarte: Rahmen aus dem RNDIS-Paket nehmen, in die
 /// Warteschlange legen, Übertragung neu armieren. Aus der Ereignisschleife (`pump`).
 pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, left: u32) -> bool {
-    DBG[0].fetch_add(1, Ordering::Relaxed); // jeder report-Aufruf (auch für fremde Endpunkte)
-    if dci < 64 {
-        SEEN.fetch_or(1u64 << dci, Ordering::Relaxed);
-    }
     let mut list = NICS.lock();
     let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
         return false;
     };
-    DBG[1].fetch_add(1, Ordering::Relaxed); // Treffer: Bulk-IN-Abschluss dieser usb-net-Karte
     let part = nic.in_ep.part(trb);
     if matches!(code, 1 | 13) {
         let got = TD.saturating_sub(left) as usize;
         let base = nic.in_ep.buf + part as u64 * TD as u64;
         if got >= 44 && rd32(base, 0) == PACKET_MSG {
-            DBG[2].fetch_add(1, Ordering::Relaxed);
             let data_off = rd32(base, 8) as usize + 8;
             let data_len = rd32(base, 12) as usize;
             if data_off + data_len <= got && data_len > 0 && nic.rx.len() < RX_MAX {
-                DBG[3].fetch_add(1, Ordering::Relaxed);
                 let mut f: Vec<u8> = Vec::new();
                 if !crate::heap::kernel(|| f.try_reserve_exact(data_len).is_err()) {
                     // SICHERHEIT: Quelle liegt im Teil `part` der DMA-Fläche innerhalb `got`.
@@ -170,26 +157,19 @@ impl NetDev for RndisHandle {
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
-        // DIAGNOSE: synchroner Bulk-IN auf dem IN-Endpunkt (wie der Massenspeicher-Treiber), um zu
-        // sehen, ob der Endpunkt überhaupt überträgt. tx dient hier als Empfangspuffer (≥ TX).
-        let got = {
+        // IN-Türklingel läuten und pumpen, damit fertige Bulk-IN-Übertragungen in die Warteschlange kommen.
+        {
             let mut hcs = super::HC.lock();
-            let hc = hcs.iter_mut().find(|h| h.index == self.hc_index)?;
-            hc.transfer(self.slot, self.in_dci, self.tx, TX, 3)?
-        };
-        DBG[1].fetch_add(1, Ordering::Relaxed);
-        if got < 44 || rd32(self.tx, 0) != PACKET_MSG {
-            return None;
+            if let Some(hc) = hcs.iter_mut().find(|h| h.index == self.hc_index) {
+                w32(hc.db + self.slot as u64 * 4, self.in_dci);
+                hc.pump();
+            }
         }
-        DBG[2].fetch_add(1, Ordering::Relaxed);
-        let data_off = rd32(self.tx, 8) as usize + 8;
-        let data_len = rd32(self.tx, 12) as usize;
-        if data_off + data_len > got {
-            return None;
-        }
-        DBG[3].fetch_add(1, Ordering::Relaxed);
-        let n = data_len.min(buf.len());
-        unsafe { core::ptr::copy_nonoverlapping((self.tx + data_off as u64) as *const u8, buf.as_mut_ptr(), n) };
+        let mut list = NICS.lock();
+        let nic = list.iter_mut().find(|n| n.hc_index == self.hc_index && n.slot == self.slot)?;
+        let f = nic.rx.pop_front()?;
+        let n = f.len().min(buf.len());
+        buf[..n].copy_from_slice(&f[..n]);
         Some(n)
     }
 }
@@ -226,14 +206,6 @@ pub(super) fn attach(
     };
     let in_dci = (ina as u32 & 0xf) * 2 + 1;
     let out_dci = (outa as u32 & 0xf) * 2;
-    crate::kprintln!(
-        "[usb-net] diag speed={} ina={:#x} inmp={} outa={:#x} outmp={} in_dci={in_dci} out_dci={out_dci}",
-        ctx.2,
-        ina,
-        inmp,
-        outa,
-        outmp
-    );
     super::config_ep(hc, slot, ctx.0, ctx.1, ctx.2, &[(in_dci, 6, inmp as u32, 0), (out_dci, 2, outmp as u32, 0)])
         .map_err(|_| "RNDIS: Bulk-Endpunkte nicht eingerichtet")?;
 
@@ -293,9 +265,8 @@ pub(super) fn attach(
     // Empfangsfläche + Sendepuffer, Empfang armieren
     let in_buf = alloc_pages(TDS * TD as usize / 4096).ok_or("kein Speicher")?;
     let tx = alloc_pages(1).ok_or("kein Speicher")?;
-    let in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
-    // DIAGNOSE: nicht vor-armieren; recv liest synchron (siehe recv).
-    WANT.store(in_dci as u64 | (slot as u64) << 8 | (out_dci as u64) << 16, Ordering::Relaxed);
+    let mut in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
+    in_ep.arm_all(hc, slot);
     NICS.lock().push(Nic { hc_index: hc.index, slot, in_ep, rx: VecDeque::new() });
 
     let mut nl = NET.lock();

@@ -401,12 +401,6 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             if ix > 0 {
                 kprintln!("  10G MSI-X-Unterbrechungen: {ix}");
             }
-            let u = crate::drivers::gen_xhci::rndis_dbg();
-            if u != [0; 4] {
-                kprintln!("  usb-net report {} matched {} rndis {} queued {}", u[0], u[1], u[2], u[3]);
-                let (seen, want) = crate::drivers::gen_xhci::rndis_dbg2();
-                kprintln!("  usb-net dci-gesehen {seen:#x} erwartet {want:#x}");
-            }
         }
         "dhcp" => dhcp(),
         "ipfest" => {
