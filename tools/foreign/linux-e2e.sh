@@ -15,6 +15,7 @@ OUT=${1:-$REPO/out/foreign-linux}
 if [ ! -f "$OUT/linux/etc/ultar-runtime" ] || [ ! -f "$OUT/mousepad.deb" ]; then
   TEST_PACKAGE=mousepad "$HERE/make-linux-runtime.sh" "$OUT"
 fi
+OUT=$(cd "$OUT" && pwd)   # the test runs in the crate's directory
 cd "$REPO"
 cargo build -q -p ultar-foreign --bin ultar-foreign
 BIN=${CARGO_TARGET_DIR:-$REPO/target}/debug/ultar-foreign

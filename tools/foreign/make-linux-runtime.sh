@@ -175,6 +175,10 @@ chmod 1777 "$TREE/tmp"
 rm -rf "$TREE"/var/lib/apt/lists/* "$TREE"/var/cache/apt/*.bin "$TREE"/var/cache/apt/archives/*.deb \
   "$TREE"/var/log/*.log "$TREE"/var/log/apt/* "$TREE"/tmp/* "$TREE"/var/tmp/*
 mkdir -p "$TREE/var/lib/apt/lists/partial"
+# apt's own directories belong to root: apt runs as root of the installation cell (no _apt
+# sandbox), and root of a cell has no right over other owners' entries on the Ultar kernel
+chown -R root:root "$TREE/var/cache/apt" "$TREE/var/lib/apt/lists"
+chmod 0700 "$TREE/var/cache/apt/archives/partial" "$TREE/var/lib/apt/lists/partial"
 
 # --- no set-id program, no init system, no SSH server ------------------------------------
 find "$TREE" -xdev -perm /6000 -type f -exec chmod ug-s {} +
