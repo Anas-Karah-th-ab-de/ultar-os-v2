@@ -226,6 +226,14 @@ pub(super) fn attach(
     };
     let in_dci = (ina as u32 & 0xf) * 2 + 1;
     let out_dci = (outa as u32 & 0xf) * 2;
+    crate::kprintln!(
+        "[usb-net] diag speed={} ina={:#x} inmp={} outa={:#x} outmp={} in_dci={in_dci} out_dci={out_dci}",
+        ctx.2,
+        ina,
+        inmp,
+        outa,
+        outmp
+    );
     super::config_ep(hc, slot, ctx.0, ctx.1, ctx.2, &[(in_dci, 6, inmp as u32, 0), (out_dci, 2, outmp as u32, 0)])
         .map_err(|_| "RNDIS: Bulk-Endpunkte nicht eingerichtet")?;
 
