@@ -172,6 +172,13 @@ from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-catalog"]
 
+# the engine host builds its page cell around itself (external/servo-host, docs/integration/servo-cell.md)
+# with the safe system calls of the HAL (namespaces, mounts, loopback, capabilities): no unsafe in the host
+[[allow]]
+from = "external"
+to = "system-hal"
+crates = ["system/hal/ultar-sys"]
+
 # App-Builder packs and signs the developer's own packages with the package format library
 # (no own crypto in the app, APP-RULES §5); nothing else of ultar-pkg is used by apps.
 [[allow]]

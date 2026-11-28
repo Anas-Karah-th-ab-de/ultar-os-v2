@@ -26,7 +26,7 @@ Speicher (memfd + `SCM_RIGHTS`), nur geänderte Zeilen. Servo kommt unverändert
 
 | Teil | Datei | Aufgabe |
 |---|---|---|
-| Start | `src/main.rs`, `src/args.rs` | nur die Optionen, die `HostConfig::args` schreibt; ohne `--proxy` startet er nicht (nichts geht ohne Tor hinaus) |
+| Start | `src/main.rs`, `src/args.rs` | nur die Optionen, die `HostConfig::args` schreibt; ohne Tor-Weg startet er nicht (`--proxy` bei `--no-cell`, sonst `--proxy-socket` in der Zelle: `src/cell/`, `src/relay.rs`) |
 | Verbindung | `src/link.rs` | Befehle lesen (nie blockierend), Ereignisse senden, Bildpuffer mit `SCM_RIGHTS` |
 | Engine | `src/host.rs` | ein Servo, ein Software-Zeichenkontext, eine Web-Ansicht je Tab (entsteht mit der ersten Adresse); zeichnet den sichtbaren Tab erst, wenn der Browser das letzte Bild gelesen hat (`FrameDone`) |
 | Rückmeldungen | `src/delegate.rs` | Adresse, Verlauf, Titel, Laden, neue Fenster (werden Browser-Tabs), Rechte (Kamera, Mikrofon, Standort, Mitteilungen → Frage im Browser), Absturz; nur `http`, `https`, `blob` und `about:blank` als Seiten |
@@ -63,6 +63,23 @@ Zweiter Fund: `ultar-tor` brach beim ersten Tor-Verbindungsaufbau ab (rustls ohn
 installiert `Tor::start` Graviola bzw. RustCrypto, wenn die App keinen gesetzt hat. Das betraf auch den
 Lese-Modus des Browsers.
 
+## Zelle
+
+Der Host baut seine Zelle selbst, bevor Servo startet (`src/cell/`, zwei Stufen wie der Starter, ohne
+`unsafe`): neue Namensräume für Mounts, Prozesse, IPC und **Netz** (nur ein privates Loopback), tmpfs-Wurzel
+mit dem Bündel nur lesbar, Profil und Downloads schreibbar (nie ausführbar), `/dev`-Knoten, `/proc`, `/tmp`,
+`pivot_root`, keine neuen Privilegien, alle Capabilities (Ultar: alle Rechte) abgelegt, Speichergrenze als
+Gruppe. Die Zelle hat **kein Netz**: Servos Proxy zeigt auf einen Loopback-Port **in** der Zelle, ein
+Relais (`src/relay.rs`) kopiert auf den **Unix-Socket** `--proxy-socket` (`ultar-tor`, dritte Front,
+Modus 0600, ohne Geheimnis). Direkte Verbindungen (WebSockets in Servo 0.8) finden keine Route. Jeder
+Fehler beendet den Host vor Servo; auf dem Ultar-Kern (kein `CLONE_NEWNET`) verweigert er den Start mit
+Zelle. Belege, Befund zum Kern und Offenes: `docs/integration/servo-cell.md`.
+
+```text
+scripts/build-servo-engine.sh --shot ADRESSE OUT.png --cell   # eine Seite durch die Zelle und Tor (root)
+ULTAR_WEB_ENGINE=…/ultar-web-engine cargo test --release --test cell   # Prüfung von innen (root)
+```
+
 ## Bauen und prüfen
 
 ```text
@@ -76,11 +93,9 @@ bringt seine eigenen Bibliotheken, siehe offen). Ziel-Ordner `TARGET` (Standard 
 
 ## Offen (ehrlich)
 
-1. **Zelle der Seite:** Der Host baut die Zelle (`--cell-*`) noch nicht und verweigert deshalb den Start mit
-   Zelle – der Browser zeigt dann den Lese-Modus. Entwicklung: `ultar-web --no-cell`. Nötig: Zelle wie der
-   Starter (`system/core/ultar-launcher/src/cell`) und ein Kern-Recht „nur Loopback“, damit die Engine selbst
-   nie am Tor-Port vorbei ins Netz kommt (WebSockets verbindet Servo heute direkt – in der Zelle ohne Netz
-   schlagen sie dann fehl, statt am Tor vorbei zu gehen).
+1. **Zelle der Seite:** gebaut (Abschnitt „Zelle“, `docs/integration/servo-cell.md`). Offen: auf dem
+   **Ultar-Kern** ist sie nicht baubar (kein Netz-Namensraum) – der Host verweigert dort den Start mit Zelle;
+   die Liste, was im Kern fehlt, steht in `servo-cell.md`. Entwicklung: `ultar-web --no-cell`.
 2. **Ultar-Kern:** nur unter Linux belegt. Bündel für `/usr/lib/ultar/web`: glibc, libstdc++, zlib,
    fontconfig, freetype, expat und Mesa mit EGL + llvmpipe/iris aus eigenen Paketen (`tools/ultar-paketbau`).
 3. **Ton und Video:** Merkmal `media` (GStreamer) gebaut, Video-Dekodierung belegt; auf dem Ultar-Kern braucht
@@ -92,8 +107,5 @@ bringt seine eigenen Bibliotheken, siehe offen). Ziel-Ordner `TARGET` (Standard 
 5. Downloads, Zähler des Tracking-Schutzes, Zwischenablage, Schriften für CJK im Bündel.
 6. Wikipedia-Symbole (CSS `mask-image`) zeichnet Servo als schwarze Flächen – Grenze von Servo 0.8.
 
-Plan für 1 (Paket `servocell`, angefangen, Branch `wip/servocell`): `ultar-tor` bekommt den CONNECT-Port
-zusätzlich als Unix-Socket; der Host baut seine Zelle mit eigenem Netz-Namensraum (nur privates Loopback)
-und leitet darin einen Loopback-Port an den Socket weiter. Befund dabei: der Ultar-Kern lehnt
-`unshare(CLONE_NEWNET)` mit `EINVAL` ab – er braucht dafür erst Netz-Namensräume (oder das Recht „kein
-Netz außer Loopback“).
+Zu 1 (Paket `servocell`, Branch `q/servocell`): umgesetzt wie unten im Abschnitt „Zelle“; der Ultar-Kern
+lehnt `unshare(CLONE_NEWNET)` mit `EINVAL` ab, der Host verweigert dort den Start mit Zelle.

@@ -52,6 +52,11 @@ pub struct HostConfig {
     /// `CONNECT` with its secret (`http://user:password@127.0.0.1:port`). An engine host given
     /// a proxy sends nothing past it.
     pub proxy: Option<String>,
+    /// The way out of an engine in a cell **without network**: the Unix socket of the browser's
+    /// Tor client (`ultar_tor::Tor::unix_proxy`, in the engine's folder, see
+    /// `cell::proxy_socket`). Used with a cell instead of `proxy`; the host's relay inside the
+    /// cell leads Servo to it.
+    pub proxy_socket: Option<PathBuf>,
 }
 
 /// The environment of the host (it starts with an empty one): the time zone every page sees
@@ -76,6 +81,10 @@ impl HostConfig {
         if let Some(proxy) = &self.proxy {
             args.push("--proxy".into());
             args.push(proxy.into());
+        }
+        if let Some(socket) = &self.proxy_socket {
+            args.push("--proxy-socket".into());
+            args.push(socket.clone().into_os_string());
         }
         match &self.cell {
             Some(cell) => args.extend(cell.args()),

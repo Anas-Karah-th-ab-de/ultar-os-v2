@@ -143,6 +143,7 @@ fn a_missing_host_program_is_a_start_error() {
         user_agent: "UltarWeb/0.7.0".into(),
         filter: None,
         proxy: Some("http://u:p@127.0.0.1:9".into()),
+        proxy_socket: None,
     };
     assert!(config.args().iter().any(|a| a == "--no-cell"));
     let args = config.args();
@@ -152,4 +153,43 @@ fn a_missing_host_program_is_a_start_error() {
         RemoteEngine::start(&config),
         Err(EngineError::Start(_))
     ));
+}
+
+#[test]
+fn a_cell_without_network_starts_the_host_with_its_socket_and_without_a_tcp_proxy() {
+    let engine = std::path::Path::new("/home/u/.local/share/ultar-web/engine");
+    let spec = ultar_web::cell::CellSpec::page(
+        std::path::Path::new("/usr/lib/ultar/web"),
+        engine,
+        std::path::Path::new("/home/u/Downloads"),
+    )
+    .unwrap();
+    let config = HostConfig {
+        program: "/usr/lib/ultar/web/libexec/ultar-web-engine".into(),
+        cell: Some(spec),
+        profile: engine.to_path_buf(),
+        downloads: "/home/u/Downloads".into(),
+        user_agent: "UltarWeb/0.8".into(),
+        filter: None,
+        proxy: None,
+        proxy_socket: Some(ultar_web::cell::proxy_socket(engine)),
+    };
+    let args: Vec<String> = config
+        .args()
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let at = args.iter().position(|a| a == "--proxy-socket").unwrap();
+    assert_eq!(
+        args[at + 1],
+        "/home/u/.local/share/ultar-web/engine/tor.sock"
+    );
+    // no network for the cell, no TCP proxy, and the socket lies in a folder the cell sees
+    assert!(!args
+        .iter()
+        .any(|a| a == "--cell-net" || a == "--proxy" || a == "--no-cell"));
+    assert!(args.iter().any(|a| a == "--cell-rw"));
+    assert!(
+        args[at + 1].starts_with(&args[args.iter().position(|a| a == "--cell-rw").unwrap() + 1])
+    );
 }
