@@ -174,17 +174,7 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
     let espeak = env_path("ULTAR_ESPEAK").expect("ULTAR_ESPEAK");
     let names = std::env::var("ULTAR_WHISPER_MODEL_NAMES").unwrap_or_else(|_| "small,base".into());
 
-    let speaker = EspeakSpeaker::new(espeak, env_path("ULTAR_ESPEAK_DATA"));
-    let clips: Vec<_> = REQUESTS
-        .iter()
-        .map(|(language, request)| {
-            let said = speaker
-                .synthesize(request, language_of(language))
-                .unwrap_or_else(|e| panic!("espeak {language}: {e}"));
-            (*language, *request, to_16k(&said.samples, said.rate))
-        })
-        .collect();
-
+    let clips = speak_requests(espeak);
     let catalog = ModelCatalog::new(&models);
     let mut all = Vec::new();
     for model in names.split(',').map(str::trim).filter(|m| !m.is_empty()) {
@@ -195,9 +185,33 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
         all.extend(measure_model(model, &clips, &server, &models));
     }
     assert!(!all.is_empty(), "no requested model is installed");
+    let best_english = report(&all);
+    // English is the sanity check of the whole chain (the best model must read it);
+    // Arabic and German are only reported
+    assert!(
+        best_english >= 0.5,
+        "English at {best_english}: chain broken?"
+    );
+}
 
+/// Every request spoken by eSpeak NG, at 16 kHz.
+fn speak_requests(espeak: PathBuf) -> Vec<(&'static str, &'static str, Vec<i16>)> {
+    let speaker = EspeakSpeaker::new(espeak, env_path("ULTAR_ESPEAK_DATA"));
+    REQUESTS
+        .iter()
+        .map(|(language, request)| {
+            let said = speaker
+                .synthesize(request, language_of(language))
+                .unwrap_or_else(|e| panic!("espeak {language}: {e}"));
+            (*language, *request, to_16k(&said.samples, said.rate))
+        })
+        .collect()
+}
+
+/// Prints every clip and the means per model and group; gives the best English accuracy.
+fn report(all: &[Measure]) -> f32 {
     println!("\nmodel  lang  accuracy  seconds  request -> heard");
-    for m in &all {
+    for m in all {
         println!(
             "{:<6} {:<4}  {:>6.0}%  {:>7.1}  {} -> {}",
             m.model,
@@ -216,7 +230,7 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
         .collect::<std::collections::BTreeSet<_>>()
     {
         for group in GROUPS {
-            let (acc, secs) = mean(&all, &model, group);
+            let (acc, secs) = mean(all, &model, group);
             println!(
                 "{model:<6} {group:<8}  {:>12.0}%  {secs:>10.1}",
                 acc * 100.0
@@ -226,12 +240,7 @@ fn whisper_reads_espeak_requests_in_arabic_english_and_german() {
             }
         }
     }
-    // English is the sanity check of the whole chain (the best model must read it);
-    // Arabic and German are only reported
-    assert!(
-        best_english >= 0.5,
-        "English at {best_english}: chain broken?"
-    );
+    best_english
 }
 
 /// Mean accuracy and seconds of a model on a group.

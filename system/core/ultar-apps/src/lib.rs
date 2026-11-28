@@ -313,7 +313,7 @@ pub fn list(p: &Paths) -> Vec<Entry> {
                 .collect()
         })
         .unwrap_or_default();
-    v.sort_by(|a: &Entry, b: &Entry| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    v.sort_by_key(|e: &Entry| e.name.to_lowercase());
     v
 }
 

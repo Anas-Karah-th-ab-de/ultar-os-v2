@@ -8663,7 +8663,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-doc"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "miniz_oxide 0.8.9",
  "png 0.17.16",
@@ -9033,7 +9033,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-pdf"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ultar-bus",
  "ultar-i18n",
@@ -9097,12 +9097,35 @@ name = "ultar-radio"
 version = "0.8.1"
 
 [[package]]
+name = "ultar-remote"
+version = "0.8.1"
+dependencies = [
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-ril"
 version = "0.8.1"
 dependencies = [
  "libc",
  "ultar-bus",
  "ultar-radio",
+]
+
+[[package]]
+name = "ultar-screend"
+version = "0.8.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal-linux",
+ "ultar-mesh",
+ "ultar-service",
+ "ultar-surface",
+ "ultar-svckit",
 ]
 
 [[package]]
