@@ -56,9 +56,18 @@ and adding a per-process LDT (saved and loaded on every switch, user segment reg
 1:1 map in the low half) – a larger change of every physical access in the kernel. Until then 32-bit Windows
 programs run on the Linux kernel; 64-bit ones are the target here. The same limit holds for ART's heap below
 4 GiB (`MAP_32BIT`: the two windows) and for machines whose firmware puts tables into `0x7c000000–0x80000000`
-(the window stays closed; QEMU with 2 GiB or more is such a machine).
+(the window stays closed; the boot line says so).
 
-## State on the Ultar kernel
+## State on the Ultar kernel (28.11.2026, QEMU/KVM on server .8, P4's area, `foreign-e2e.sh`)
 
-See the status line in docs/STATUS.md (Wine: `wine --version`, `wineboot -i`, `cmd /c echo`, a real program;
-ART: `android-art`).
+* Wine: `wine --version` runs; `wineboot -i` creates the 64-bit prefix (`system.reg`,
+  `drive_c/windows/system32`, the wineserver runs) and stops at the first 32-bit process: it executes
+  `int $0x80` (`set_thread_area` for the 32-bit `%fs`, Wine's `alloc_fs_sel`) – `#GP`, error code `0x402` –
+  the delimited WoW64 part above. Before this stage Wine stopped at `c0000018` (no address wishes).
+* What was found on the way and is built: `creat`, `getrusage`, `get_mempolicy`, passing Unix sockets.
+  Expected and harmless in the trace: `EEXIST` of Wine's `MAP_FIXED_NOREPLACE` probes below 2 GiB,
+  `ENOTTY` of FAT/ext2 ioctls, `EOPNOTSUPP` of `fgetxattr`, `ENOSYS` of `rseq`.
+* ART: the kernel parts it asked for are built and checked by winetest (proc after chroot, maps,
+  `pthread_getattr_np`, `MAP_32BIT`, `abort()` in threads, `statfs`/`ENOSPC`); `android-art` itself was not
+  run on the Ultar kernel in this stage – no finished Android area (`out/…/linux` with the component) was on
+  the servers.
