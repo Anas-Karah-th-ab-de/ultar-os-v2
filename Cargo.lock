@@ -9359,6 +9359,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-voiced"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-volumed"
 version = "0.8.1"
 dependencies = [

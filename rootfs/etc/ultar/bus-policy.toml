@@ -298,7 +298,7 @@ subscribe = ["calendar.changed"]
 [[rule]]
 identity = "system.audiod"
 register = ["audio"]
-publish  = ["audio.state"]
+publish  = ["audio.state", "audio.mic"]
 
 # System dialogs (815, shell work): offers `sysdialog` (permission and
 # administrator prompts; the services that ask translate nothing themselves)
@@ -410,6 +410,23 @@ call      = ["launcher.list", "launcher.start", "launcher.stop", "audio.set_volu
              # These four services answer only callers they know as part of the system;
              # the methods the helper may call stay exactly the ones listed above.
              "media.system", "power.system", "session.system", "notify.system"]
+
+# Voice control (842, docs/integration/ultar-voiced.md): offers `voice`, publishes its
+# state. It hears the microphone only through the audio service (`audio.capture` is asked
+# only while the person has switched voice control on), speaks through `audio.play` and hands
+# the recognised words to the helper (`agent.ask_voice`; the helper knows it as a voice).
+[[rule]]
+identity  = "system.voiced"
+register  = ["voice"]
+publish   = ["voice.state"]
+subscribe = ["audio.mic"]
+call      = ["audio.capture", "audio.play", "agent.ask_voice"]
+
+# Settings switches voice control on and off and trains the words.
+[[rule]]
+identity  = "app.settings"
+call      = ["voice.*"]
+subscribe = ["voice.state"]
 
 # The Settings app shows what the helper reaches and did, and forgets it on request.
 [[rule]]

@@ -7,6 +7,7 @@ pub mod fake;
 pub mod mesh;
 pub mod system;
 pub mod update_contract;
+pub mod voice;
 
 use ultar_bus::messages::account_service::{AccountService, AccountState};
 use ultar_bus::messages::audio::AudioState;
@@ -205,6 +206,8 @@ pub struct Ports {
     pub mesh: Box<dyn mesh::MeshPort>,
     /// The cloud model (the helper's last way to think).
     pub cloud: Box<dyn cloud::CloudPort>,
+    /// Voice control ("Hey KM").
+    pub voice: Box<dyn voice::VoicePort>,
     /// Users, apps and drives (Users, Apps and Storage pages).
     pub system: Box<dyn system::SystemPort>,
     /// Documents.

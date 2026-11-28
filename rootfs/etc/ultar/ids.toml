@@ -52,6 +52,8 @@ osk = 839
 installer = 840
 # Remote view source (ultar-screend): looks at the screen for the mesh and types what the viewer types.
 screend = 843
+# Voice control (ultar-voiced, docs/integration/ultar-voiced.md): hears and speaks only through the bus.
+voiced = 842
 nobody = 65534
 
 [groups]
@@ -115,6 +117,7 @@ agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
 osk = ["busd"]
+voiced = ["busd", "logd"]
 updated = ["busd", "logd"]
 
 [ranges]

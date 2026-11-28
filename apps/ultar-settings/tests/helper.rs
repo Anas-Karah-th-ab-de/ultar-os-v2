@@ -38,6 +38,7 @@ fn entry(request: &str, outcome: StepOutcome) -> Entry {
     Entry {
         at: 0,
         request: request.to_owned(),
+        by_voice: false,
         brain: Brain::Local,
         steps: vec![step],
         said: Text::default(),

@@ -19,6 +19,7 @@ mod more;
 pub(crate) mod panel;
 mod shell;
 pub mod status;
+mod voice;
 
 use crate::action::{Act, Registry};
 use crate::areas::PageKind;
@@ -132,6 +133,7 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
             if id == "assistant" {
                 helper::build(cx, content)?;
                 cloud::build(cx, content)?;
+                voice::build(cx, content)?;
             }
             Ok(())
         }
