@@ -169,6 +169,34 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     builder.create(dir)
 }
 
+/// Gives the finished temporary file `tmp` the key's name `path` without ever replacing a key.
+///
+/// A hard link fails if the name exists, so it is the first choice. A kernel without hard links
+/// (the Ultar kernel answers `link`/`linkat` with `EPERM`; others say `ENOSYS`/`EOPNOTSUPP`) gets
+/// a rename instead, done only while the name is still free – the key's directory is private to
+/// this service, so no one else can take the name in between.
+fn publish(
+    tmp: &Path,
+    path: &Path,
+    link: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::ErrorKind;
+    match link(tmp, path) {
+        Err(e)
+            if matches!(
+                e.kind(),
+                ErrorKind::PermissionDenied | ErrorKind::Unsupported
+            ) =>
+        {
+            if std::fs::symlink_metadata(path).is_ok() {
+                return Err(ErrorKind::AlreadyExists.into());
+            }
+            std::fs::rename(tmp, path)
+        }
+        other => other,
+    }
+}
+
 impl FileKeyStore {
     /// A store at `path`. Nothing is read or written yet.
     pub fn new(path: impl Into<PathBuf>) -> Self {
@@ -223,12 +251,11 @@ impl FileKeyStore {
             options.mode(0o600);
         }
         let mut file = options.open(&tmp)?;
-        // A hard link fails if the target exists: the key file appears complete or not at all,
-        // and an existing key is never overwritten.
+        // The key file appears complete or not at all, and an existing key is never overwritten.
         let linked = file
             .write_all(content.as_bytes())
             .and_then(|()| file.sync_all())
-            .and_then(|()| std::fs::hard_link(&tmp, &self.path));
+            .and_then(|()| publish(&tmp, &self.path, |a, b| std::fs::hard_link(a, b)));
         let _ = std::fs::remove_file(&tmp);
         content.zeroize();
         match linked {
