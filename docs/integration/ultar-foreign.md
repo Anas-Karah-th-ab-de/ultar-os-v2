@@ -201,6 +201,19 @@ ARM-only apps are refused (no translation of ARM code). ART runs without a compi
 the app's data is never executable (`noexec`), so ART falls back to its interpreter and JIT – the first start
 takes some seconds longer. Shipping a precompiled boot image in the read-only area would remove that.
 
+**On the Ultar kernel** (QEMU, `tools/kern-test/foreign-e2e.sh` with `AREA=OUT` on `integ/fa-linux` `a885a16d`,
+28.11.2026): every check of the service and its cells passes, including `package-install`; ART does not run
+yet (`FOREIGN: FEHLENDE KERN-FUNKTIONEN: android-art`). The check now stops each program after a time limit
+and reports what it saw:
+
+| Missing | Seen | Consequence |
+|---|---|---|
+| `readlink("/proc/self/exe")` through a proc mounted in the area (`sys_readlink` answers only paths that resolve to the kernel's own `/proc/`) | `readlink /proc/self/exe` prints nothing in the area | glibc cannot expand `$ORIGIN`, the run path of `dalvikvm` – `libnativehelper.so` not found, exit 127 |
+| `/proc/<pid>/maps` | `pthread_getattr_np failed for GetThreadStack: No such file or directory` | glibc cannot tell the main thread's stack: ART aborts at its start (seen when started through ld.so, which needs no `$ORIGIN`) |
+| mappings below 4 GB (`MAP_32BIT`, address hints) | `The requested address space (0x7f00251df000, …) cannot fit in low_4gb` | ART's heap holds 32-bit references and must lie below 4 GB |
+| a program that aborts ends | after its fatal error ART was still running after 300 s (killed by the check) | a crashing app would hang instead of ending |
+| writing larger files into the area's image | `ENOSPC` copying the check's files into the 2.2 GB test image (the plain area's 0.6 GB image works) – cause open: the kernel's ext4 or too few free inodes in the image | the check keeps ART's data on a tmpfs |
+
 ## Open points
 
 * Stage P0: the barrier (`ultar_launcher::foreign::set_net_barrier` is a placeholder returning `ENOSYS`;
