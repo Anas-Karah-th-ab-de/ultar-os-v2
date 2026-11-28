@@ -19,6 +19,7 @@ use aes::Aes256;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use spin::Mutex;
 use xts_mode::{get_tweak_default, Xts128};
 
@@ -43,7 +44,32 @@ pub struct Mapping {
     inner: usize,
     first: u64,
     sectors: u64,
-    xts: Xts128<Aes256>,
+    /// The key schedule; `None` after [`wipe_keys`] (power off, restart): every access fails.
+    xts: Mutex<Option<Xts128<Aes256>>>,
+}
+
+/// Every mapping made, for [`wipe_keys`].
+static MAPPINGS: Mutex<Vec<Arc<Mapping>>> = Mutex::new(Vec::new());
+
+/// Power off and restart: the key schedules are overwritten (RustCrypto `aes` with `zeroize`
+/// clears them on drop) before the machine goes down; a cold-boot reader finds no key.
+pub fn wipe_keys() {
+    // never wait at shutdown: a lock still held elsewhere is skipped
+    if let Some(maps) = MAPPINGS.try_lock() {
+        for m in maps.iter() {
+            if let Some(mut xts) = m.xts.try_lock() {
+                xts.take();
+            }
+        }
+    }
+}
+
+/// Overwrites `bytes` (a buffer that held key material).
+pub fn wipe(bytes: &mut [u8]) {
+    for b in bytes.iter_mut() {
+        // SAFETY: a valid reference; volatile so the clearing is not optimised away.
+        unsafe { core::ptr::write_volatile(b, 0) };
+    }
 }
 
 impl Mapping {
@@ -58,7 +84,9 @@ impl Mapping {
     pub fn read(&self, bl: &mut [Box<dyn BlockDev>], lba: u64, buf: &mut [u8]) -> Result<()> {
         let at = self.place(lba, buf.len())?;
         bl.get_mut(self.inner).ok_or_else(|| String::from("device gone"))?.read(at, buf)?;
-        self.xts.decrypt_area(buf, SECTOR as usize, u128::from(lba), get_tweak_default);
+        let xts = self.xts.lock();
+        let xts = xts.as_ref().ok_or_else(|| String::from("keys wiped"))?;
+        xts.decrypt_area(buf, SECTOR as usize, u128::from(lba), get_tweak_default);
         Ok(())
     }
 
@@ -66,7 +94,11 @@ impl Mapping {
         let at = self.place(lba, data.len())?;
         let mut sealed = crate::mem::try_vec(data.len()).ok_or_else(|| String::from("no memory"))?;
         sealed.copy_from_slice(data);
-        self.xts.encrypt_area(&mut sealed, SECTOR as usize, u128::from(lba), get_tweak_default);
+        {
+            let xts = self.xts.lock();
+            let xts = xts.as_ref().ok_or_else(|| String::from("keys wiped"))?;
+            xts.encrypt_area(&mut sealed, SECTOR as usize, u128::from(lba), get_tweak_default);
+        }
         bl.get_mut(self.inner).ok_or_else(|| String::from("device gone"))?.write(at, &sealed)
     }
 
@@ -150,12 +182,6 @@ fn nibble(c: u8) -> Option<u8> {
     }
 }
 
-fn wipe(key: &mut [u8; 64]) {
-    for b in key.iter_mut() {
-        // SAFETY: a valid reference; volatile so the clearing is not optimised away.
-        unsafe { core::ptr::write_volatile(b, 0) };
-    }
-}
 
 /// `open <offset> <hex key>`: maps the data segment and mounts it as `/data`.
 pub fn control(text: &str) -> core::result::Result<(), i64> {
@@ -189,14 +215,15 @@ fn open(l: Locked, off: &str, hex: &str) -> core::result::Result<(), i64> {
         match (nibble(pair[0]), nibble(pair[1])) {
             (Some(a), Some(b)) => key[i] = a << 4 | b,
             _ => {
-                wipe(&mut key);
+                wipe(&mut key[..]);
                 return Err(-EINVAL);
             }
         }
     }
     let xts = Xts128::new(Aes256::new(GenericArray::from_slice(&key[..32])), Aes256::new(GenericArray::from_slice(&key[32..])));
-    wipe(&mut key);
-    let map = Arc::new(Mapping { inner: l.disk, first: l.first + off / SECTOR, sectors: l.sectors - off / SECTOR, xts });
+    wipe(&mut key[..]);
+    let map = Arc::new(Mapping { inner: l.disk, first: l.first + off / SECTOR, sectors: l.sectors - off / SECTOR, xts: Mutex::new(Some(xts)) });
+    let keep = map.clone();
     let index = {
         let mut bl = BLOCK.lock();
         if bl.get(l.disk).is_none_or(|d| d.sector_size() != SECTOR as usize) {
@@ -215,6 +242,7 @@ fn open(l: Locked, off: &str, hex: &str) -> core::result::Result<(), i64> {
         crate::kprintln!("[crypt] key refused: no ext4 file system behind it");
         return Err(-EKEYREJECTED);
     };
+    MAPPINGS.lock().push(keep);
     crate::rawpart::remove_data();
     crate::fs::attach_data(fs);
     Ok(())

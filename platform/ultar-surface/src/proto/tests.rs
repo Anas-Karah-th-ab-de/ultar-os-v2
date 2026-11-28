@@ -167,7 +167,14 @@ fn every_request_round_trips_and_truncation_fails() {
             per_window: true,
         },
     ];
-    for request in sample_requests().into_iter().chain(phone).chain(input) {
+    let bridge = [
+        Request::BridgeSetSelection { mimes: mimes() },
+        Request::BridgeReadSelection {
+            mime: "image/png".into(),
+        },
+    ];
+    let all = sample_requests().into_iter().chain(phone).chain(input);
+    for request in all.chain(bridge) {
         let frame = request.encode().unwrap();
         let (op, body) = split(&frame);
         assert_eq!(Request::decode(op, body).unwrap(), request);
@@ -254,7 +261,17 @@ fn the_keyboard_configuration_refuses_unknown_keys() {
 
 #[test]
 fn every_event_round_trips_and_truncation_fails() {
-    for event in sample_events() {
+    let bridge = [
+        Event::SelectionChange {
+            mimes: mimes(),
+            confidential: true,
+        },
+        Event::SelectionChange {
+            mimes: Vec::new(),
+            confidential: false,
+        },
+    ];
+    for event in sample_events().into_iter().chain(bridge) {
         let frame = event.encode().unwrap();
         let (op, body) = split(&frame);
         assert_eq!(Event::decode(op, body).unwrap(), event);
@@ -331,6 +348,8 @@ fn rights_and_roles() {
     assert_eq!(Role::SystemDialog.required_rights(), Rights::SYSTEM_DIALOG);
     assert_eq!(Role::CallScreen.required_rights(), Rights::CALL_SCREEN);
     assert!(Rights::ALL.contains(Rights::CALL_SCREEN));
+    assert!(Rights::ALL.contains(Rights::CLIPBOARD_BRIDGE));
+    assert!(!Rights::SHELL.contains(Rights::CLIPBOARD_BRIDGE));
     assert_eq!(
         Role::Panel {
             edge: Edge::Top,

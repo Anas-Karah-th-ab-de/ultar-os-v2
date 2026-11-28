@@ -1005,7 +1005,15 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
         Out::Done(k) => k as i64,
         Out::Sock(id) => crate::socket::send(id, &data, None),
         Out::Fb => crate::eingabe::fb_schreiben(0, &data),
-        Out::Group(path) => control_write(&path, &data),
+        Out::Group(path) => {
+            let r = control_write(&path, &data);
+            // the data key passed through this copy: it does not stay in freed memory
+            if path == crate::crypt::CONTROL {
+                let mut data = data;
+                crate::crypt::wipe(&mut data);
+            }
+            r
+        }
         Out::Res(r) => return r,
     })
 }

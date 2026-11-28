@@ -12,8 +12,13 @@
 //!   clocks and canvas read-back are the same for everyone; WebRTC, Bluetooth, gamepads, WebGPU,
 //!   WebXR and service workers are off; the location is the invented place of the session.
 //! * **Nothing is kept:** cookies, storage and cache live in memory for the session.
-//! * **Fail closed:** the page cell (`--cell-*`) is not built by this host yet, so it refuses to
-//!   start with one; the browser then shows pages with its reader engine.
+//! * **The page cell** (`cell`, `--cell-*`): the host builds it itself before Servo starts, with
+//!   its own network namespace (only a private loopback) – no network of its own. Servo's proxy
+//!   is a port of that loopback; the relay (`relay`) copies it to the browser's Unix socket
+//!   (`--proxy-socket`), the only way out. `--proxy` (a TCP port) is for `--no-cell` development.
+//! * **Fail closed:** any failing step of the cell – also a kernel without network namespaces
+//!   (the Ultar kernel today) – ends the host before Servo exists; the browser then shows pages
+//!   with its reader engine.
 //!
 //! Exit codes: 0 the browser said `Quit` or went away, 1 failed, 2 usage.
 
@@ -22,12 +27,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod args;
+mod cell;
 mod delegate;
 mod frames;
 mod host;
 mod input;
 mod link;
 mod persona;
+mod relay;
 mod waker;
 
 use std::process::ExitCode;
@@ -47,14 +54,22 @@ fn main() -> ExitCode {
         eprintln!("ultar-web-engine: started with unknown options (only the browser starts it)");
         return ExitCode::from(2);
     };
-    let Some(proxy) = args.proxy.as_deref() else {
-        eprintln!("ultar-web-engine: no proxy: nothing may go out without Tor");
-        return ExitCode::from(1);
+    // the page cell first: no network of its own, the proxy is the relay's loopback port
+    let proxy = match cell::enter(&args) {
+        Ok(cell::Entered::Finished(code)) => return ExitCode::from(code),
+        Ok(cell::Entered::Inside(proxy)) => proxy,
+        Ok(cell::Entered::Uncelled) => match args.proxy.clone() {
+            Some(proxy) => proxy,
+            None => {
+                eprintln!("ultar-web-engine: no proxy: nothing may go out without Tor");
+                return ExitCode::from(1);
+            }
+        },
+        Err(e) => {
+            eprintln!("ultar-web-engine: {e}");
+            return ExitCode::from(1);
+        }
     };
-    if !args.cell.none {
-        eprintln!("ultar-web-engine: the page cell is not supported by this host yet");
-        return ExitCode::from(1);
-    }
     let link = match link::Link::from_stdin() {
         Ok(l) => l,
         Err(e) => {
@@ -63,7 +78,7 @@ fn main() -> ExitCode {
         }
     };
     let persona = Persona::for_session(Persona::new_seed());
-    let result = host::Host::new(link, persona, proxy).and_then(|mut h| h.run());
+    let result = host::Host::new(link, persona, &proxy).and_then(|mut h| h.run());
     match result {
         Ok(()) | Err(host::HostError::Link(link::LinkError::Closed)) => ExitCode::SUCCESS,
         Err(e) => {

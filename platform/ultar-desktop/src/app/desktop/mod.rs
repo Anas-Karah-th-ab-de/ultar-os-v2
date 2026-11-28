@@ -55,8 +55,8 @@ pub struct DesktopApp {
     shell: Shell,
     look: Look,
     bar: SurfaceId,
-    /// The dock.
-    second: Option<SurfaceId>,
+    /// The dock and the desktop background.
+    side: panels::SidePanels,
     popup: Option<PopupSurface>,
     /// The banners' surface and when their clocks were last looked at.
     banners: BannerSurface,
@@ -70,8 +70,8 @@ pub struct DesktopApp {
     slow: slow::SlowCalls,
     /// Which layout announcements are the user's switches (stored in the settings).
     layouts: keyboard::LayoutSync,
-    /// The shell's own folder for the per-person search history (`None`: nothing kept
-    /// across restarts).
+    /// The shell's own folder for the per-person search history and desktop shortcuts
+    /// (`None`: nothing kept across restarts).
     history_dir: Option<std::path::PathBuf>,
 }
 
@@ -110,12 +110,18 @@ fn read_services(link: &Link, d: &mut Desktop) {
     d.overview.store = crate::model::store::load_from_env();
 }
 
-/// The person's remembered searches, read beside the shell (only shown when
-/// `search.history` is on; off keeps nothing).
-fn read_history(d: &mut Desktop, state: Option<&std::path::Path>, user: &str) {
+/// What is kept beside the shell and in the desktop folder: the person's remembered
+/// searches (only shown when `search.history` is on; off keeps nothing), their desktop
+/// shortcuts and the desktop folder's items.
+fn read_kept(d: &mut Desktop, options: &Options, user: &str) {
+    let state = options.state.as_deref();
     d.overview.history = crate::model::history::load(state, user);
     if !d.overview.sources.history {
         d.overview.history.clear();
+    }
+    d.places.shortcuts = crate::model::places::load(state, user);
+    if let Some(dir) = &options.desk_folder {
+        d.places.files = crate::model::desk_files::list(dir);
     }
 }
 
@@ -140,7 +146,7 @@ impl DesktopApp {
         if let Some(link) = &link {
             read_services(link, &mut d);
         }
-        read_history(&mut d, options.state.as_deref(), user);
+        read_kept(&mut d, options, user);
         let size = screen(&host);
         let place = options
             .bar
@@ -148,7 +154,12 @@ impl DesktopApp {
             .unwrap_or_default();
         let mut shell = Shell::new(d, clock, user);
         shell.shape = Shape { bar: place };
-        let look = Look::new(options.lang, shell.d.theme);
+        // The language of the settings (region.language) when the service answered, else
+        // the session's; the accent and text size of the settings.
+        let v = shell.d.values;
+        let look = Look::new(shell.d.lang, shell.d.theme)
+            .with_access(v.high_contrast, v.large_text)
+            .with_prefs(&shell.d.prefs);
         let view = build_bar(&shell, look, size.w)?;
         let bar = host.open(&panels::bar_config(shell.shape), view, None)?;
         let mut app = DesktopApp {
@@ -156,7 +167,7 @@ impl DesktopApp {
             shell,
             look,
             bar,
-            second: None,
+            side: panels::SidePanels::new(options.desk_folder.clone()),
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
@@ -170,6 +181,7 @@ impl DesktopApp {
         };
         app.apply_keyboard()?;
         app.open_side_panels()?;
+        app.sync_background()?;
         app.report_displays();
         Ok(app)
     }
@@ -203,17 +215,20 @@ impl DesktopApp {
 
     /// One turn of the loop.
     pub fn turn(&mut self) -> Result<(), AppError> {
-        let minute = time_to_minute(self.shell.clock.as_ref());
-        let events = self.host.dispatch(Some(minute.min(BUS_POLL)))?;
+        let seconds = self.shell.d.prefs.clock.seconds;
+        let tick = clock_tick(self.shell.clock.as_ref(), seconds);
+        let wait = time_to_tick(self.shell.clock.as_ref(), seconds);
+        let events = self.host.dispatch(Some(wait.min(BUS_POLL)))?;
         for event in events {
             self.event(event)?;
         }
         self.poll_bus()?;
+        self.scan_desk_folder()?;
         self.finish_slow()?;
         self.launch_due(None)?;
         self.tick_banners()?;
-        if time_to_minute(self.shell.clock.as_ref()) > minute {
-            // A new minute: the clock of the bar.
+        if clock_tick(self.shell.clock.as_ref(), seconds) != tick {
+            // A new minute (or second, with bar.clock.show_seconds): the clock of the bar.
             self.rebuild(Outcome {
                 bar: true,
                 ..Outcome::none()
@@ -346,11 +361,17 @@ impl DesktopApp {
                     self.release()
                 }
             }
-            HostEvent::Menu(id, node) if id == self.bar || self.is_panel(id) => {
+            HostEvent::Menu(id, node, _) if id == self.bar || self.is_panel(id) => {
                 match self.target(id, node) {
                     Some(t) => self.shell.on_bar_menu(&t),
                     None => Outcome::none(),
                 }
+            }
+            HostEvent::Menu(id, node, at) if self.is_background(id) => {
+                // The background lies at the screen's corner: its points are the screen's.
+                let target = self.target(id, node);
+                let at = (at.x.round() as i32, at.y.round() as i32);
+                self.shell.on_desk_menu(target.as_ref(), at)
             }
             HostEvent::Resized(id, _) if id == self.bar => self.resized()?,
             HostEvent::Compositor(e) => self.compositor(e)?,
@@ -373,6 +394,9 @@ impl DesktopApp {
         if self.is_panel(id) {
             return self.shell.on_surface(&target, kind);
         }
+        if self.is_background(id) {
+            return self.shell.on_desk(&target, kind);
+        }
         if self.banners.surface.is_some_and(|(b, _)| b == id) {
             return self.on_banner(&target, kind);
         }
@@ -387,14 +411,18 @@ impl DesktopApp {
                 let secret = self.take_password(id);
                 self.shell.join_with(secret)
             }
-            (ActionKind::TextChanged, Target::SearchField) => {
+            (ActionKind::TextChanged, Target::SearchField | Target::RenameField) => {
                 let text = self
                     .host
                     .view(id)
                     .and_then(|v| v.ui.text(node).ok())
                     .unwrap_or_default()
                     .to_owned();
-                self.shell.on_query(&text)
+                if target == Target::RenameField {
+                    self.shell.on_rename_text(&text)
+                } else {
+                    self.shell.on_query(&text)
+                }
             }
             _ => self.shell.on_popup(&target, kind),
         }
@@ -495,10 +523,19 @@ fn wifi_mark(
 }
 
 /// Time until the next minute of the wall clock.
-fn time_to_minute(clock: &dyn Clock) -> Duration {
-    Duration::from_millis(crate::model::time::LocalTime::ms_to_next_minute(
-        clock.now_ms(),
-    ))
+/// Which minute (or second) of the clock it is: the bar is built again when it changes.
+fn clock_tick(clock: &dyn Clock, seconds: bool) -> u64 {
+    clock.now_ms() / if seconds { 1000 } else { 60_000 }
+}
+
+/// How long until the bar's clock changes.
+fn time_to_tick(clock: &dyn Clock, seconds: bool) -> Duration {
+    let now = clock.now_ms();
+    if seconds {
+        Duration::from_millis(1000 - now % 1000)
+    } else {
+        Duration::from_millis(crate::model::time::LocalTime::ms_to_next_minute(now))
+    }
 }
 
 /// Starts the shell on the system clock.

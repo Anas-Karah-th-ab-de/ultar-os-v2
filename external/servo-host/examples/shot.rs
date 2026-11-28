@@ -12,12 +12,17 @@
 //! <all>` (the most frequent colour counts as background): a blank page has none. With the
 //! variable `SHOT_SERIAL_PNG=1` the PNG follows as base64 lines between `PNG-BEGIN` and
 //! `PNG-END`, for a machine whose only way out is the serial console.
+//! (`<proxy>`: the first line `ultar-tor-port` prints). With `unix:SOCKET` (the third line of
+//! `ultar-tor-port --unix SOCKET`) the host runs **in its page cell without network**: the socket
+//! is the only way out; the cell sees the folders of `ULTAR_SHOT_CELL_RO` (colon separated,
+//! default `/usr:/lib:/lib64:/bin:/etc/ssl:/etc/fonts`, the system libraries, the CA certificates and the font setup the host needs here) read-only.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
+use ultar_web::cell::CellSpec;
 use ultar_web::engine::remote::{HostConfig, RemoteEngine};
 use ultar_web::engine::{EngineEvent, FrameView, WebEngine};
 
@@ -40,15 +45,19 @@ fn main() -> Result<(), Failure> {
     let proxy = port.as_ref().map_or(proxy.clone(), |p| p.proxy.clone());
     let work = std::env::temp_dir().join(format!("ultar-shot-{}", std::process::id()));
     std::fs::create_dir_all(work.join("profile"))?;
-    let config = HostConfig {
+    let mut config = HostConfig {
         program: PathBuf::from(program),
         cell: None,
         profile: work.join("profile"),
         downloads: work.clone(),
         user_agent: "UltarWeb/0.8".into(),
         filter: None,
-        proxy: Some(proxy),
+        proxy: Some(proxy.clone()),
+        proxy_socket: None,
     };
+    if let Some(socket) = proxy.strip_prefix("unix:") {
+        into_cell(&mut config, PathBuf::from(socket), &work)?;
+    }
     let started = Instant::now();
     let mut engine = RemoteEngine::start(&config)?;
     println!("host ready after {:?}", started.elapsed());
@@ -72,6 +81,30 @@ fn main() -> Result<(), Failure> {
         print_base64(&std::fs::read(out)?);
     }
     drop(port);
+    Ok(())
+}
+
+/// Runs the host in its page cell without network: the Tor socket is the only way out.
+fn into_cell(config: &mut HostConfig, socket: PathBuf, work: &Path) -> Result<(), Failure> {
+    let engine_dir = socket.parent().ok_or("socket has no folder")?.to_path_buf();
+    let read_only = std::env::var("ULTAR_SHOT_CELL_RO")
+        .unwrap_or_else(|_| "/usr:/lib:/lib64:/bin:/etc/ssl:/etc/fonts".into())
+        .split(':')
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .collect();
+    let spec = CellSpec {
+        network: false,
+        read_only,
+        read_write: vec![engine_dir.clone(), work.to_path_buf()],
+        memory_mb: 2048,
+    };
+    spec.validate()?;
+    config.cell = Some(spec);
+    config.profile = engine_dir;
+    config.proxy = None;
+    config.proxy_socket = Some(socket);
+    println!("host in its page cell (no network), only way out: the Tor socket");
     Ok(())
 }
 

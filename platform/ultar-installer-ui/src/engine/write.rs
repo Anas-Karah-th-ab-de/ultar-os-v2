@@ -104,9 +104,15 @@ fn copy_encrypted(
     done: &mut u64,
     total: u64,
     progress: &mut dyn Progress,
-) -> Result<(), EngineError> {
+) -> Result<ultar_luks::Sectors, EngineError> {
     let random = |_| EngineError::Io("luks", std::io::ErrorKind::Other);
-    let volume = ultar_luks::format(pass.expose().as_bytes(), &plan.luks).map_err(random)?;
+    // the unlock screen at start speaks the installation's language and knows its keyboard
+    let start = ultar_luks::StartInfo {
+        lang: plan.answers.get("lang").unwrap_or("en").to_owned(),
+        keyboard: plan.answers.get("keyboard").unwrap_or("us").to_owned(),
+    };
+    let volume = ultar_luks::format_with(pass.expose().as_bytes(), &plan.luks, Some(&start))
+        .map_err(random)?;
     let mut meta = volume.metadata;
     meta.resize(ultar_luks::DATA_OFFSET as usize, 0);
     write_verified(dst, t.first * 512, &meta, t.name)?;
@@ -129,7 +135,7 @@ fn copy_encrypted(
         *done += n as u64;
         progress.step(*done, total);
     }
-    Ok(())
+    Ok(sectors)
 }
 
 fn bootctl(answers: &Answers) -> Vec<u8> {
@@ -184,9 +190,20 @@ fn write_parts(
     for t in install::parts(&plan.layout) {
         match (t.fill, &plan.encrypt) {
             (Fill::Copy(range), Some(pass)) if t.name == ultar_slots::layout::DATA_PART => {
-                copy_encrypted(src, dst, t, range, plan, pass, &mut done, total, progress)?
+                let xts =
+                    copy_encrypted(src, dst, t, range, plan, pass, &mut done, total, progress)?;
+                let (base, bytes) = (
+                    t.first * 512 + ultar_luks::DATA_OFFSET,
+                    t.sectors * 512 - ultar_luks::DATA_OFFSET,
+                );
+                super::grow::data(dst, base, bytes, Some(&xts))?;
             }
-            (Fill::Copy(range), _) => copy(src, dst, t, range, &mut done, total, progress)?,
+            (Fill::Copy(range), _) => {
+                copy(src, dst, t, range, &mut done, total, progress)?;
+                if t.name == ultar_slots::layout::DATA_PART {
+                    super::grow::data(dst, t.first * 512, t.sectors * 512, None)?;
+                }
+            }
             (Fill::Zero, _) => {
                 let n = (t.sectors.min(MIB) * 512) as usize;
                 write_verified(dst, t.first * 512, &vec![0u8; n], t.name)?;

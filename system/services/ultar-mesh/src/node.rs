@@ -56,6 +56,20 @@ pub enum Effect {
     },
     /// Text copied on another device.
     Clipboard(ClipboardRemote),
+    /// A picture (PNG) copied on another device.
+    ClipboardImage {
+        /// The device it was copied on.
+        from: String,
+        /// The picture.
+        png: Vec<u8>,
+    },
+    /// The entry that came from another device is too old: take it back.
+    ClipboardClear,
+    /// Tell the person that an entry came from `from_name` (at most one in ten seconds).
+    ClipNotice {
+        /// Name of the device (data).
+        from_name: String,
+    },
     /// A job to run for `peer`; report with [`Node::job_done`].
     Run {
         /// Who asked.
@@ -138,6 +152,7 @@ pub struct Node {
     pub(crate) offers: Offers,
     pub(crate) clip_seq: u64,
     pub(crate) clip_remote: Option<String>,
+    pub(crate) clip: crate::clip_share::ClipState,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
 }
@@ -158,6 +173,7 @@ impl Node {
             offers: Offers::default(),
             clip_seq: 0,
             clip_remote: None,
+            clip: crate::clip_share::ClipState::default(),
             thinking: 0,
             serving: 0,
         }
@@ -350,7 +366,8 @@ impl Node {
             return Vec::new();
         }
         match frame {
-            Frame::Clip { text, .. } => self.on_clip(peer, text),
+            Frame::Clip { text, .. } => self.on_clip(peer, text, now),
+            Frame::ClipImage(piece) => self.on_clip_image(peer, piece, now),
             Frame::Job { id, program, args } => self.on_job(peer, id, program, args),
             Frame::JobAlive { .. } | Frame::JobDone { .. } | Frame::JobRefused { .. } => {
                 vec![Effect::Job(peer.to_owned(), frame)]
@@ -385,6 +402,8 @@ impl Node {
         if self.shown.as_ref().is_some_and(|s| !s.valid(now)) {
             self.shown = None;
         }
-        self.expire_offers(now)
+        let mut effects = self.expire_offers(now);
+        effects.extend(self.clip_tick(now));
+        effects
     }
 }

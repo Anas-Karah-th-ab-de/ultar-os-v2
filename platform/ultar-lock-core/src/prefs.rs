@@ -28,8 +28,32 @@ pub const NUMBER: &str = "emergency.number";
 /// The screen flashes SOS while the emergency call runs.
 pub const SOS_LIGHT: &str = "emergency.sos_light";
 
+/// The system language (the lock screen speaks it from its first frame on).
+pub const LANGUAGE: &str = "region.language";
+/// Dark or light.
+pub const THEME: &str = "appearance.theme";
+/// The accent colour.
+pub const ACCENT: &str = "appearance.accent_color";
+/// The text size in percent.
+pub const FONT_SIZE: &str = "appearance.font_size";
+/// The time zone of the clock.
+pub const ZONE: &str = "datetime.timezone.name";
+/// 12 or 24 hours.
+pub const CLOCK_FORMAT: &str = "datetime.clock_format";
+
+/// The accent colours of the schema (gold first: the standard).
+pub const ACCENTS: [&str; 6] = ["gold", "blue", "green", "red", "purple", "teal"];
+/// Smallest and largest text size in percent.
+pub const FONT_RANGE: (u16, u16) = (80, 200);
+
 /// Every key the lock screen reads.
-pub const KEYS: [&str; 11] = [
+pub const KEYS: [&str; 17] = [
+    LANGUAGE,
+    THEME,
+    ACCENT,
+    FONT_SIZE,
+    ZONE,
+    CLOCK_FORMAT,
     LIST_ON_LOGIN,
     AUTO_LOGIN,
     PARENTAL,
@@ -109,6 +133,39 @@ pub struct LockPrefs {
     pub number: String,
     /// The screen flashes SOS during the emergency call.
     pub sos_light: bool,
+    /// Language, theme, accent, text size and clock of the settings.
+    pub look: LookPrefs,
+}
+
+/// What the lock screen shows of the person's choices: it speaks their language and shows
+/// their time from its first frame on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LookPrefs {
+    /// `region.language` (`None` until the service said: the session's language).
+    pub lang: Option<ultar_i18n::Lang>,
+    /// `appearance.theme` = light (`None` until the service said: the start option).
+    pub light: Option<bool>,
+    /// `appearance.accent_color` (one of [`ACCENTS`]).
+    pub accent: String,
+    /// `appearance.font_size` in percent.
+    pub font_percent: u16,
+    /// `datetime.timezone.name` (`None`: the clock's own offset).
+    pub zone: Option<String>,
+    /// `datetime.clock_format` = h12.
+    pub h12: bool,
+}
+
+impl Default for LookPrefs {
+    fn default() -> Self {
+        LookPrefs {
+            lang: None,
+            light: None,
+            accent: ACCENTS[0].to_owned(),
+            font_percent: 100,
+            zone: None,
+            h12: false,
+        }
+    }
 }
 
 impl Default for LockPrefs {
@@ -125,6 +182,7 @@ impl Default for LockPrefs {
             medical: String::new(),
             number: "112".into(),
             sos_light: true,
+            look: LookPrefs::default(),
         }
     }
 }
@@ -181,15 +239,64 @@ impl LockPrefs {
                 }
             }
             (SOS_LIGHT, SettingValue::Flag(on)) => self.sos_light = *on,
-            _ => {}
+            (key, value) => {
+                self.look.on_changed(key, value);
+            }
         }
         *self != before
+    }
+
+    /// Offset of the local time at `unix_ms`: the zone of the settings, else `fallback`.
+    pub fn offset_s(&self, unix_ms: u64, fallback: i32) -> i32 {
+        self.look.offset_s(unix_ms, fallback)
     }
 
     /// Whether this user may sign in at `min` minutes since midnight: administrators
     /// always, standard users only in the window while the restriction is on.
     pub fn allows(&self, min: u16, admin: bool) -> bool {
         !self.parental || admin || window_allows(self.from_min, self.until_min, min)
+    }
+}
+
+impl LookPrefs {
+    /// Takes a setting of the look; a value of the wrong type or unknown word changes
+    /// nothing (an unknown accent is the standard gold).
+    pub fn on_changed(&mut self, key: &str, value: &SettingValue) {
+        match (key, value) {
+            (LANGUAGE, SettingValue::Text(t)) => {
+                if let Some(lang) = ultar_i18n::Lang::parse(t) {
+                    self.lang = Some(lang);
+                }
+            }
+            // "auto" follows the dark standard until the time of day is known here.
+            (THEME, SettingValue::Text(t)) => self.light = Some(t == "light"),
+            (ACCENT, SettingValue::Text(t)) => {
+                let word = t.trim();
+                self.accent = if ACCENTS.contains(&word) {
+                    word.to_owned()
+                } else {
+                    ACCENTS[0].to_owned()
+                };
+            }
+            (FONT_SIZE, SettingValue::Integer(v)) => {
+                let (lo, hi) = FONT_RANGE;
+                self.font_percent =
+                    u16::try_from((*v).clamp(i64::from(lo), i64::from(hi))).unwrap_or(100);
+            }
+            (ZONE, SettingValue::Text(t)) => {
+                self.zone = ultar_i18n::tz::valid(t).then(|| t.clone());
+            }
+            (CLOCK_FORMAT, SettingValue::Text(t)) => self.h12 = t == "h12",
+            _ => {}
+        }
+    }
+
+    /// Offset of the local time at `unix_ms`: the zone of the settings, else `fallback`.
+    pub fn offset_s(&self, unix_ms: u64, fallback: i32) -> i32 {
+        match &self.zone {
+            Some(zone) => ultar_i18n::tz::offset(zone, i64::try_from(unix_ms / 1000).unwrap_or(0)),
+            None => fallback,
+        }
     }
 }
 
@@ -204,6 +311,23 @@ mod tests {
         assert_eq!((p.from_min, p.until_min), (420, 1260));
         assert_eq!(p.number, "112");
         assert!(p.auto_login.is_empty() && p.contact_name.is_empty());
+    }
+
+    #[test]
+    fn language_theme_and_clock_are_followed() {
+        let mut p = LockPrefs::default();
+        let text = |t: &str| SettingValue::Text(t.into());
+        assert!(p.on_changed(LANGUAGE, &text("de")));
+        assert_eq!(p.look.lang, Some(ultar_i18n::Lang::De));
+        assert!(!p.on_changed(LANGUAGE, &text("klingon")));
+        assert!(p.on_changed(THEME, &text("light")));
+        assert_eq!(p.look.light, Some(true));
+        assert!(p.on_changed(ACCENT, &text("blue")));
+        assert!(p.on_changed(CLOCK_FORMAT, &text("h12")) && p.look.h12);
+        assert!(p.on_changed(ZONE, &text("Asia/Damascus")));
+        assert_eq!(p.offset_s(1_795_636_560_000, 0), 10_800);
+        assert!(p.on_changed(FONT_SIZE, &SettingValue::Integer(130)));
+        assert_eq!(p.look.font_percent, 130);
     }
 
     #[test]

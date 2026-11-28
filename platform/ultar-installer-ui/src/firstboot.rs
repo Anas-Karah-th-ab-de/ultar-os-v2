@@ -171,6 +171,8 @@ pub struct Extras {
     pub settings_user: String,
     /// Directory of the selection record.
     pub install_dir: PathBuf,
+    /// Developer access directory: the installer's SSH key goes into its `authorized_keys`.
+    pub developer_dir: PathBuf,
 }
 
 /// Applies the record on `bootctl` (a file or the raw partition node): the account goes to
@@ -217,6 +219,7 @@ pub fn apply_all(
     if let Some(x) = extras {
         apply_settings(&answers, &x.settings_dir, &x.settings_user, &mut report);
         apply_selection(&answers, &x.install_dir, &mut report);
+        report.ssh_key = crate::firstboot_ssh::apply_ssh_key(&answers, &x.developer_dir);
     }
     dev.seek(SeekFrom::Start(OFFSET as u64))
         .map_err(io("seek"))?;
@@ -330,6 +333,7 @@ mod tests {
             settings_dir: d.join("settings"),
             settings_user: "default".into(),
             install_dir: d.join("install"),
+            developer_dir: d.join("entwickler"),
         };
         let (outcome, report) = apply_all(&ctl, &d.join("auth"), None, Some(&extras)).unwrap();
         assert_eq!(outcome, Outcome::Created("anas".into()));

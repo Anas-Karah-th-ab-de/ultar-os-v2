@@ -30,16 +30,12 @@ const BOARDS: [&str; 6] = [
 ];
 
 /// Actions on these boards that belong to another program, with the reason.
-const ELSEWHERE: [(&str, &str); 4] = [
+const ELSEWHERE: [(&str, &str); 3] = [
     ("files.", "the Files app (window content on the board)"),
     ("browser.", "the Browser app (window content on the board)"),
     (
         "win.",
         "drawn and handled by ultar-compositor (decor.rs, tests/input_routing.rs)",
-    ),
-    (
-        "desk.icon",
-        "desktop icons belong to the desktop surface of Files (no board item of the bar)",
     ),
 ];
 
@@ -75,6 +71,25 @@ fn launched(h: &mut Harness) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+/// desk.icon: a click selects the home folder, a double click opens it in Files (the
+/// shortcuts, drives and the desktop folder's items: tests/desk.rs).
+fn desk_icon() -> bool {
+    use ultar_desktop::model::places::DeskItem;
+    let mut h = h();
+    let home = Target::Desk(DeskItem::Home);
+    let mut bg = h.background();
+    h.click_background(&mut bg, home.clone(), 1);
+    let selected = h.shell.d.places.selected == Some(DeskItem::Home) && h.take().is_empty();
+    let mut bg = h.background();
+    h.click_background(&mut bg, home, 2);
+    selected
+        && h.take()
+            == vec![Effect::Launch {
+                app: "org.ultar.files".into(),
+                open: Opening::uri("files://home/"),
+            }]
 }
 
 fn check(action: &str) -> bool {
@@ -116,6 +131,7 @@ fn check(action: &str) -> bool {
         }
         "shell.app" => shell_app(),
         "shell.drive" => false,
+        "desk.icon" => desk_icon(),
         a if a.starts_with("qs.") => quick(a),
         a if a.starts_with("note.") || a.starts_with("cal.") => calendar(a),
         a if a.starts_with("overview.") => overview(a),

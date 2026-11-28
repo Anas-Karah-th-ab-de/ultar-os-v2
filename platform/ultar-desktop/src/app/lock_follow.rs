@@ -66,6 +66,7 @@ impl LockApp {
             self.state.emergency.open = false;
         }
         self.refresh_user();
+        self.apply_look();
     }
 
     /// `users.auto_login`: at a fresh start (nobody signed in) the chosen user signs in

@@ -54,3 +54,34 @@ grep -aq "ultar luks probe" "$W/log2" || { echo "FAIL  /data not readable after 
 grep -aq "$PASS" "$W/log2" && { echo "FAIL  the passphrase was echoed"; fail=1; }
 [ "$fail" = 0 ] || { tail -30 "$W/log2"; exit 1; }
 echo "ok    ultar-luks unlock: wrong passphrase refused, right one opens /data in the kernel"
+
+# 3) the graphical unlock screen: ultar-unlock (static) draws on the framebuffer, the keys come
+# from the PS/2 keyboard (QEMU monitor sendkey): a wrong passphrase, then the right one.
+RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -q --target x86_64-unknown-linux-gnu -p ultar-unlock
+mcopy -o -i "$W/esp.img" target/x86_64-unknown-linux-gnu/release/ultar-unlock ::/bin/ultar-unlock
+dd if="$W/luks2.img" of="$W/disk2.img" bs=1M seek=1 conv=notrunc status=none
+keys() { # text -> monitor sendkey commands
+  python3 -c 'import sys
+names={"-":"minus"," ":"spc"}
+print("\n".join("!sendkey "+names.get(c,c) for c in sys.argv[1]))' "$1"
+}
+WAITS=$(for i in 1 2 3 4 5 6 7 8; do echo "!info status"; done)
+mapfile -t CMDS < <(echo "/bin/ultar-unlock"; keys "falsch"; echo "!sendkey ret"; echo "$WAITS"; keys "$PASS"; \
+  echo "!screendump $W/screen.ppm"; echo "!sendkey ret"; echo "$WAITS"; \
+  echo "/bin/cat /sys/kernel/ultar/crypt"; echo "!info status"; echo "/bin/cat /data/probe.txt"; \
+  echo "!info status"; echo "/bin/cat /data/probe.txt")
+QARGS="-drive file=$W/disk2.img,if=none,id=c,format=raw -device virtio-blk-pci,drive=c -monitor unix:$W/mon,server,nowait" \
+  MONITOR="$W/mon" SMP=2 MEM=1024 WAIT=8 timeout 300 python3 tools/kern-test/qtest.py "$W/esp.img" "${CMDS[@]}" > "$W/log3" 2>&1 || true
+grep -aq "^open" "$W/log3" || { echo "FAIL  the unlock screen did not open the data"; fail=1; }
+grep -aq "ultar luks probe" "$W/log3" || { echo "FAIL  /data not readable after the unlock screen"; fail=1; }
+python3 - "$W/screen.ppm" <<'EOF' || fail=1
+import sys
+d = open(sys.argv[1], "rb").read()
+px = d[d.index(b"255\n") + 4:]
+colours = {px[i:i + 3] for i in range(0, len(px) - 3, 3 * 97)}
+if len(colours) < 4:
+    print("FAIL  the unlock screen was not drawn"); sys.exit(1)
+EOF
+[ "$fail" = 0 ] || { tail -30 "$W/log3"; exit 1; }
+cp "$W/screen.ppm" "${SCREEN_OUT:-/tmp}/ultar-unlock-screen.ppm" 2>/dev/null || true
+echo "ok    ultar-unlock: drawn on the framebuffer, wrong passphrase refused, right one opens /data"

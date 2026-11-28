@@ -133,6 +133,7 @@ impl World {
             light: false,
             bar: None,
             state: None,
+            desk_folder: None,
         }
     }
 

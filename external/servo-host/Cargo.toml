@@ -29,6 +29,8 @@ rustix = { version = "1", default-features = false, features = ["std", "net", "f
 # media backend uses (one version in the lock file)
 gstreamer = { version = "0.25", optional = true }
 gstreamer-base = { version = "0.25", optional = true }
+# the page cell (src/cell): namespaces, mounts, loopback, capabilities – the safe calls of the HAL
+ultar-sys = { path = "../../system/hal/ultar-sys" }
 
 [dev-dependencies]
 # examples/shot.rs: a PNG of the frame. The Tor port comes from a separate process

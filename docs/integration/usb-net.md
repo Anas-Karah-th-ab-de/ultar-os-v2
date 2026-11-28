@@ -1,42 +1,64 @@
-# USB-Netzwerk (RNDIS) – `drivers/gen_xhci/rndis.rs`
+# USB-Netzwerk (RNDIS + CDC-ECM) – `drivers/gen_xhci/{rndis,cdc_ecm,net_common}.rs`
 
-Stand 28.11.2026 · Zweig `claude/usb-net` (noch nicht auf `main`).
+Stand 28.11.2026.
 
-Ziel: ein Ultar-Gerät per USB-C ans Netz bringen (Handy-USB-Tethering, später USB-C-zu-Ethernet-Dongles),
-damit man künftig über diese Verbindung mit dem Gerät arbeiten kann.
+Ziel: ein Ultar-Gerät per USB-C ans Netz bringen – Handy-USB-Tethering (RNDIS) und USB-C-zu-Ethernet-
+Dongles (CDC-ECM) – und darüber per SSH mit dem Gerät arbeiten (`docs/integration/ssh.md`).
+
+## Aufbau
+
+- `net_common.rs`: gemeinsamer Unterbau beider Treiber – dauerhaft armierte Bulk-IN-Übertragungen
+  (`InEp`, je eine DMA-Seite pro Übertragung) und die 8/16/32-Bit-Zugriffe auf DMA-Puffer.
+- `rndis.rs`: Remote NDIS (Steuerung als eingekapselte Befehle auf EP0, Ethernet-Rahmen mit 44-Byte-
+  RNDIS-Kopf über Bulk-IN/OUT). Der Weg für Android-USB-Tethering und QEMUs `usb-net`.
+- `cdc_ecm.rs`: Ethernet Networking Control Model (Steuer-Schnittstelle CDC/0x06, rohe Ethernet-Rahmen
+  über die Bulk-Endpunkte der Daten-Schnittstelle). Wählt per `SET_INTERFACE` die Daten-Alternative,
+  MAC aus dem „Ethernet Networking Functional Descriptor" (iMACAddress-Zeichenkette), Linkzustand/
+  Geschwindigkeit aus Interrupt-Meldungen (`NETWORK_CONNECTION`/`SPEED_CHANGE`).
+- Konfigurationswahl in `gen_xhci.rs`: pro Gerät werden bis zu zwei Konfigurationen gelesen; gewählt
+  wird zuerst eine RNDIS-Konfiguration (Steuer-Schnittstelle 0x02/0x02/0xFF), sonst eine ECM-
+  Konfiguration (0x02/0x06), sonst die erste – wie Linux, wenn ein Gerät (QEMU `usb-net`) beide anbietet.
+- Abziehen: `rndis::remove`/`cdc_ecm::remove` nehmen die Netzkarte sauber aus `NET` (ein Platzhalter
+  `NetGone` hält den Listenplatz, `driver::remove_net`) und geben die DMA-Seiten frei. Die abgezogene
+  Karte gibt ihre Adresse ab (`dhcp::tick`), damit die Standardroute auf eine vorhandene Karte wechselt.
+  Ein erneutes Anstecken bindet eine neue Karte (`usb1`, `usb2`, …).
+
+## Empfang: die echte Ursache (behoben)
+
+Früher hieß es, QEMUs Full-Speed-`usb-net` liefere keinen Bulk-IN. Falsch: **unser** RNDIS-`SET`
+(Paketfilter) war 28 statt 32 Byte lang und hatte den Puffer am falschen Ort. Nach RNDIS zählt
+`InformationBufferOffset` ab der RequestID (+8): Kopf 28 Byte (mit `DeviceVcHandle`), Filter bei Byte 28.
+QEMU wies den Befehl ab, `rndis_state` blieb `INITIALIZED`, und jeder Rahmen vom Wirt wurde verworfen
+(„Slirp: Failed to send packet"). Mit dem korrekten Befehl trägt der Empfang.
 
 ## Stand
 
 | Teil | Stand |
 |---|---|
-| Binden | ✅ QEMU: die CDC-Daten-Schnittstelle (Klasse 0x0A) einer RNDIS-Funktion (Steuer-Schnittstelle 0x02/0x02/0xFF) wird erkannt und gebunden (`usb0` erscheint) |
-| RNDIS-Steuerung | ✅ QEMU: INITIALIZE → INIT_CMPLT, Paketfilter setzen, MAC abfragen – über SEND/GET_ENCAPSULATED auf EP0 |
-| Senden (TX) | ✅ QEMU: DHCP-DISCOVER erscheint im Mitschnitt des netdev (`filter-dump`), also korrekt als RNDIS-Paket über Bulk-OUT verpackt und zugestellt |
-| Empfang (RX) | ⚠️ **in QEMU nicht bestätigt**: slirp übergibt das Antwortpaket an das Gerät (keine „Failed to send packet" mehr), aber der Bulk-IN-Endpunkt (dci 5) liefert in QEMU **keine** Completion – weder armiert noch synchron. Ursache: QEMUs `usb-net` ist ein **Full-Speed**-Gerät (speed=1, Bulk 64 Byte); das ist eine Eigenheit der QEMU-Full-Speed-Emulation. Echte RNDIS-Tethers laufen mit High Speed |
-| An `main` | ❌ erst nach einer Prüfung an echter Hardware (Android-USB-Tethering), damit keine Netzkarte angemeldet wird, die nicht empfängt |
+| RNDIS Binden, Steuerung, Senden, **Empfang** | ✅ QEMU: `usb0: RNDIS`, DHCP-Lease 10.0.2.15, DNS-Antwort, TCP zum Wirt, statische Adresse, erneutes DHCP – `NETTEST: ALLES OK` |
+| Abziehen / Anstecken | ✅ QEMU: `device_del` → „usb0: entfernt", `device_add` → `usb1: RNDIS`, Lease + **Standardroute auf usb1**, zweites `NETTEST: ALLES OK` |
+| CDC-ECM | 🆕 Treiber da (Bind, Daten-Alternative, MAC-Zeichenkette, Interrupt-Meldungen); in QEMU nicht prüfbar, weil QEMUs `usb-net` zuerst die RNDIS-Konfiguration anbietet → braucht einen echten ECM-Dongle |
+| Abzieh-Erkennung im Leerlauf | ⚠️ Die Kern-Konsole bemerkt Ein-/Abstecken erst beim nächsten Netz-Abfragen (z. B. einem Befehl); mit laufenden Diensten wird regelmäßig abgefragt |
 
-## Aufbau
-
-- Empfang wie `bt`: `TDS` Bulk-IN-Übertragungen sind dauerhaft armiert; eine Completion geht über die
-  Ereignisschleife (`pump`) nach `rndis::report`, das den Ethernet-Rahmen aus dem 44-Byte-RNDIS-Kopf
-  nimmt, in die Warteschlange legt und neu armiert. `recv` läutet die IN-Türklingel, pumpt und nimmt
-  aus der Warteschlange. `send` verpackt den Rahmen und schickt ihn synchron über Bulk-OUT.
-- Bindung an die Kern-`NetDev`-Schnittstelle (wie virtio-net/ixgbe), also DHCP/ARP/ICMP/UDP laufen
-  darüber, sobald der Empfang trägt.
-
-## Nächste Schritte
-
-1. **An echter Hardware prüfen**: ein Android-Handy per USB-C an einen Ultar-Rechner, USB-Tethering an;
-   `netz`/`dhcp` in der Kern-Shell. Dort läuft RNDIS mit High Speed – der RX-Pfad sollte tragen.
-2. **CDC-ECM/NCM** als Geschwister-Modul für USB-C-zu-Ethernet-Dongles (Norm, viele Dongles): gleiche
-   `NetDev`-Bindung, ohne RNDIS-Kopf, mit `SET_INTERFACE` auf die Daten-Alternative; MAC aus dem
-   ECM-Funktions-Deskriptor. Für Vendor-Chips (AX88179, RTL8153) je ein eigener Treiber.
-3. Abzug aus `NET` beim Abziehen (heute bleibt die Karte in der Liste; `rndis::remove` gibt nur die
-   Empfangsfläche frei).
-
-## Prüfen (QEMU, Teilpfad)
+## Prüfen (QEMU)
 
 ```bash
-tools/kern-test/usb-net-qemu.sh   # bind + RNDIS + TX; RX in QEMU (Full Speed) noch offen
-# Mitschnitt des netdev: -object filter-dump,id=f,netdev=un,file=un.pcap → DISCOVER (udp 68->67) sichtbar
+IMG=out/ultar-kern-esp.img tools/kern-test/usb-net-e2e.sh
+#   RNDIS: bind, MAC, DHCP, DNS, ping 10.0.2.2, TCP zum Host (nettest), device_del/device_add, zweiter nettest
+#   CDC-ECM: in QEMU übersprungen → Schlusszeile "USBNET: TEILWEISE cdc-ecm (…)"
+tools/kern-test/usb-net-qemu.sh            # interaktiv: dhcp/netz in der Kern-Shell
 ```
+
+Schlusszeile: `USBNET: ALLES OK` nur wenn alles lief; sonst `USBNET: TEILWEISE <liste>` (nie ein
+gefälschtes OK). `ci.sh` führt `usb-net-e2e.sh` neben `netz-e2e.sh` aus.
+`qtest.py` kennt dafür `PREARGS` (Geräte, die vor der Netzkarte stehen müssen – hier der USB-Controller).
+
+## Checkliste echte Hardware
+
+1. **Android-USB-Tethering (RNDIS)**: Handy per USB-C an einen Ultar-Rechner, USB-Tethering an;
+   `netz`/`dhcp` in der Kern-Shell, danach `ssh -p 2222 root@<adresse>` vom PC.
+2. **ECM-Dongles**: USB-C-zu-Ethernet-Dongles mit CDC-ECM. Prüfen: `usb0` erscheint als `CDC-ECM`,
+   MAC stimmt mit dem Aufkleber, `dhcp` holt eine Lease.
+3. **Eigene Treiber (nächster Schritt)**: ASIX AX88179 und Realtek RTL8153 sprechen ohne Umschaltung
+   kein CDC-ECM/NCM und brauchen je einen eigenen Treiber.
+4. **CDC-NCM**: noch nicht unterstützt.

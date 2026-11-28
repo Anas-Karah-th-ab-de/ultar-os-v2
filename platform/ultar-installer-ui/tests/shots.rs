@@ -16,6 +16,8 @@ fn renders_the_boards() {
     let src = medium(&dir);
     let tgt = target(&dir, 512 * MIB);
     for (board, step) in [
+        ("InstallerWelcome", Step::Language),
+        ("InstallerDone", Step::Done),
         ("Installer", Step::Components),
         ("InstallerDisk", Step::Disk),
         ("InstallerDrivers", Step::Drivers),

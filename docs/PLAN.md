@@ -480,6 +480,14 @@ Kern-Test (`wsl-x11.py geraete`-Äquivalent in QEMU).
 | **P11 Ultar-Kern auf ARM64** | Port + Handy-Treiber über die Werkstatt (siehe §9) | Handy startet ohne Linux bis zur Oberfläche; danach Funk, Ton, Kamera |
 | **P10 Gleichwertigkeit** | Barrierefreiheit, A/B-Updates mit Rückfall, Rettungsmodus, Ladbare Kern-Module (Stufe B) | Prüfliste §2 vollständig grün |
 
+**Stand 28.11.2026 (Abgleich mit `docs/review/ABGLEICH.md`):** P0/P0b/P1 ERLEDIGT · P2 TEILWEISE
+(`ultar-i18n` da, `ultar-sprache` noch nicht entfernt) · P2b OFFEN (Installer/Startseite/Konsole weiter im Kern:
+`kernel/ultar-kern/src/main.rs`) · P2c ERLEDIGT · P3 TEILWEISE (`ultar-hal` + Backends da, alte Hülle greift
+weiter direkt zu) · P4 ERLEDIGT (`ultar-devd`-Daemon, Bus-Dienst `devices`) · P5 ERLEDIGT (Launcher startet jede
+App in eigener Zelle/als eigenen Benutzer) · P6 ERLEDIGT (Desktop: `ultar-compositor`, `ultar-desktop`, Sperre,
+Systemdialoge) · P7 TEILWEISE (Depot + Index signiert, ladbare `.uko`-Module fehlen) · P8 TEILWEISE (A–Z in QEMU
+grün, Verschlüsselung gesperrt) · P9/P10 TEILWEISE · P11 OFFEN (ARM-Port).
+
 Aufwand grob: P0–P2 klein, P3–P5 mittel (größter Umbau, aber mechanisch), P6–P10 groß. Jede Phase endet mit Merge auf main
 und lauffähigem A30 – kein langer Parallelzweig.
 

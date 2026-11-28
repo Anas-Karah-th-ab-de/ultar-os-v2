@@ -11,6 +11,7 @@ use ultar_bus::messages::notify::Posted;
 use ultar_bus::messages::power::PowerState;
 use ultar_bus::messages::settings::{Changed, SettingValue};
 use ultar_bus::{Client, ClientOptions, TypedSubscription};
+use ultar_i18n::datefmt::ClockStyle;
 use ultar_ui::tokens::ThemeKind;
 use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 
@@ -19,8 +20,21 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 19] = [
+pub const FOLLOWED: [&str; 35] = [
+    "region.language",
     "appearance.theme",
+    "appearance.accent_color",
+    "appearance.font_size",
+    "datetime.clock_format",
+    "datetime.timezone.name",
+    "bar.clock.show_seconds",
+    "bar.clock.show_weekday",
+    "bar.clock.show_date",
+    "bar.clock.show_hijri",
+    "bar.icon_alignment",
+    "bar.show_trash",
+    "bar.show_volumes",
+    "power.show_battery_percent",
     "accessibility.high_contrast",
     "accessibility.large_text",
     "accessibility.reduce_motion",
@@ -39,6 +53,9 @@ pub const FOLLOWED: [&str; 19] = [
     "display.night_light.enabled",
     "power.mode",
     "apps.removable_media",
+    "desktop.icons.enabled",
+    "desktop.icons.size",
+    "desktop.icons.start_corner",
 ];
 
 /// Ports and subscriptions.
@@ -125,6 +142,9 @@ impl Link {
 
 /// Puts a setting's value into the state.
 pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
+    if apply_pref(d, key, value) {
+        return;
+    }
     match (key, value) {
         ("appearance.theme", SettingValue::Text(t)) => {
             d.values.dark = t != "light";
@@ -169,6 +189,47 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
     }
 }
 
+/// The language, the look and the bar's clock and icons (`model::prefs`); `true` when the
+/// key was one of them.
+fn apply_pref(d: &mut Desktop, key: &str, value: &SettingValue) -> bool {
+    let p = &mut d.prefs;
+    match (key, value) {
+        ("region.language", SettingValue::Text(t)) => {
+            if let Some(lang) = ultar_i18n::Lang::parse(t) {
+                d.lang = lang;
+            }
+        }
+        ("appearance.accent_color", SettingValue::Text(t)) => {
+            p.accent = ultar_ui::tokens::Accent::parse(t).unwrap_or_default();
+        }
+        ("appearance.font_size", SettingValue::Integer(v)) => {
+            let (lo, hi) = crate::model::prefs::FONT_RANGE;
+            p.font_percent = (*v).clamp(i64::from(lo), i64::from(hi)) as u16;
+        }
+        ("datetime.clock_format", SettingValue::Text(t)) => {
+            p.clock.style = if t == "h12" {
+                ClockStyle::H12
+            } else {
+                ClockStyle::H24
+            };
+        }
+        ("datetime.timezone.name", SettingValue::Text(t)) => {
+            p.zone = ultar_i18n::tz::valid(t).then(|| t.clone());
+        }
+        ("bar.clock.show_seconds", SettingValue::Flag(on)) => p.clock.seconds = *on,
+        ("bar.clock.show_weekday", SettingValue::Flag(on)) => p.clock.weekday = *on,
+        ("bar.clock.show_date", SettingValue::Flag(on)) => p.clock.date = *on,
+        ("bar.clock.show_hijri", SettingValue::Flag(on)) => p.clock.hijri = *on,
+        ("bar.icon_alignment", SettingValue::Text(t)) => p.icons_start = t == "start",
+        ("bar.show_trash", SettingValue::Flag(on)) => p.show_trash = *on,
+        ("bar.show_volumes", SettingValue::Flag(on)) => p.show_volumes = *on,
+        ("power.show_battery_percent", SettingValue::Flag(on)) => p.battery_percent = *on,
+        (k, v) if k.starts_with("desktop.icons.") => return p.desk.apply(k, v),
+        _ => return false,
+    }
+    true
+}
+
 /// `display.<id>.brightness` of the main display.
 pub fn brightness_key(d: &Desktop) -> Option<String> {
     d.svc
@@ -181,6 +242,40 @@ pub fn brightness_key(d: &Desktop) -> Option<String> {
 mod tests {
     use super::*;
     use ultar_i18n::Lang;
+
+    #[test]
+    fn language_look_and_clock_reach_the_state() {
+        let mut d = Desktop::new(Lang::Ar);
+        let text = |t: &str| SettingValue::Text(t.into());
+        apply_setting(&mut d, "region.language", &text("de"));
+        assert_eq!(d.lang, Lang::De);
+        apply_setting(&mut d, "region.language", &text("xx"));
+        assert_eq!(d.lang, Lang::De, "an unknown language changes nothing");
+        apply_setting(&mut d, "appearance.accent_color", &text("teal"));
+        assert_eq!(d.prefs.accent, ultar_ui::tokens::Accent::Teal);
+        apply_setting(&mut d, "appearance.font_size", &SettingValue::Integer(150));
+        assert_eq!(d.prefs.font_percent, 150);
+        apply_setting(&mut d, "datetime.clock_format", &text("h12"));
+        assert_eq!(d.prefs.clock.style, ClockStyle::H12);
+        apply_setting(&mut d, "datetime.timezone.name", &text("Europe/Berlin"));
+        assert_eq!(d.prefs.zone.as_deref(), Some("Europe/Berlin"));
+        apply_setting(&mut d, "datetime.timezone.name", &text("../etc"));
+        assert_eq!(d.prefs.zone, None, "a bad zone name is not used");
+        for (key, on) in [
+            ("bar.clock.show_seconds", true),
+            ("bar.clock.show_hijri", true),
+            ("bar.show_trash", false),
+            ("power.show_battery_percent", true),
+        ] {
+            apply_setting(&mut d, key, &SettingValue::Flag(on));
+        }
+        apply_setting(&mut d, "bar.icon_alignment", &text("start"));
+        let p = &d.prefs;
+        assert!(p.clock.seconds && p.clock.hijri && !p.show_trash && p.battery_percent);
+        assert!(p.icons_start);
+        // every followed key is a key of the schema's shape (area.name…)
+        assert!(FOLLOWED.iter().all(|k| k.contains('.')));
+    }
 
     #[test]
     fn settings_reach_the_state() {
@@ -281,6 +376,23 @@ mod tests {
             &SettingValue::Text("nonsense".into()),
         );
         assert_eq!(d.values.removable_media, RemovableMedia::Ask);
+    }
+
+    #[test]
+    fn the_desktop_icon_settings_reach_the_state() {
+        use crate::model::prefs::{DeskPrefs, IconSize};
+        let mut d = Desktop::new(Lang::En);
+        for key in DeskPrefs::KEYS {
+            assert!(FOLLOWED.contains(&key), "{key} is not read at start");
+        }
+        apply_setting(
+            &mut d,
+            "desktop.icons.size",
+            &SettingValue::Text("small".into()),
+        );
+        apply_setting(&mut d, "desktop.icons.enabled", &SettingValue::Flag(false));
+        assert_eq!(d.prefs.desk.size, IconSize::Small);
+        assert!(!d.prefs.desk.shown);
     }
 
     #[test]

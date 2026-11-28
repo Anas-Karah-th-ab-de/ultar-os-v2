@@ -12,10 +12,7 @@ use ultar_ui::event::ActionKind;
 impl DesktopApp {
     /// Shows, updates or removes the banners.
     pub(super) fn sync_banners(&mut self) -> Result<(), AppError> {
-        let now = (
-            self.shell.clock.now_ms(),
-            i64::from(self.shell.clock.offset_s()),
-        );
+        let now = (self.shell.clock.now_ms(), i64::from(self.shell.offset_s()));
         let built = banners::build(
             &self.shell.d,
             now,

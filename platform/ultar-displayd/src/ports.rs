@@ -134,9 +134,9 @@ impl SettingsPort for BusSettings {
 
     fn input_items(&self) -> Option<Vec<(String, SettingValue)>> {
         let mut items = Vec::new();
-        for panel in crate::input::PANELS {
+        for panel in crate::input::PANELS.iter().chain(&crate::look::PANELS) {
             let call = ListRequest {
-                panel: Some(panel.to_owned()),
+                panel: Some((*panel).to_owned()),
             };
             let reply = self.client.call(&call, SETTINGS_TIMEOUT).ok()?;
             let listed = reply.panels.into_iter().flat_map(|p| p.items);

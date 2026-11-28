@@ -82,7 +82,8 @@ Status on `main` after this change. "Branch" = not on `main`; the owner of that 
 |---|---|---|
 | UEFI loader messages (`kernel/ultar-loader/src/msg.rs`) | fixed | every line starts with `product!()`; tested |
 | Kernel start line, console title, `version`, `uname`, `/proc/version` | fixed | `product_caps!()` · `vendor!()` · `developer!()` |
-| Kernel boot picture and start page (`startseite.rs`) | fixed (text), open (mark) | word mark `product_caps!()`, sub line `brand.boot.subline`; the kernel canvas cannot draw arcs yet, so no mark |
+| Kernel boot picture and start page (`startseite.rs`) | fixed | company logo above the word mark (`Canvas::logo`, area-scaled bitmap, 360 px), word mark `product_caps!()`, sub line `brand.boot.subline` |
+| Kernel text installer, language step | fixed | company logo 220 px under the languages when the card has room |
 | Kernel stop / panic text | fixed | `brand.crash.kernel` (now with the contact address), same text for trap, halt and panic |
 | Kernel installer header, welcome, target, progress, done | fixed | `product!()` / `product_caps!()` / `vendor!()` |
 | Boot splash of the Linux-based image (`platform/ultar-shell/src/brand.rs`) | legacy, in baseline | company logo + product name; replace by `ultar_brand::logo::bitmap()` + `PRODUCT` when the legacy shell goes |
@@ -90,7 +91,12 @@ Status on `main` after this change. "Branch" = not on `main`; the owner of that 
 | Bar: overview button | branch `wip/desktop-shell` | `IconId::Mark` 24, never mirrored, at the start; no text |
 | Overview | branch `wip/desktop-shell` | no second mark (the button is the mark); empty state may show mark 96 + `brand.product` |
 | Settings › About | branch `wip/settings-installer` | mark 96, then rows `brand.about.name` → `brand.product` · `brand.about.version` · `brand.about.build` · `brand.about.vendor` → `brand.vendor` · `brand.about.developer` → `brand.developer` · `brand.about.website` → `brand.website` (link) · `brand.about.contact` → `brand.contact` (`CONTACT_URL`) · `brand.about.licences` → `brand.about.licence.system` + third-party list; version and build from the installed release (`/etc/os-release` `VERSION_ID`, `BUILD_ID`), never a constant |
-| Installer (graphical): welcome, summary | branch `wip/settings-installer` | welcome: mark 96 + `installer.welcome`; company logo below on a dark plate, or `brand.by`; summary: `brand.product` + version to be installed, `brand.vendor`; all sentences keep "Ultar OS" spelled as the fact (checked in every `*.ftl`) |
+| Installer (graphical): welcome, writing, done | fixed (2026-11-28) | welcome: mark 96 + `installer.welcome` + company logo 240 (`BrickKind::Logo`, dark plate in the light theme); the logo also while the system is written and on the last page |
+| Desktop background | fixed (2026-11-28) | system picture "ultar-noir": ground of the theme, company logo in the middle of the work area (a third of the shorter side, at most 420), quiet (half strength) – as in the first desktop |
+| Lock screen cover | fixed (2026-11-28) | company logo 200 above the clock |
+| App grid (start menu) footer | fixed (2026-11-28) | `IconId::Mark` + `brand.product` at the start, the power button at the end |
+| Settings › About | fixed (2026-11-28) | mark 96, `brand.product`, company logo 220, then the rows |
+| Installer (graphical): summary | branch `wip/settings-installer` | welcome: mark 96 + `installer.welcome`; company logo below on a dark plate, or `brand.by`; summary: `brand.product` + version to be installed, `brand.vendor`; all sentences keep "Ultar OS" spelled as the fact (checked in every `*.ftl`) |
 | Store header | boards only | "Ultar Store" is the app's own name; verified publisher line `brand.signer.vendor`, others `brand.signer.other` |
 | `/etc/os-release` | added | `rootfs/etc/os-release` = `ultar_brand::release::OS_RELEASE`; image builds append `PRETTY_NAME`, `VERSION_ID`, `VARIANT_ID` (`scripts/build-initramfs.sh`, kern-test media); a Rust image builder calls `release::write_os_release` |
 | Package / driver signer names | text added, display on branches | key signed by the company: `brand.signer.vendor`; any other: `brand.signer.other` + the publisher's own name; `.deb` `Maintainer`: `release::PACKAGE_MAINTAINER` (three scripts fixed) |

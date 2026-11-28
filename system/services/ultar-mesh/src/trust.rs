@@ -20,9 +20,10 @@ use ultar_bus::messages::mesh::Right;
 pub const CODE_SECONDS: u32 = 300;
 /// Attempts a shown code allows.
 pub const MAX_TRIES: u8 = 5;
-/// What a freshly paired device may do: offer activities and files (always asked here)
-/// and share the clipboard. Seeing, controlling, sound and computing are granted by hand.
-pub const DEFAULT_RIGHTS: [Right; 3] = [Right::Handoff, Right::Files, Right::Clipboard];
+/// What a freshly paired device may do: offer activities and files (always asked here).
+/// Sharing the clipboard, seeing, controlling, sound and computing are granted by hand
+/// (Settings > Mesh): the clipboard holds what the person copied, so it is off by default.
+pub const DEFAULT_RIGHTS: [Right; 2] = [Right::Handoff, Right::Files];
 
 /// A device this device trusts.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]

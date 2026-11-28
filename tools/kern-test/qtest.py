@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Ultar-Kern in QEMU starten und Befehle über die serielle Konsole schicken.
-   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, MACHINE=q35, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)
+   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: PREARGS=Geräte vor dem NIC (z. B. ein USB-Controller), SMP=4, MEM=1024, MACHINE=q35, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)
    "!befehl" geht an den QEMU-Monitor (MONITOR=<unix-socket>, z. B. "!set_link nic0 off"); QARGS braucht dann
    "-monitor unix:<socket>,server,nowait"."""
 import codecs, os, re, socket, subprocess, sys, time, select
@@ -13,7 +13,7 @@ subprocess.run(["cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars_], check=True)
 args = ["qemu-system-x86_64", "-machine", os.environ.get("MACHINE", "q35"), "-m", os.environ.get("MEM", "1024"), "-smp", os.environ.get("SMP", "4"),
         "-cpu", os.environ.get("CPU", "max"), "-display", "none", "-no-reboot",
         "-drive", f"if=pflash,format=raw,readonly=on,file={code}", "-drive", f"if=pflash,format=raw,file={vars_}",
-        "-drive", f"file={img},if=none,id=b,format=raw", "-device", os.environ.get("DEV", "virtio-blk-pci") + ",drive=b",
+        *os.environ.get("PREARGS", "").split(), "-drive", f"file={img},if=none,id=b,format=raw", "-device", os.environ.get("DEV", "virtio-blk-pci") + ",drive=b",
         "-netdev", os.environ.get("NETDEV", "user,id=n"), "-device", os.environ.get("NIC", "virtio-net-pci") + ",netdev=n", "-serial", "stdio"] + os.environ.get("QARGS", "").split()
 p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 buf = b""
