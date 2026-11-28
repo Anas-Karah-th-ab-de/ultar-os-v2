@@ -58,11 +58,6 @@ impl NetView {
         crate::syscall::with(|p| p.g.iso.net).unwrap_or(NetView::HOST)
     }
 
-    /// Whether the view is anything but the unrestricted host.
-    pub fn restricted(self) -> bool {
-        self.ns != HOST || self.guard
-    }
-
     /// May this view send to `ip:port` (connect, a datagram)? `dev` describes this device's addresses.
     pub fn may_reach(self, ip: [u8; 4], port: u16, dev: &Device) -> Result<(), i64> {
         if is_loopback(ip) {

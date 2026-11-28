@@ -22,7 +22,7 @@ if [ "${IMG:-0}" = 1 ] || [ "${RUN:-0}" = 1 ]; then
   mmd -i "$OUT/ultar-kern-esp.img" ::/bin
   # -B: the test programs are rebuilt every time (checked-in binaries can be older than their sources while a
   # checkout gives both the same time stamp)
-  ( cd user && make -s -B ) && for p in user/hallo user/hallo-glibc user/kerntest user/ereignis user/fadentest user/blocktest user/lauscher user/zelltest user/grenztest user/ausbruch user/rechtetest user/geraetetest user/weckertest user/spawntest user/ext4test user/fenstertest user/installtest user/bttest user/ausschalttest user/nettest user/avxtest user/schutztest user/crypttest user/growtest; do mcopy -i "$OUT/ultar-kern-esp.img" "$p" ::/bin/; done
+  ( cd user && make -s -B ) && for p in user/hallo user/hallo-glibc user/kerntest user/ereignis user/fadentest user/blocktest user/lauscher user/zelltest user/grenztest user/ausbruch user/rechtetest user/geraetetest user/weckertest user/spawntest user/ext4test user/fenstertest user/installtest user/bttest user/ausschalttest user/nettest user/avxtest user/schutztest user/crypttest user/growtest user/zellnetz; do mcopy -i "$OUT/ultar-kern-esp.img" "$p" ::/bin/; done
   # Compositor + its test client (static builds, docs/integration/ultar-compositor.md), if built
   for p in ultar-compositor ultar-compositor-testclient; do
     b="${COMPOSITOR_BIN:-../../target/x86_64-unknown-linux-gnu/release}/$p"; [ -x "$b" ] && mcopy -i "$OUT/ultar-kern-esp.img" "$b" ::/bin/
