@@ -44,7 +44,7 @@ Behoben (ohne das Verhalten zu ändern):
   ein Anfangswert, den niemand liest (`gen_xhci.rs`), die Variable `TRAMP` (`apic.rs`),
 - Systemaufruf 204 stand zweimal da; der zweite Eintrag (in der Liste „tut nichts“) war nie erreichbar.
 
-Markiert wie oben, nicht gelöscht: `arm_deadline`, `reboot_hw`, `absolut`, `verworfen`, `Canvas::cursor`,
+Markiert wie oben, nicht gelöscht: `reboot_hw`, `absolut`, `verworfen`, `Canvas::cursor`,
 `write32x`, `PciDev::w32x`, `Shared::refs`, `SIGTERM`, `BS_ALLOCATE_PAGES`, `MRAD`, `Wait::Pipe` und die Felder
 `UsbDev::speed`, `Fat::part`, `Inode::mtime`, `PciDev::driver`. Die Nvidia-Schnittstellen (`drivers/nvidia`)
 ruft noch niemand; dort gilt die Erlaubnis für das ganze Modul.

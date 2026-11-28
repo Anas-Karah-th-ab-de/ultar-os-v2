@@ -176,7 +176,6 @@ static DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 
 /// Arms the restart deadline: used by the remote hardware test so that a hanging kernel
 /// gives the machine back instead of staying down until someone presses the power button.
-#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn arm_deadline(ms_from_now: u64) {
     DEADLINE_MS.store(crate::arch::uptime_ms() + ms_from_now, Ordering::Relaxed);
 }

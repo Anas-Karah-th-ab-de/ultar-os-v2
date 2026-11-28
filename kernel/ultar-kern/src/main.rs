@@ -43,6 +43,7 @@ mod efi;
 mod eingabe;
 mod ext4;
 mod fdcalls;
+mod ferntest;
 mod filemap;
 mod klog;
 mod mem;
@@ -196,6 +197,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     syscall::init_clock();
     proc::check_window();
     shell::entwickler_starten();
+    ferntest::starten();
     if selftest::wanted() {
         selftest::run();
     } else {
