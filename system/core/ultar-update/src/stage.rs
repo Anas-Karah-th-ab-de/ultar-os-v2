@@ -3,16 +3,18 @@
 //! Files in `<state>/staging`: `bundle.part` (in progress), `bundle.pos` (length known to be on
 //! the medium), `bundle.uup` (complete) and `bundle.ok` (completion marker: manifest digest,
 //! size, downgrade permission). Only a bundle with a matching marker is ever applied.
+//! `bundle.part` and `bundle.uup` are segmented streams ([`crate::segfile`]): the Ultar kernel
+//! refuses written files above 64 MiB, a bundle is several hundred megabytes.
 
 use crate::bundle::Header;
 use crate::error::{NetworkError, UpdateError};
 use crate::fault::{Checkpoint, Step};
 use crate::fsutil::{create_private_dir, read_bounded, remove_if_present, sync_dir, write_atomic};
 use crate::manifest::{valid_ident, Manifest, Role};
+use crate::segfile::{self, SegFile};
 use crate::source::{Remote, UpdateSource};
 use crate::verify::VerifiedManifest;
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
@@ -183,8 +185,8 @@ impl Staging {
         let Some(bytes) = read_bounded(&self.marker(), 256).ok().flatten() else {
             return Ok(None);
         };
-        let size = match fs::metadata(self.done()) {
-            Ok(meta) => meta.len(),
+        let size = match segfile::len_of(&self.done()) {
+            Ok(len) => len,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
         };
@@ -192,9 +194,9 @@ impl Staging {
     }
 
     /// Opens the complete bundle for reading from its start.
-    pub fn open_staged(&self) -> Result<Option<(File, StagedInfo)>, UpdateError> {
+    pub fn open_staged(&self) -> Result<Option<(SegFile, StagedInfo)>, UpdateError> {
         match self.staged()? {
-            Some(info) => Ok(Some((File::open(self.done())?, info))),
+            Some(info) => Ok(Some((SegFile::open(&self.done())?, info))),
             None => Ok(None),
         }
     }
@@ -207,15 +209,17 @@ impl Staging {
             .and_then(|b| String::from_utf8(b).ok())
             .and_then(|t| t.trim().parse::<u64>().ok())
             .unwrap_or(0);
-        let present = fs::metadata(self.part()).map_or(0, |m| m.len());
+        let present = segfile::len_of(&self.part()).unwrap_or(0);
         recorded.min(present)
     }
 
-    /// Removes everything in the staging area.
+    /// Removes everything in the staging area (also a single-file bundle of an older updater).
     pub fn purge(&self) -> Result<(), UpdateError> {
         for path in [self.marker(), self.done(), self.pos(), self.part()] {
             remove_if_present(&path)?;
         }
+        segfile::remove(&self.done())?;
+        segfile::remove(&self.part())?;
         if self.dir.exists() {
             sync_dir(&self.dir)?;
         }
@@ -226,27 +230,23 @@ impl Staging {
     /// partial file again, so its bytes are verified once more instead of fetched once more.
     fn adopt_orphan(&self) -> Result<(), UpdateError> {
         remove_if_present(&self.marker())?;
-        let Ok(meta) = fs::metadata(self.done()) else {
+        let Ok(len) = segfile::len_of(&self.done()) else {
             return Ok(());
         };
-        if self.part().exists() {
-            remove_if_present(&self.done())?;
+        if segfile::exists(&self.part()) {
+            segfile::remove(&self.done())?;
         } else {
-            write_atomic(&self.pos(), meta.len().to_string().as_bytes())?;
-            fs::rename(self.done(), self.part())?;
+            write_atomic(&self.pos(), len.to_string().as_bytes())?;
+            segfile::rename(&self.done(), &self.part())?;
         }
         sync_dir(&self.dir)?;
         Ok(())
     }
 
     /// Prepares `bundle.part` and returns it positioned at the offset to continue from.
-    fn resume(&self, header: &Header, total: u64) -> Result<(File, u64), UpdateError> {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(self.part())?;
+    fn resume(&self, header: &Header, total: u64) -> Result<(SegFile, u64), UpdateError> {
+        remove_if_present(&self.part())?; // a single-file part of an older updater
+        let mut file = SegFile::open_rw(&self.part())?;
         let keep = self.partial_bytes().min(total);
         let mut same_header = keep >= header.len();
         if same_header {
@@ -267,7 +267,7 @@ impl Staging {
         Ok((file, keep))
     }
 
-    fn record(&self, file: &File, offset: u64) -> Result<(), UpdateError> {
+    fn record(&self, file: &mut SegFile, offset: u64) -> Result<(), UpdateError> {
         file.sync_data()?;
         write_atomic(&self.pos(), offset.to_string().as_bytes())?;
         Ok(())
@@ -315,7 +315,7 @@ impl Staging {
         }
         outcome?;
         env.control.reached(Step::StageRename)?;
-        fs::rename(self.part(), self.done())?;
+        segfile::rename(&self.part(), &self.done())?;
         sync_dir(&self.dir)?;
         env.control.reached(Step::StageMarker)?;
         write_atomic(&self.marker(), marker_text(&wanted).as_bytes())?;
@@ -384,7 +384,7 @@ fn source_error(error: io::Error, network: bool) -> UpdateError {
 
 /// Feeds the payload bytes already on disk (`from..to`) through the checker.
 fn rehash(
-    file: &mut File,
+    file: &mut SegFile,
     from: u64,
     to: u64,
     check: &mut PayloadCheck,
@@ -403,7 +403,7 @@ fn rehash(
 
 struct Copy<'a> {
     staging: &'a Staging,
-    file: File,
+    file: SegFile,
     offset: u64,
     total: u64,
     network: bool,
@@ -427,12 +427,12 @@ impl Copy<'_> {
                 Ok(n) => n,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => {
-                    self.staging.record(&self.file, self.offset)?;
+                    self.staging.record(&mut self.file, self.offset)?;
                     return Err(source_error(e, self.network));
                 }
             };
             if n == 0 {
-                self.staging.record(&self.file, self.offset)?;
+                self.staging.record(&mut self.file, self.offset)?;
                 return Err(UpdateError::Truncated);
             }
             check.feed(&buf[..n])?;
@@ -443,7 +443,7 @@ impl Copy<'_> {
             (env.progress)(self.offset, self.total);
             if unflushed >= FLUSH_EVERY {
                 env.control.reached(Step::DownloadFlushed)?;
-                self.staging.record(&self.file, self.offset)?;
+                self.staging.record(&mut self.file, self.offset)?;
                 unflushed = 0;
             }
         }

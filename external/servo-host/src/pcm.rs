@@ -1,22 +1,38 @@
-//! The sound card of the Ultar kernel (`/dev/ultar/pcm`, 48 kHz, 16 bit, stereo): the
-//! non-blocking writes the GStreamer sink of the `media` feature uses, and the same logic the
-//! browser's media service runs (`apps/ultar-web/src/media/sink.rs`). Without the card (Linux,
-//! no sound card, another program holds it) the sound is dropped and the pictures still follow
-//! the clock.
+//! The sound of the pages: a media stream of the sound server (`ultar-audiod`, 48 kHz, 16 bit,
+//! stereo) through its Unix socket, with the non-blocking writes the GStreamer sink of the
+//! `media` feature uses, and the same logic the browser's media service runs
+//! (`apps/ultar-web/src/media/sink.rs`). The engine host holds no kernel sound right and has no
+//! network: the socket (`--audio-socket`) is passed into the page cell like the Tor socket.
+//! Without the server (Linux, development, the server is not running) the sound is dropped and
+//! the pictures still follow the clock.
 //!
 //! The stream is interleaved 16-bit stereo, so one frame is [`FRAME`] bytes. A write to a busy
-//! card may take only a part of a buffer, even a part of a frame; a stream that continues in the
-//! middle of a frame swaps the channels for ever, so [`push`] finishes the frame it has begun (a
-//! few retries) before it gives up on the rest of the buffer.
+//! stream may take only a part of a buffer; [`Wire`] takes whole frames only, and [`push`]
+//! finishes the frame it has begun (a few retries) before it gives up on the rest of the buffer.
 
-use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::{self, ErrorKind, Write};
 use std::path::Path;
+use std::sync::OnceLock;
+use ultar_audio_stream::{Class, Direction, Hello, Stream};
 
-/// The sound card node of the Ultar kernel. The bundle keeps the device node at this standard
-/// place; a test may point the sink at any file through [`Sink::open`].
-pub const PCM_NODE: &str = "/dev/ultar/pcm";
+/// The stream socket of the browser at the sound server, where nothing else is said
+/// (`--audio-socket` names another place).
+pub const AUDIO_SOCKET: &str = "/run/ultar/audio/app.browser.sock";
+
+static SOCKET: OnceLock<String> = OnceLock::new();
+
+/// Sets the socket the sound goes to (the command line); the first call wins.
+pub fn set_socket(path: &Path) {
+    let _ = SOCKET.set(path.to_string_lossy().into_owned());
+}
+
+/// The socket the sound goes to.
+pub fn socket() -> String {
+    SOCKET
+        .get()
+        .cloned()
+        .unwrap_or_else(|| AUDIO_SOCKET.to_owned())
+}
 
 /// Sample rate of the stream in Hz.
 pub const RATE: u32 = 48_000;
@@ -24,9 +40,6 @@ pub const RATE: u32 = 48_000;
 pub const CHANNELS: u32 = 2;
 /// Bytes of one frame: one 16-bit sample per channel.
 pub const FRAME: usize = 2 * CHANNELS as usize;
-
-/// `O_NONBLOCK`: a write to a busy stream returns [`ErrorKind::WouldBlock`] instead of waiting.
-const NONBLOCK: i32 = 0o4000;
 
 /// How often a half-written frame is tried again before the card counts as stuck.
 const FINISH_FRAME_TRIES: usize = 64;
@@ -72,22 +85,41 @@ pub fn push<W: Write>(out: &mut W, bytes: &[u8]) -> Pushed {
     Pushed { taken, gone: false }
 }
 
+/// A stream of the sound server as a writer: whole frames of 16-bit stereo; when the server
+/// does not take any more the write says "busy" instead of waiting.
+pub struct Wire(Stream);
+
+impl Write for Wire {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let samples: Vec<i16> = buf
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let taken = self.0.push(&samples)?;
+        if taken == 0 && samples.len() >= CHANNELS as usize {
+            return Err(io::Error::from(ErrorKind::WouldBlock));
+        }
+        Ok(taken * 2)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
 /// The sound output.
 pub enum Sink {
-    /// The sound card.
-    Card(File),
-    /// No sound card: sound is dropped.
+    /// A stream of the sound server.
+    Card(Wire),
+    /// No sound server: sound is dropped.
     Silent,
 }
 
 impl Sink {
-    /// The sound card at `path`, else [`Sink::Silent`].
+    /// A media stream at the sound server's socket `path`, else [`Sink::Silent`].
     pub fn open(path: &Path) -> Sink {
-        OpenOptions::new()
-            .write(true)
-            .custom_flags(NONBLOCK)
-            .open(path)
-            .map_or(Sink::Silent, Sink::Card)
+        let hello = Hello::new(Class::Media, Direction::Play, RATE, CHANNELS as u8);
+        Stream::connect(path, hello).map_or(Sink::Silent, |s| Sink::Card(Wire(s)))
     }
 
     /// `true` when the sound is heard.
@@ -109,6 +141,57 @@ impl Sink {
                 }
                 pushed.taken
             }
+        }
+    }
+}
+
+/// A stand-in for the sound server in tests: it takes media streams and appends their sound
+/// to a file.
+#[cfg(test)]
+pub mod stand_in {
+    use std::io::{Read, Write};
+    use std::path::Path;
+    use ultar_audio_stream::{Hello, Status, HELLO_LEN};
+
+    /// Listens at `socket`; every stream's PCM is appended to `out`.
+    pub fn serve(socket: &Path, out: &Path) {
+        let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+        let out = out.to_owned();
+        std::thread::spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut s) = conn else { return };
+                let mut hello = [0u8; HELLO_LEN];
+                if s.read_exact(&mut hello).is_err() {
+                    continue;
+                }
+                let status = match Hello::decode(&hello) {
+                    Some(h) if h.rate == 48_000 && h.channels == 2 => Status::Ok,
+                    _ => Status::BadHello,
+                };
+                let _ = s.write_all(&status.encode());
+                let out = out.clone();
+                std::thread::spawn(move || {
+                    let mut buf = [0u8; 4096];
+                    while let Ok(n) = s.read(&mut buf) {
+                        if n == 0 {
+                            return;
+                        }
+                        if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&out) {
+                            let _ = f.write_all(&buf[..n]);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// Waits until `out` holds `len` bytes.
+    pub fn wait_for(out: &Path, len: usize) {
+        for _ in 0..400 {
+            if std::fs::metadata(out).map(|m| m.len() as usize).unwrap_or(0) >= len {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 }
@@ -153,16 +236,25 @@ mod tests {
     }
 
     #[test]
-    fn a_writable_node_takes_the_stream() {
-        let mut s = Sink::open(Path::new("/dev/null"));
+    fn a_stream_of_the_server_takes_the_sound() {
+        let dir = std::env::temp_dir().join(format!("ultar-pcm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (sock, out) = (dir.join("s.sock"), dir.join("out"));
+        std::fs::write(&out, b"").unwrap();
+        stand_in::serve(&sock, &out);
+        let mut s = Sink::open(&sock);
         assert!(s.audible());
-        // /dev/null takes everything, so a full stereo frame is consumed.
-        assert_eq!(s.offer(&[0u8; 32 * 4]), 32 * 4);
+        assert_eq!(s.offer(&[7u8; 32 * 4]), 32 * 4);
+        drop(s);
+        stand_in::wait_for(&out, 128);
+        assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; 128]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn the_default_node_lies_under_dev_ultar() {
-        assert_eq!(PCM_NODE, "/dev/ultar/pcm");
+    fn the_default_socket_lies_under_the_audio_directory() {
+        assert_eq!(AUDIO_SOCKET, "/run/ultar/audio/app.browser.sock");
+        assert_eq!(socket(), AUDIO_SOCKET);
         assert_eq!((RATE, CHANNELS, FRAME), (48_000, 2, 4));
     }
 

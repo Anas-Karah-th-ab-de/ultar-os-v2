@@ -8,7 +8,8 @@ args = [
     "--log", "/data/ultar/calls/calls.log",
     "--modem",
     # Ultar-number calls end to end with the person's account (account.*): signalling at the
-    # account server, the device key stays in the account service, sound through /dev/ultar/pcm.
+    # account server, the device key stays in the account service, sound through the sound
+    # server's stream socket /run/ultar/audio/system.calld.sock (--audio).
     "--account",
     # Calls between the person's devices (docs/integration/mesh-calls.md): a ringing Ultar-number
     # call is offered to paired devices with the right "Anrufe und Ton" (off after pairing), and
@@ -18,12 +19,10 @@ args = [
     "--mesh-calls", "--mesh-guest",
 ]
 # Identity: its own user (829); it talks to the bus, the account server, the TURN relay and the
-# other device (UDP), and to the sound card.
-# right sound: the running streams /dev/ultar/pcm (microphone and speaker of a call); nothing else
-# of the sound card and no other device.
+# other device (UDP), and to the sound server (stream socket, no kernel sound right).
 # right camera: the pictures of /dev/ultar/kamera while a video call runs; no other device.
 user = 829
-rights = ["sound", "camera"]
+rights = ["camera"]
 dirs = ["/data/ultar/calls"]
 after = ["bus"]
 restart = "on-failure"

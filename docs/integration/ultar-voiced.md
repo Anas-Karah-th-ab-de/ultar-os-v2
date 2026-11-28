@@ -122,7 +122,8 @@ Alle Tests laufen ohne Mikrofon:
   Zustandsmaschine (Weckwort, Anfrage, Sperre, Fremdstimme, Training, Test), HTTP-Client,
   Whisper-Antwort, eSpeak-Aufruf, Texte in drei Sprachen, Speicherdatei (0600, defekte Datei
   → Standard).
-- Prozess (`tests/process.rs`): das echte `ultar-voiced` am Bus mit Stand-ins für audiod und
+- Prozess (`tests/process.rs`): das echte `ultar-voiced` am Bus mit dem **echten `ultar-audiod`**
+  auf einer Fake-Karte (zwei Dateien: Aufnahme rein, Wiedergabe raus) und einem Stand-in für
   agent, einem Stand-in-Whisper-Server (HTTP) und einem Stand-in-eSpeak: aus bis zum
   Einschalten; Training; Anfrage bis zur Antwort; anderes Wort weckt nichts; gesperrt nur
   Geheimwort und `locked: true`; Fremdstimme abgelehnt und gesprochen, dann
@@ -192,11 +193,11 @@ on.“ (75 %). Alle 14 Zeilen stehen in der Ausgabe des Tests (`--nocapture`).
    Bestätigung `voice.owner_confirmed` ist dafür da. Das Geheimwort ist ebenfalls kein
    Geheimnis gegen Mithörer: wer es mithört und ähnlich spricht, weckt den Helfer; die Sperre
    lässt dann nur harmloses Lesen zu.
-3. **audiod liefert noch keinen Mikrofonstrom.** `audio.capture`, `audio.mic` und
-   `audio.play` sind hier als Vertrag festgelegt und im Test mit einem Stand-in bedient;
-   `ultar-audiod` selbst (anderes Paket) hat sie noch nicht. Bis dahin zeigt der Dienst
-   „kein Mikrofonstrom“ (`VoiceError::NoAudio`). Die Berechtigung (`audio.mic` veröffentlichen)
-   steht schon in `bus-policy.toml`.
+3. **Mikrofonstrom: nur mit Fake-Karte bewiesen.** `audio.capture`, `audio.mic` und
+   `audio.play` bedient jetzt der echte `ultar-audiod` (`docs/integration/ultar-audiod.md`);
+   der Prozess-Test läuft gegen ihn mit einer Fake-Karte. Mit einem echten Mikrofon ist es
+   nicht gelaufen (Kernel: keine Aufnahme-Abtastrate getrennt von der Wiedergabe, siehe dort).
+   Die Anfrage `audio.capture` ist eine Leihe von 60 s; voiced erneuert sie alle 20 s.
 4. **Fingerabdruck/Gesicht.** Es gibt keinen Bus-Dienst für Gesicht; die Bestätigung ist als
    Aufruf `voice.owner_confirmed` vorbereitet. Dass Sperre/Anmeldung ihn nach einer
    Bestätigung ruft, ist offen (anderes Paket). `voice.set_locked` muss die Sperre ebenfalls
@@ -211,7 +212,7 @@ on.“ (75 %). Alle 14 Zeilen stehen in der Ausgabe des Tests (`--nocapture`).
    Programm und `voiced.toml` ins Abbild (der Dienst startet, ist aber aus, bis die Person ihn
    in den Einstellungen einschaltet). Die Pakete `whisper` und `espeak-ng` und die Modelle
    kommen noch nicht ins Abbild; ohne sie meldet der Dienst „keine Spracherkennung“ bzw.
-   „keine Sprachausgabe“. Der Strom des Mikrofons (`ultar-audiod`) ist ein eigenes Paket.
+   „keine Sprachausgabe“.
 
 ## SCOPE-EXTRA (über die erlaubte Liste hinaus angefasst)
 

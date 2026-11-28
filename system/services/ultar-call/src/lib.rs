@@ -27,7 +27,6 @@ pub mod mesh_relay;
 pub mod mesh_tap;
 mod mesh_voice;
 pub mod modem_line;
-pub mod mono;
 pub mod msg;
 pub mod pcm;
 pub mod service;

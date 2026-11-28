@@ -32,6 +32,7 @@ members = [
     "system/services/ultar-calendard",
     "system/services/ultar-foreign",
     "system/services/ultar-audiod",
+    "system/core/ultar-audio-stream",
     "system/services/ultar-mediad",
     "platform/ultar-captured",
     "system/services/ultar-netd",
@@ -112,7 +113,7 @@ members = [
 exclude = ["kernel", "server", "platform/ultar-wm", "external/servo-host"]
 
 [workspace.package]
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]

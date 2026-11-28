@@ -66,7 +66,7 @@ subscribe = ["settings.changed", "session.state", "account.users"]
 [[rule]]
 identity  = "system.shell"
 call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.resolve", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "modem.set_data", "power.torch", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
-subscribe = ["net.wifi", "vpn.state", "settings.changed", "notify.posted", "power.state", "devices.capabilities", "display.outputs", "account.users", "power.actions", "session.state", "notify.dismissed", "calendar.changed", "audio.state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
+subscribe = ["net.wifi", "vpn.state", "settings.changed", "notify.posted", "power.state", "devices.capabilities", "display.outputs", "account.users", "power.actions", "session.state", "notify.dismissed", "calendar.changed", "audio.state", "audio.mic_state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
 
 
 # Authentication service (813): offers `auth` (hashed passwords and PINs,
@@ -141,7 +141,7 @@ subscribe = ["modem.state", "account.state", "settings.changed", "mesh.state", "
 # The account service proves and signs with the device key for calls (the key never leaves it)
 # and hands out the relay's credentials; only this service may ask. `settings.get` reads
 # `emergency.number` for `call.emergency`.
-call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn", "settings.get", "mesh.call_offer", "mesh.call_end", "mesh.call_audio"]
+call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn", "settings.get", "mesh.call_offer", "mesh.call_end", "mesh.call_audio", "audio.call", "audio.capture"]
 
 # Modem service (ultar-ril): offers `modem` and its state, nothing else.
 [[rule]]
@@ -303,7 +303,10 @@ subscribe = ["calendar.changed"]
 [[rule]]
 identity = "system.audiod"
 register = ["audio"]
-publish  = ["audio.state", "audio.mic"]
+publish  = ["audio.state", "audio.mic", "audio.mic_state"]
+# accessibility.mono_audio: both channels in every speaker (the sound server mixes them)
+subscribe = ["settings.changed"]
+call     = ["settings.get"]
 
 # System dialogs (815, shell work): offers `sysdialog` (permission and
 # administrator prompts; the services that ask translate nothing themselves)
@@ -318,7 +321,7 @@ publish   = ["media.state", "media.command", "media.there"]
 # its end that the mesh carries (mesh.media_*); the sound itself goes out through
 # mesh.media_pcm, the session is opened and ended with mesh.media_open and mesh.media_ctl.
 subscribe = ["mesh.state", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress"]
-call      = ["mesh.media_open", "mesh.media_pcm", "mesh.media_ctl"]
+call      = ["mesh.media_open", "mesh.media_pcm", "mesh.media_ctl", "audio.play"]
 
 # Screenshot service (825): offers `capture`, follows who is in front.
 [[rule]]
@@ -475,6 +478,12 @@ subscribe = ["mesh.view_serve", "notify.invoked", "session.state"]
 identity  = "app.remote"
 call      = ["mesh.view_start", "mesh.view_input", "mesh.view_stop"]
 subscribe = ["mesh.state", "mesh.view"]
+
+# The browser (app id `browser`): sound and videos of pages go to the sound server's stream
+# socket for this identity; it plays media, it never records.
+[[rule]]
+identity  = "app.browser"
+call      = ["audio.play"]
 
 # Every app may say what the person is doing in it (what a handoff continues).
 [[rule]]

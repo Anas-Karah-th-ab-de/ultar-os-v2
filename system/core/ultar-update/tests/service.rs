@@ -374,7 +374,11 @@ fn cancel_stops_a_running_download_and_drops_what_was_fetched() {
     let status = core.status().unwrap();
     assert_eq!(status.progress.phase, Phase::Idle);
     assert_eq!(status.progress.error_key, None, "a cancel is not a failure");
-    assert!(!device.config.state_dir.join("staging/bundle.part").exists());
+    assert!(!device
+        .config
+        .state_dir
+        .join("staging/bundle.part.000")
+        .exists());
     assert!(!cancel.is_cancelled(), "the request is consumed");
     assert_eq!(core.history(1)[0].kind_key, "update.history.cancelled");
 }

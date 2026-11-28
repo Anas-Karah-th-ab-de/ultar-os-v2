@@ -2271,7 +2271,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-wm"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "bitflags 2.13.2",
  "chrono",

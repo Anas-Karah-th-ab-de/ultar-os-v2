@@ -315,7 +315,7 @@ fn staged_bundle_modified_after_verification_is_caught_at_apply() {
     engine
         .download(&mut source, &offer, &mut NoPacing, &mut |_, _| {})
         .unwrap();
-    let staged = device.config.state_dir.join("staging/bundle.uup");
+    let staged = device.config.state_dir.join("staging/bundle.uup.000");
     let mut bytes = std::fs::read(&staged).unwrap();
     let at = bytes.len() - 5;
     bytes[at] ^= 1;
@@ -354,7 +354,7 @@ fn staged_header_swapped_for_another_signed_release_is_refused() {
         .download(&mut source, &offer, &mut NoPacing, &mut |_, _| {})
         .unwrap();
     std::fs::write(
-        device.config.state_dir.join("staging/bundle.uup"),
+        device.config.state_dir.join("staging/bundle.uup.000"),
         &other.bundle,
     )
     .unwrap();

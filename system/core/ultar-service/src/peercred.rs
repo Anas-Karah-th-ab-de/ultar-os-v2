@@ -11,20 +11,17 @@
 //! # Kernel support
 //!
 //! * Linux: supported.
-//! * Ultar kernel (state 23.11.2026): **not supported.**
-//!   `sys_getsockopt` (`kernel/ultar-kern/src/syscall.rs`) knows `SO_ERROR`
-//!   and `SO_TYPE` only and answers every other option with four zero
-//!   bytes; the kernel also has no user ids (`getuid` is always 0).
-//!   [`peer_credentials`] recognises that answer and fails, so a listener
-//!   that uses credentials refuses every peer there (fail closed), and
-//!   [`probe`] lets a daemon find out at start. Needed kernel change:
-//!   record `{pid, uid, gid}` of the connecting thread group in the Unix
-//!   connection at `connect`/`socketpair` and return it as the 12-byte
-//!   `struct ucred` for `getsockopt(SOL_SOCKET, SO_PEERCRED)`; before that
-//!   is useful the kernel needs an identity per cell (a user id or a cell
-//!   id). Until then the bus identities of the Ultar kernel are the fixed
-//!   identity per socket (one socket per cell, mounted only into that cell)
-//!   and the token identity.
+//! * Ultar kernel: supported. It has real user and group ids
+//!   (`kernel/ultar-kern/src/cred.rs`) and answers `getsockopt(SOL_SOCKET,
+//!   SO_PEERCRED)` (option 17) of a connected Unix socket with the 12-byte
+//!   `struct ucred` of the peer (`kernel/ultar-kern/src/uds.rs`): the process id
+//!   in the caller's pid namespace (0 if the peer is not visible there), the
+//!   effective user and group id of the peer at `connect`. An older kernel
+//!   answered every unknown option with four zero bytes; [`peer_credentials`]
+//!   recognises that (and a process id of 0) and fails, so a listener that uses
+//!   credentials refuses every peer there (fail closed), and [`probe`] lets a
+//!   daemon find out at start. A peer in another pid namespace is therefore
+//!   refused too, whatever its user id.
 
 use std::collections::BTreeMap;
 use std::fmt;

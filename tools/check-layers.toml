@@ -193,6 +193,18 @@ from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-catalog"]
 
+# The browser plays the sound of pages through the sound server's stream socket
+# (docs/integration/ultar-audiod.md): the stream protocol client, no window, no process.
+[[allow]]
+from = "apps"
+to = "system-core"
+crates = ["system/core/ultar-audio-stream"]
+
+[[allow]]
+from = "external"
+to = "system-core"
+crates = ["system/core/ultar-audio-stream"]
+
 # the engine host builds its page cell around itself (external/servo-host, docs/integration/servo-cell.md)
 # with the safe system calls of the HAL (namespaces, mounts, loopback, capabilities): no unsafe in the host
 [[allow]]

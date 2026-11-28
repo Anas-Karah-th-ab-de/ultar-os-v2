@@ -148,6 +148,20 @@ pub fn plan(args: &Args) -> Result<Option<Plan>, PlanError> {
     if !spec.read_write.iter().any(|dir| socket.starts_with(dir)) {
         return Err(PlanError::SocketOutside(socket));
     }
+    // the sound server's socket must be reachable from inside: under a folder of the cell
+    if let Some(audio) = &args.audio_socket {
+        if !clean_socket(audio) {
+            return Err(PlanError::BadSocket(audio.clone()));
+        }
+        let reachable = spec
+            .read_write
+            .iter()
+            .chain(&spec.read_only)
+            .any(|dir| audio.starts_with(dir));
+        if !reachable {
+            return Err(PlanError::SocketOutside(audio.clone()));
+        }
+    }
     Ok(Some(Plan {
         read_only: spec.read_only,
         read_write: spec.read_write,
@@ -192,6 +206,20 @@ mod tests {
         ];
         w.extend_from_slice(extra);
         args(&w)
+    }
+
+    #[test]
+    fn the_sound_socket_must_lie_in_a_folder_of_the_cell() {
+        assert!(plan(&cell(&["--audio-socket", "/p/engine/audio.sock"])).is_ok());
+        assert!(plan(&cell(&["--audio-socket", "/usr/lib/ultar/web/audio.sock"])).is_ok());
+        assert!(matches!(
+            plan(&cell(&["--audio-socket", "/run/ultar/audio/app.browser.sock"])),
+            Err(PlanError::SocketOutside(_))
+        ));
+        assert!(matches!(
+            plan(&cell(&["--audio-socket", "audio.sock"])),
+            Err(PlanError::BadSocket(_))
+        ));
     }
 
     #[test]

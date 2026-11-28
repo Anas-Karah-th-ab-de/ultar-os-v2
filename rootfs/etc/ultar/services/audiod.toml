@@ -1,21 +1,37 @@
-# Audio service (docs/integration/system-services.md): volume, mute and
-# output of the sound cards through their control devices (ALSA control
-# ioctls), audio.state (retained). Choices are kept below its directory and
-# restored at start; cards that come and go are seen within 5 s. Without a
-# sound card (QEMU without a sound device, the Ultar kernel today) it says
-# "no device".
+# Audio service and sound server (docs/integration/ultar-audiod.md, system-services.md):
+# volume, mute and output of the sound cards through their control devices (ALSA control
+# ioctls), audio.state (retained). Choices are kept below its directory and restored at start;
+# cards that come and go are seen within 5 s. Without a sound card (QEMU without a sound
+# device) it says "no device".
+# The sound server: the only holder of the kernel's pcm node (--device). Every program plays
+# and records through its own stream socket below /run/ultar/audio (--streams: one socket per
+# identity, mode 0666 owned by audiod). Who is on the other end is decided by the kernel's
+# peer credentials (SO_PEERCRED): the number after the identity is the user id the identity
+# runs as (rootfs/etc/ultar/ids.toml); any other user id is closed. What a program may do
+# (audio.play, audio.ring, audio.call, audio.capture) comes from the bus policy.
+# The browser app has no entry yet (its user id is given by the launcher at installation).
 editions = ["phone", "desktop"]
 exec = "/usr/bin/ultar-audiod"
 args = [
     "--bus", "/run/ultar/bus/audiod.sock",
     "--state", "/data/ultar/audio",
     "--log-socket", "/run/ultar/log/audiod.sock",
+    "--device", "/dev/ultar/pcm",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--stream-dir", "/run/ultar/audio",
+    # system.calld (call and mesh guest) and system.mediad (play there), by user id.
+    "--streams", "system.calld:829,system.mediad:824",
 ]
-# Its own user without kernel rights; the control devices are root:audio
-# 0660 (group 830, rootfs/etc/ultar/ids.toml), it is the group's member.
+# Its own user; the control devices are root:audio 0660 (group 830, rootfs/etc/ultar/ids.toml),
+# it is that group's member and no other: a group of calld or mediad would also open their
+# bus and log sockets.
+# right sound: the pcm node /dev/ultar/pcm (the one holder of the sound card; every other
+# service and app plays and records through its stream socket); nothing else.
+rights = ["sound"]
 user = 823
 groups = [830]
 dirs = ["/data/ultar/audio"]
+public_dirs = ["/run/ultar/audio"]
 notify = true
 after = ["bus"]
 restart = "always"

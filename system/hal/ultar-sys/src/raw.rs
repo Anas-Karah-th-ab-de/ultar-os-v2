@@ -200,9 +200,11 @@ const SO_PEERCRED: usize = 17;
 /// A kernel that does not implement the option is reported as
 /// [`Errno::ENOPROTOOPT`]: that is the case when the call fails, when the
 /// kernel returns fewer than the twelve bytes of `struct ucred`, or when it
-/// reports process id 0 (no process has that id, so the answer cannot be a
-/// real credential). The Ultar kernel at the time of writing answers every
-/// unknown socket option with four zero bytes and is caught by this check.
+/// reports the "nobody" user id of a socket that is not connected. Process id
+/// 0 is accepted: both Linux and the Ultar kernel report it for a peer that
+/// is not visible in the caller's pid namespace, with a valid user id. An older
+/// Ultar kernel answered every unknown socket option with four zero bytes and
+/// is caught by the length check.
 pub fn peer_credentials(socket: BorrowedFd<'_>) -> Result<Ucred, Errno> {
     let mut cred = [0u32; 3];
     let mut len: u32 = 12;
@@ -221,7 +223,14 @@ pub fn peer_credentials(socket: BorrowedFd<'_>) -> Result<Ucred, Errno> {
         )
     };
     check(ret)?;
-    if len != 12 || cred[0] == 0 {
+    parse_ucred(cred, len)
+}
+
+/// Judges the kernel's answer to `SO_PEERCRED`: twelve bytes, and a user id that is not the
+/// "nobody" of a socket that is not connected. A process id of 0 is a real answer (the peer
+/// lives in another pid namespace), not a sign of a missing option.
+fn parse_ucred(cred: [u32; 3], len: u32) -> Result<Ucred, Errno> {
+    if len != 12 || cred[1] == u32::MAX {
         return Err(Errno::ENOPROTOOPT);
     }
     Ok(Ucred {
@@ -345,4 +354,30 @@ pub fn unshare_user() -> Result<(), Errno> {
     // SAFETY: a single integer argument, the one flag `CLONE_NEWUSER`: it changes which
     // ids and capabilities the calling thread has, never memory or the descriptor table.
     check(unsafe { raw(nr::UNSHARE, [CLONE_NEWUSER, 0, 0, 0, 0]) }).map(|_| ())
+}
+
+#[cfg(test)]
+mod ucred_tests {
+    use super::*;
+
+    #[test]
+    fn a_peer_outside_our_pid_namespace_is_accepted_with_its_user_id() {
+        let c = parse_ucred([0, 1000, 100], 12).unwrap();
+        assert_eq!((c.pid, c.uid, c.gid), (0, 1000, 100));
+        assert_eq!(
+            parse_ucred([0, 0, 0], 12).unwrap().uid,
+            0,
+            "a root peer is root"
+        );
+    }
+
+    #[test]
+    fn a_short_answer_or_an_unconnected_socket_is_refused() {
+        assert!(
+            parse_ucred([0, 0, 0], 4).is_err(),
+            "old kernel: four zero bytes"
+        );
+        assert!(parse_ucred([7, 1000, 100], 8).is_err());
+        assert!(parse_ucred([0, u32::MAX, u32::MAX], 12).is_err());
+    }
 }

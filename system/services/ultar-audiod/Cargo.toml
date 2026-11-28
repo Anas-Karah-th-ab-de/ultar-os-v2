@@ -1,6 +1,6 @@
 [package]
 name = "ultar-audiod"
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
@@ -21,6 +21,7 @@ ultar-svckit = { path = "../../core/ultar-svckit" }
 serde = { version = "1", features = ["derive"] }
 ultar-hal = { path = "../../hal/ultar-hal" }
 ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+ultar-audio-stream = { path = "../../core/ultar-audio-stream" }
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

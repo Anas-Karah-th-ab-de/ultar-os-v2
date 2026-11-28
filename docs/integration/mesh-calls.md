@@ -84,15 +84,17 @@ Videoangebote klingeln als Sprachanruf.
 
 `ultar-mediad` (`there.rs`, `there_service.rs`): gekoppelte Geräte mit Recht erscheinen als
 Ausgang; der Ton geht über das Mesh, Pause/Fortsetzen/Lautstärke wirken auf beiden Seiten.
-Die Senke öffnet `/dev/ultar/pcm` je Sitzung, daher kann sie mit einem laufenden Anruf
-kollidieren; **es gibt kein Mischen**. Start mit `--there-sink`.
+Die Senke öffnet je Sitzung einen Medien-Strom beim Tonserver (`ultar-audiod`,
+`docs/integration/ultar-audiod.md`) und hält kein Kernel-Recht; der Server mischt sie mit
+einem laufenden Anruf und senkt die Medien dabei um 15 dB. Start mit `--there-sink SOCKET`.
 
 ## Richtlinie und Dienste (SCOPE-EXTRA)
 
 * `rootfs/etc/bus-policy.toml`: Einträge für `system.mesh`, `system.calld`,
   `system.notifyd`, `system.mediad`, `system.shell` (publish/subscribe/call für die neuen
   Themen). `media.system`/`notify.system` bleiben für Systemzugriffe maßgeblich.
-* `rootfs/.../services/call.toml`, `mediad.toml`: neue Argumente. `--mesh-modem-pcm` ist
+* `rootfs/.../services/call.toml`, `mediad.toml`: neue Argumente; beide halten das Recht
+  `sound` nicht mehr (der Tonserver ist der einzige Halter). `--mesh-modem-pcm` ist
   **nicht** gesetzt.
 * Bestehende Tests von `notifyd` und `mediad` haben neue Richtlinien-Fixtures.
 
@@ -113,8 +115,9 @@ kollidieren; **es gibt kein Mischen**. Start mit `--there-sink`.
 
 ## Offen und ehrlich
 
-1. **Echo**: audiod ist nur Steuerung, es gibt keinen Echo-Canceller. Freisprechen am
-   Schreibtisch kann Echo erzeugen; mit Kopfhörer kein Problem. Nicht gelöst.
+1. **Echo**: der Tonserver entfernt das Echo des eigenen Lautsprechers aus dem Mikrofon eines
+   Anrufs (linear, im Test über 40 dB bei synthetischem Echo; Grenzen in `ultar-audiod.md`).
+   Auf echter Hardware nicht gemessen; Rest-Echo, Doppelsprechen und Taktdrift sind offen.
 2. **SIM-Sprachpfad**: kein Modem-PCM-Pfad im System; der SIM-Tap ist nur mit Fakes
    getestet, nicht auf echter Hardware.
 3. **Kein Opus**: PCM kostet etwa 768 kbit/s je Richtung; für WLAN/LAN ok, für schwache
@@ -122,4 +125,5 @@ kollidieren; **es gibt kein Mischen**. Start mit `--there-sink`.
 4. **Hardware**: nichts davon lief auf echten Geräten/Mikrofonen; alles mit Fakes und
    echten lokalen Sockets.
 5. **Sperrzustand** siehe oben; **Lautsprecher-Taste** und **Video** fehlen.
-6. **Kollision** „dort abspielen“ gegen laufenden Anruf auf demselben Klanggerät.
+6. ~~Kollision „dort abspielen“ gegen laufenden Anruf~~: gelöst durch den Tonserver (Mischen,
+   Absenken); nur mit Fake-Karte bewiesen, nicht auf echter Hardware.

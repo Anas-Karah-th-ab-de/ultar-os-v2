@@ -1,0 +1,13 @@
+[package]
+name = "ultar-audio-stream"
+version = "0.8.3"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Stream protocol of the Ultar sound server (ultar-audiod): hello, raw PCM over a Unix socket, and the non-blocking client side every program uses to play and record"
+
+[lib]
+name = "ultar_audio_stream"
+path = "src/lib.rs"
+
+[dependencies]

@@ -27,7 +27,7 @@ fn stop_during_a_download_keeps_what_was_fetched() {
         "{stopped:?}"
     );
     // The partial download stays for the next start (a cancel would have dropped it).
-    let part = rig.device.config.state_dir.join("staging/bundle.part");
+    let part = rig.device.config.state_dir.join("staging/bundle.part.000");
     assert!(part.exists());
     assert!(
         rig.cancel.is_stopping(),

@@ -1,6 +1,6 @@
 [package]
 name = "ultar-mediad"
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
@@ -15,6 +15,7 @@ name = "ultar-mediad"
 path = "src/bin/ultar-mediad.rs"
 
 [dependencies]
+ultar-audio-stream = { path = "../../core/ultar-audio-stream" }
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
 ultar-svckit = { path = "../../core/ultar-svckit" }
