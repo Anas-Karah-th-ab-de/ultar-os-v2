@@ -353,6 +353,15 @@ pub fn dispatch(f: &mut TrapFrame) {
         0 => sys_read(a[0], a[1], a[2], None),
         1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
+        // get_mempolicy(mode, nodemask, maxnode, addr, flags): one memory node, the default policy
+        239 => Res::Val({
+            let words = (a[2] as usize).div_ceil(64).min(16);
+            if (a[0] == 0 || put(a[0], &0i32.to_le_bytes())) && (a[1] == 0 || words == 0 || put(a[1], &alloc::vec![0u8; words * 8])) {
+                0
+            } else {
+                -EFAULT
+            }
+        }),
         // getrusage(who, usage): the kernel keeps no per-process counters yet – zeros, as a fresh process
         98 => Res::Val(match a[0] as i64 {
             0 | -1 | 1 => {
@@ -632,7 +641,8 @@ pub fn dispatch(f: &mut TrapFrame) {
     }
     if TRACE_ERR_ON.load(Ordering::Relaxed) {
         if let Res::Val(v) = &r {
-            if *v < 0 && !matches!(*v, -2 | -11 | -4) {
+            // mmap's EEXIST is Wine probing for free space with MAP_FIXED_NOREPLACE: thousands, all expected
+            if *v < 0 && !matches!(*v, -2 | -11 | -4) && !(nr == 9 && *v == -17) {
                 trace_error(nr, &a, *v);
             }
         }

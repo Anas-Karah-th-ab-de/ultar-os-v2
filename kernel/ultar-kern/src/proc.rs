@@ -1384,8 +1384,17 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
     }
     // built and freed in an inner scope: nothing on this stack is dropped once the process is gone
     crate::heap::kernel(|| {
-        let name = PROCS.lock().iter().find(|p| p.pid == current()).map(|p| p.name.clone()).unwrap_or_default();
+        let (name, code) = PROCS
+            .lock()
+            .iter()
+            .find(|p| p.pid == current())
+            .map(|p| (p.name.clone(), p.g.space.as_ref().and_then(|s| read_user(s, f.rip, 8))))
+            .unwrap_or_default();
         crate::kprintln!("[proc] {} (pid {}): {} {} {:#x}, {} {:#x} – {}", name, current(), crate::trap::name(v), crate::sprache::t("bei"), f.rip, crate::sprache::t("adresse"), cr2, crate::sprache::t("beendet"));
+        // an exception without a page: its error code and the instruction's bytes tell what the program did
+        if v != 14 {
+            crate::kprintln!("[proc]   Fehlercode {:#x}, Befehl {:02x?}", f.err, code.unwrap_or_default());
+        }
     });
     exit_current(sig as i32);
 }
