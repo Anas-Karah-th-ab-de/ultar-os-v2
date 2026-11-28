@@ -309,9 +309,7 @@ impl Wizard {
                 } else if a != b {
                     Some("installer.reason.pass_mismatch")
                 } else {
-                    // The written system could not open its data at start: the kernel has no
-                    // disk encryption yet, and no reviewed LUKS2 writer exists (notes).
-                    Some("installer.reason.encryption")
+                    None
                 }
             }
         }
@@ -392,12 +390,18 @@ impl Wizard {
     pub fn replan(&mut self) {
         self.erase_confirmed = false;
         let answers = self.answers();
+        let encrypt = self.encryption == Encryption::Passphrase;
         self.plan = self.disk.map(|i| {
             let d = &self.disks[i];
-            match self.layout.mode {
+            let plan = match self.layout.mode {
                 DiskMode::Whole => Plan::new(&self.source, d, answers),
                 DiskMode::Beside => Plan::beside(&self.source, d, self.layout.share, answers),
                 DiskMode::Manual => Plan::manual(&self.source, d, &self.layout.manual, answers),
+            };
+            // room for the LUKS2 metadata; the passphrase itself is taken at confirmation
+            match plan {
+                Ok(p) if encrypt => p.encrypted(crate::secret::Secret::default()),
+                other => other,
             }
         });
     }
@@ -520,6 +524,10 @@ impl Wizard {
         let hash = crate::secret::hash_password(&self.secrets.password[0])
             .map_err(|_| "installer.reason.password_hash")?;
         plan.answers.set("password_hash", &hash);
+        plan.encrypt = match self.encryption {
+            Encryption::Passphrase => Some(self.secrets.passphrase[0].clone()),
+            _ => None,
+        };
         let confirmation = EraseConfirmation {
             target: plan.target.clone(),
             bytes: plan.target_bytes,

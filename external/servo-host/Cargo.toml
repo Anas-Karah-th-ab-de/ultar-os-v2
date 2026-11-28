@@ -1,0 +1,48 @@
+# The Servo engine host of the Ultar Browser (apps/ultar-web): its own workspace, because Servo
+# brings its own dependency tree (about 900 crates) and its own lock file. Built on a builder with
+# scripts/build-servo-engine.sh; never part of the main workspace build.
+[package]
+name = "ultar-web-servo"
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar Browser – Servo engine host: renders the pages of ultar-web in its own process, speaks the protocol of apps/ultar-web/src/ipc, reaches the internet only through the browser's Tor port (apps, area 7)"
+publish = false
+
+[[bin]]
+name = "ultar-web-engine"
+path = "src/main.rs"
+
+[dependencies]
+# Servo (MPL-2.0) from crates.io, unchanged. No clipboard feature: copying goes through the
+# browser, never straight to a display server.
+servo = { version = "0.8", default-features = false, features = ["baked-in-resources", "bundled_freetype", "js_jit"] }
+# the protocol, the engine types and the persona are the browser's own (one definition)
+ultar-web = { path = "../../apps/ultar-web", default-features = false }
+keyboard-types = "0.8"
+euclid = "0.22"
+dpi = "0.1"
+url = "2"
+rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event", "pipe"] }
+
+[dev-dependencies]
+# examples/shot.rs: a PNG of the frame. The Tor port comes from a separate process
+# (platform/ultar-tor's `ultar-tor-port`): Arti must never be linked next to Servo.
+png = "0.17"
+# examples/window.rs: the browser window drawn headless
+ultar-ui = { path = "../../platform/ultar-ui" }
+
+[features]
+default = []
+# sound and video of pages through GStreamer (servo-media); the runtime bundle carries it
+media = ["servo/media-gstreamer"]
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = "thin"
+codegen-units = 16
+
+[workspace]

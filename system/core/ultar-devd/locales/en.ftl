@@ -9,7 +9,7 @@ devd.phase.failed = not working
 devd.phase.removed = removed
 
 devd.reason.no-package = The depot has no driver that fits this device.
-devd.reason.kernel-only = The kernel runs this device with its driver "{a}", but the depot has no driver package for it.
+devd.reason.kernel-only = Runs with the kernel's built-in driver "{a}"; no driver package is needed.
 devd.reason.not-loadable = The driver package needs a loadable kernel module, which this kernel does not support yet.
 devd.reason.not-bound = The kernel did not bind its driver "{a}" to this device at boot, and it cannot be activated while running.
 devd.reason.package-missing = The driver package file is not on this system.
@@ -41,6 +41,7 @@ devd.error.bad-request = The request is not valid.
 devd.notice.keys-missing = There are no trusted keys, so no driver can be verified.
 devd.notice.keys-unreadable = The key file {a} could not be read and was ignored.
 devd.notice.depot-unreadable = The driver depot cannot be used: {a}
+devd.notice.index-older = The driver depot is older than the one already in use (serial {a}): it is not used.
 devd.notice.hardware-unreadable = The device list could not be read: {a}
 devd.notice.state-recovered = The state file was damaged ({a}); the service started with an empty state and kept the damaged file.
 devd.notice.state-unavailable = The choices could not be saved ({a}); they stay in effect until shutdown.

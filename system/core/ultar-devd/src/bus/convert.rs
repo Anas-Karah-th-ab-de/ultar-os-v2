@@ -67,14 +67,32 @@ fn detail_reason(detail: &LoadDetail) -> Option<Text> {
     })
 }
 
-/// Why a device has no working driver; `None` for an active device.
+/// The kernel driver that runs a device the depot has no package for (bridges, the SMBus
+/// controller, …): such a device works, it only cannot be switched to another driver.
+pub fn kernel_driver(view: &DeviceView, builtin: &Builtin) -> Option<String> {
+    if view.phase != Phase::NoDriver {
+        return None;
+    }
+    match builtin.binding(&view.device.address) {
+        BindState::Bound { driver } => Some(driver),
+        _ => None,
+    }
+}
+
+/// `true` when the device works: with a driver package or with the kernel's own driver.
+pub fn served(view: &DeviceView, builtin: &Builtin) -> bool {
+    view.phase == Phase::Active || kernel_driver(view, builtin).is_some()
+}
+
+/// Why a device has no working driver, or the note that the kernel's own driver runs it;
+/// `None` for a device active with a package.
 pub fn reason(view: &DeviceView, builtin: &Builtin) -> Option<Text> {
     match view.phase {
         Phase::Active => return None,
         Phase::NoDriver => {
-            return Some(match builtin.binding(&view.device.address) {
-                BindState::Bound { driver } => verbatim("devd.reason.kernel-only", &driver),
-                _ => Text::key("devd.reason.no-package"),
+            return Some(match kernel_driver(view, builtin) {
+                Some(driver) => verbatim("devd.reason.kernel-only", &driver),
+                None => Text::key("devd.reason.no-package"),
             })
         }
         _ => {}
@@ -101,7 +119,11 @@ pub fn device_info(view: &DeviceView, builtin: &Builtin) -> DeviceInfo {
         address: view.device.address.clone(),
         hardware_id: view.device.primary.to_string(),
         label: view.device.label.clone(),
-        phase: device_phase(view.phase),
+        phase: if kernel_driver(view, builtin).is_some() {
+            DevicePhase::Active
+        } else {
+            device_phase(view.phase)
+        },
         active: view.active.as_ref().map(|c| driver_info(c, None)),
         alternatives: view
             .alternatives

@@ -211,7 +211,6 @@ impl<T> Shared<T> {
     pub fn new(t: T) -> Shared<T> {
         Shared(Arc::new(core::cell::UnsafeCell::new(t)))
     }
-    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn refs(&self) -> usize {
         Arc::strong_count(&self.0)
     }

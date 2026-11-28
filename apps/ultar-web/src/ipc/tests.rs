@@ -163,6 +163,60 @@ fn every_command_has_a_correct_length_field() {
 }
 
 #[test]
+fn every_command_round_trips_through_the_host_side() {
+    let t = TabId(7);
+    let key = KeyInput {
+        code: 30,
+        character: u32::from('ش'),
+        modifiers: 3,
+        pressed: true,
+    };
+    let scroll = PointerInput::Scroll {
+        x: 1.0,
+        y: 2.0,
+        dx: 0.0,
+        dy: -3.5,
+    };
+    let all = [
+        Command::CreateTab(t, true),
+        Command::CloseTab(t),
+        Command::Load(t, "https://ar.wikipedia.org/wiki/سوريا".into()),
+        Command::Back(t),
+        Command::Forward(t),
+        Command::Reload(t),
+        Command::Stop(t),
+        Command::Resize(t, 1400, 900, 2.0),
+        Command::Resize(t, 0, 0, 1.0),
+        Command::Visible(t, true),
+        Command::Pointer(t, scroll),
+        Command::Key(t, key),
+        Command::Protection(t, false),
+        Command::Permission(RequestId(4), false),
+        Command::CancelDownload(DownloadId(5)),
+        Command::FrameDone(t),
+        Command::Quit,
+    ];
+    for c in all {
+        let mut d = Decoder::default();
+        d.push(&c.encode());
+        let (kind, payload) = d.next_message().unwrap().unwrap();
+        assert_eq!(Command::decode(kind, &payload).unwrap(), c);
+    }
+    let huge = Command::Resize(t, MAX_SIDE + 1, 1, 1.0).encode();
+    assert_eq!(
+        Command::decode(huge[4], &huge[5..]),
+        Err(DecodeError::BadValue)
+    );
+    let mut trailing = Command::Back(t).encode();
+    trailing.push(0);
+    assert_eq!(
+        Command::decode(trailing[4], &trailing[5..]),
+        Err(DecodeError::TrailingBytes)
+    );
+    assert_eq!(Command::decode(99, &[]), Err(DecodeError::UnknownKind(99)));
+}
+
+#[test]
 fn invalid_messages_are_refused() {
     let mut d = Decoder::default();
     d.push(&[0, 0, 0, 0, 1]);

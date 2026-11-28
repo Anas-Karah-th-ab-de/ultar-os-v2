@@ -167,21 +167,50 @@ pub fn asker_of(st: &AppState, headers: &HeaderMap, client: Option<std::net::IpA
     }
 }
 
+/// Characters that change how a name looks or reads without being seen: zero-width marks,
+/// directional overrides and isolates, the byte order mark.
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+}
+
+/// The one form a user name is stored and looked up in: without leading or trailing spaces, in
+/// lower case, 3 to 64 characters, no control or invisible characters. `Admin`, `admin ` and
+/// `ad\u{200B}min` are one name (or refused), so nobody registers a look-alike of another.
+pub fn canonical_username(raw: &str) -> Option<String> {
+    let name = raw.trim().to_lowercase();
+    let len = name.chars().count();
+    ((3..=64).contains(&len) && !name.chars().any(|c| c.is_control() || invisible(c)))
+        .then_some(name)
+}
+
 /// `POST /v1/account/register` — creates an account and returns a session token.
 pub async fn account_register(
     State(st): State<Shared>,
     ApiJson(c): ApiJson<Credentials>,
 ) -> Result<Json<Value>, ApiError> {
-    let name_len = c.username.chars().count();
-    if !(3..=64).contains(&name_len) || !(8..=256).contains(&c.password.len()) {
+    let Some(username) = canonical_username(&c.username) else {
+        return Err(ApiError::InvalidRequest);
+    };
+    if !(8..=256).contains(&c.password.len()) {
         return Err(ApiError::InvalidRequest);
     }
     let hash = hash_new_password(c.password).await?;
     let id = {
         let conn = st.db.lock();
+        // an older account stored before names were made canonical counts as the same name
+        let taken: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM accounts WHERE lower(username)=?1",
+                [&username],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if taken.is_some() {
+            return Err(ApiError::UsernameTaken);
+        }
         let inserted = conn.execute(
             "INSERT INTO accounts(username, pw_hash, created) VALUES(?1,?2,?3)",
-            rusqlite::params![c.username, hash, db::now()],
+            rusqlite::params![username, hash, db::now()],
         );
         if inserted.is_err() {
             return Err(ApiError::UsernameTaken);
@@ -201,15 +230,25 @@ pub async fn account_login(
     if c.username.len() > 256 || c.password.len() > 256 {
         return Err(ApiError::InvalidCredentials);
     }
-    let row: Option<(i64, String, i64)> = st
-        .db
-        .lock()
-        .query_row(
-            "SELECT id, pw_hash, token_epoch FROM accounts WHERE username=?1",
-            [&c.username],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .optional()?;
+    // the canonical name first; an account stored before names were canonical by its exact name
+    let lookup = |name: &str| {
+        st.db
+            .lock()
+            .query_row(
+                "SELECT id, pw_hash, token_epoch FROM accounts WHERE username=?1",
+                [name],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+    };
+    let row: Option<(i64, String, i64)> = match canonical_username(&c.username) {
+        Some(name) => lookup(&name)?,
+        None => None,
+    };
+    let row = match row {
+        Some(row) => Some(row),
+        None => lookup(&c.username)?,
+    };
     // unknown user: the same work as for a wrong password (no timing difference to tell them apart)
     let (id, hash) = match row {
         Some((id, hash, epoch)) => (Some((id, epoch)), hash),
@@ -425,6 +464,18 @@ pub fn next_wg_host(conn: &rusqlite::Connection) -> rusqlite::Result<u32> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn user_names_have_one_form() {
+        assert_eq!(canonical_username("  Anas "), Some("anas".into()));
+        assert_eq!(canonical_username("ADMIN"), canonical_username("admin"));
+        assert_eq!(canonical_username("ad\u{200B}min"), None);
+        assert_eq!(canonical_username("evil\u{202E}nimda"), None);
+        assert_eq!(canonical_username("a\tb"), None);
+        assert_eq!(canonical_username("ab"), None);
+        assert_eq!(canonical_username("محمد"), Some("محمد".into()));
+    }
+
     use super::*;
 
     #[test]

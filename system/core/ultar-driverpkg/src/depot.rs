@@ -49,7 +49,22 @@ pub fn write_signed_index(
     trusted: &TrustedKeys,
     limits: &Limits,
 ) -> Result<DriverIndex, IndexError> {
-    let index = scan_directory(dir, trusted, limits)?;
+    // the serial: unchanged for the same packages (a rebuild gives byte-identical output), else
+    // seconds since 1970 and above the index already there (devices refuse a lower one)
+    let before = std::fs::read_to_string(dir.join(INDEX_NAME))
+        .ok()
+        .and_then(|text| DriverIndex::parse(&text).ok());
+    let scanned = scan_directory(dir, trusted, limits)?;
+    let serial = match &before {
+        Some(old) if old.entries() == scanned.entries() => old.serial(),
+        _ => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            now.max(before.map_or(0, |old| old.serial() + 1))
+        }
+    };
+    let index = scanned.with_serial(serial);
     let text = index.to_toml()?;
     let index_path = dir.join(INDEX_NAME);
     std::fs::write(&index_path, &text).map_err(|e| io_error(&index_path, &e))?;

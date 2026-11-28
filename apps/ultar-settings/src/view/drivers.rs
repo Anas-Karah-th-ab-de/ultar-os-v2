@@ -290,13 +290,17 @@ fn device_cells(cx: &mut Cx<'_>, row: NodeId, d: &DeviceInfo, narrow: bool) -> R
     Ok(())
 }
 
-/// Driver choice and rollback, or the hardware plan for a device without driver.
+/// Driver choice and rollback, or the hardware plan for a device without driver. A device the
+/// kernel's own driver runs (working, no package) has nothing to choose.
 fn actions_cell(
     cx: &mut Cx<'_>,
     actions: NodeId,
     index: usize,
     d: &DeviceInfo,
 ) -> Result<(), UiError> {
+    if d.active.is_none() && d.phase == DevicePhase::Active {
+        return Ok(());
+    }
     if d.active.is_none() {
         let plan = Button::new(k("app.settings.drivers.plan")).icon(IconId::Download);
         let plan = cx.act(actions, plan, Act::DriverPlan(index))?;

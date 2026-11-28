@@ -12,6 +12,11 @@ group = 812
 # on-screen keyboard; every other one is made root-only. Empty: none.
 virtual_allowed = []
 
+# User ids whose software input devices join the seat: the Ultar kernel names the
+# maker of every uinput device (device/ultar_creator), the maker cannot choose it.
+# 827 = ultar-btd (Bluetooth keyboards and mice).
+virtual_owners = [827]
+
 # The torch's control file (camera light: Samsung rear_flash or an LED class
 # device named *torch*/*flash*, never the PMIC LED *s2mu*) gets owner root,
 # this group and mode 0660, so the power service (819) switches it

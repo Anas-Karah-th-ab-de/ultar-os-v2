@@ -71,6 +71,9 @@ fn boot_machine() {
 fn boot_after_config(config: &config::InitConfig) {
     boot::configure(config);
     if !is_phone() {
+        // Ultar kernel with an encrypted data partition: the passphrase before anything
+        // writes to /data and before any service runs.
+        boot::unlock_data();
         boot::sprache_von_startpartition();
     }
     diag::start();

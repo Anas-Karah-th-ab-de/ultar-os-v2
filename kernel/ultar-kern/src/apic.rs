@@ -74,6 +74,42 @@ pub fn wake_waiters() {
     }
 }
 
+/// TLB shootdown: the generation asked for, and the one each core has flushed.
+static TLB_GEN: AtomicU64 = AtomicU64::new(0);
+static TLB_SEEN: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
+/// Most rounds a core waits for another core's flush (a few milliseconds): a core that cannot
+/// take interrupts now does not stop this one for ever.
+const TLB_WAIT: u32 = 200_000;
+
+/// Rights to user pages were taken away (`mprotect`, `munmap`): every other core drops its cached
+/// translations and this core waits until each one did (bounded, [`TLB_WAIT`]). Before, a thread
+/// on another core could go on writing or running a page for as long as its TLB held it.
+pub fn flush_tlb_others() {
+    let online = ONLINE.load(Ordering::Relaxed) as usize;
+    if online <= 1 {
+        return;
+    }
+    let gen = TLB_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    // fixed delivery, assert, to all cores but this one
+    icr(0, crate::trap::VEC_TLB as u32 | 1 << 14 | 0b11 << 18);
+    let me = crate::percpu::id();
+    for core in (0..online.min(64)).filter(|&c| c != me) {
+        let mut rounds = 0;
+        while TLB_SEEN[core].load(Ordering::Acquire) < gen && rounds < TLB_WAIT {
+            arch::pause();
+            rounds += 1;
+        }
+    }
+}
+
+/// The interrupt of [`flush_tlb_others`] on this core.
+pub fn on_flush_tlb() {
+    let gen = TLB_GEN.load(Ordering::SeqCst);
+    // SAFETY: reloading CR3 with its own value only drops cached translations.
+    unsafe { crate::paging::flush_all() };
+    TLB_SEEN[crate::percpu::id() % 64].fetch_max(gen, Ordering::Release);
+}
+
 /// Number of timer interrupts so far on any core (see [`fast_timer`]).
 pub fn epoch() -> u64 {
     EPOCH.load(Ordering::Relaxed)
