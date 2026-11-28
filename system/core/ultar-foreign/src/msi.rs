@@ -340,10 +340,12 @@ impl Strings {
 mod tests {
     use super::*;
 
-    /// A compound file (version 3) whose small streams all live in the mini stream.
-    pub(crate) fn compound(streams: &[(Vec<u16>, Vec<u8>)]) -> Vec<u8> {
-        const FREE: u32 = 0xFFFF_FFFF;
-        const FAT_SECTOR: u32 = 0xFFFF_FFFD;
+    const FREE: u32 = 0xFFFF_FFFF;
+    const FAT_SECTOR: u32 = 0xFFFF_FFFD;
+
+    /// The mini stream of `streams` (64-byte sectors, padded to 512), its mini FAT and the
+    /// first mini sector of each stream.
+    fn mini_stream(streams: &[(Vec<u16>, Vec<u8>)]) -> (Vec<u8>, Vec<u32>, Vec<u32>) {
         let mut mini = Vec::new();
         let mut minifat: Vec<u32> = Vec::new();
         let mut starts = Vec::new();
@@ -364,16 +366,12 @@ mod tests {
         }
         let mini_sectors = mini.len().div_ceil(512);
         mini.resize(mini_sectors * 512, 0);
-        // sector 0 FAT, 1 directory, 2 mini FAT, 3.. mini stream
-        let mut fat = vec![FAT_SECTOR, END_OF_CHAIN, END_OF_CHAIN];
-        for k in 0..mini_sectors {
-            fat.push(if k + 1 == mini_sectors {
-                END_OF_CHAIN
-            } else {
-                4 + k as u32
-            });
-        }
-        fat.resize(128, FREE);
+        (mini, minifat, starts)
+    }
+
+    /// The header of a version 3 compound file: FAT in sector 0, directory in 1, mini FAT
+    /// in 2.
+    fn header() -> Vec<u8> {
         let mut h = vec![0u8; 512];
         h[..8].copy_from_slice(SIGNATURE);
         h[0x18..0x1A].copy_from_slice(&0x3Eu16.to_le_bytes());
@@ -391,6 +389,12 @@ mod tests {
             let v = if i == 0 { 0 } else { FREE };
             h[0x4C + 4 * i..0x50 + 4 * i].copy_from_slice(&v.to_le_bytes());
         }
+        h
+    }
+
+    /// The directory sector: the root entry (holding the mini stream of `mini_bytes`
+    /// from sector 3) and one entry per stream, chained to the right.
+    fn directory(streams: &[(Vec<u16>, Vec<u8>)], starts: &[u32], mini_bytes: usize) -> Vec<u8> {
         let mut dir = Vec::new();
         let mut put = |name: &[u16], kind: u8, start: u32, size: u32, child: u32, right: u32| {
             let mut e = vec![0u8; 128];
@@ -408,7 +412,7 @@ mod tests {
             dir.extend(e);
         };
         let root: Vec<u16> = "Root Entry".encode_utf16().collect();
-        put(&root, 5, 3, (mini_sectors * 512) as u32, 1, FREE);
+        put(&root, 5, 3, mini_bytes as u32, 1, FREE);
         for (i, (name, data)) in streams.iter().enumerate() {
             let right = if i + 1 < streams.len() {
                 i as u32 + 2
@@ -418,9 +422,26 @@ mod tests {
             put(name, 2, starts[i], data.len() as u32, FREE, right);
         }
         dir.resize(512, 0);
-        let mut out = h;
+        dir
+    }
+
+    /// A compound file (version 3) whose small streams all live in the mini stream.
+    pub(crate) fn compound(streams: &[(Vec<u16>, Vec<u8>)]) -> Vec<u8> {
+        let (mini, minifat, starts) = mini_stream(streams);
+        let mini_sectors = mini.len() / 512;
+        // sector 0 FAT, 1 directory, 2 mini FAT, 3.. mini stream
+        let mut fat = vec![FAT_SECTOR, END_OF_CHAIN, END_OF_CHAIN];
+        for k in 0..mini_sectors {
+            fat.push(if k + 1 == mini_sectors {
+                END_OF_CHAIN
+            } else {
+                4 + k as u32
+            });
+        }
+        fat.resize(128, FREE);
+        let mut out = header();
         out.extend(fat.iter().flat_map(|v| v.to_le_bytes()));
-        out.extend(dir);
+        out.extend(directory(streams, &starts, mini.len()));
         let mut mf: Vec<u8> = minifat.iter().flat_map(|v| v.to_le_bytes()).collect();
         mf.resize(512, 0xFF);
         out.extend(mf);

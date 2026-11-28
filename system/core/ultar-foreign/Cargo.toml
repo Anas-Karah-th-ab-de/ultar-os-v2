@@ -42,4 +42,5 @@ p384 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8
 ecdsa = { version = "0.16", default-features = false, features = ["verifying", "std"] }
 
 [dev-dependencies]
+ultar-brand = { path = "../ultar-brand" }
 ultar-svckit = { path = "../ultar-svckit", features = ["testkit"] }

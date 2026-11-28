@@ -11,8 +11,6 @@
 //! Not a cell of the launcher (no own user, no limits): it shows what the area's programs need
 //! of the kernel and the bridge. Prints `foreignshow: started` once the bridge runs.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -50,7 +48,7 @@ fn child(area: &Path, program: &[String]) -> ! {
         let at = area.join("dev").join(node);
         let _ = std::fs::File::create(&at);
         if let Err(e) = sys_cell::bind(&source, &at, BindMode::Device) {
-            eprintln!("foreignshow: child: bind /dev/{node}: {e:?}");
+            eprintln!("foreignshow: child: bind {}: {e:?}", source.display());
         }
     }
     if let Err(e) = sys_cell::mount_proc(&area.join("proc")) {
@@ -97,44 +95,11 @@ fn main() {
         std::process::exit(2);
     };
     let program = &words[dash + 1..];
-    let _ = std::fs::create_dir_all(Path::new(SOCKET).parent().unwrap());
     let run = area.join(RUN_IN_AREA);
     let _ = std::fs::create_dir_all(&run);
-    let comp: Vec<String> = [
-        "--socket",
-        SOCKET,
-        "--allow-root",
-        "--lang",
-        "en",
-        "--no-cursor",
-    ]
-    .map(str::to_owned)
-    .to_vec();
-    let Ok(_compositor) = spawn(&bin.join("ultar-compositor"), &comp) else {
-        println!("foreignshow: compositor did not start");
-        std::process::exit(1);
-    };
-    for _ in 0..300 {
-        if Path::new(SOCKET).exists() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    start_compositor(&bin);
     let me = std::env::current_exe().unwrap_or_else(|_| bin.join("foreignshow"));
-    let mut bridge_args: Vec<String> = [
-        "--compositor",
-        SOCKET,
-        "--runtime-dir",
-        &run.display().to_string(),
-        "--app-id",
-        "org.ultar.foreign-show",
-        "--",
-        &me.display().to_string(),
-        "--child",
-        &area.display().to_string(),
-    ]
-    .map(|s| s.to_owned())
-    .to_vec();
+    let mut bridge_args = bridge_args(&run, &me, &area);
     bridge_args.extend(program.iter().cloned());
     match spawn(&bin.join("ultar-wayland"), &bridge_args) {
         Ok(mut bridge) => {
@@ -147,4 +112,51 @@ fn main() {
     loop {
         std::thread::sleep(Duration::from_secs(60));
     }
+}
+
+/// Starts `ultar-compositor` and waits (up to 30 s) for its socket.
+fn start_compositor(bin: &Path) {
+    if let Some(dir) = Path::new(SOCKET).parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let comp: Vec<String> = [
+        "--socket",
+        SOCKET,
+        "--allow-root",
+        "--lang",
+        "en",
+        "--no-cursor",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    // the compositor runs as long as this program (its child is never waited for)
+    if spawn(&bin.join("ultar-compositor"), &comp).is_err() {
+        println!("foreignshow: compositor did not start");
+        std::process::exit(1);
+    }
+    for _ in 0..300 {
+        if Path::new(SOCKET).exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// The bridge's words up to the program: its runtime directory `run` and this program
+/// `me` as the child in `area`.
+fn bridge_args(run: &Path, me: &Path, area: &Path) -> Vec<String> {
+    [
+        "--compositor",
+        SOCKET,
+        "--runtime-dir",
+        &run.display().to_string(),
+        "--app-id",
+        "org.ultar.foreign-show",
+        "--",
+        &me.display().to_string(),
+        "--child",
+        &area.display().to_string(),
+    ]
+    .map(|s| s.to_owned())
+    .to_vec()
 }
