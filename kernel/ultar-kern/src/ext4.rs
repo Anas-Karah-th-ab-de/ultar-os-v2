@@ -1130,9 +1130,9 @@ impl Ext4 {
     }
 
     /// Eintrag in ein Verzeichnis einfügen
-    fn dir_add(&self, dino: u64, name: &str, ino: u64, ftype: u8) -> WResult<()> {
-        let sb = self.sb().ok_or("Lesefehler")?;
-        let draw = self.get_raw(dino)?;
+    /// Whether this writer can add an entry to the directory `dino` (no HTree index, extents) – asked
+    /// before anything is allocated, so a refusal leaves no unattached inode or block behind.
+    fn can_add(&self, dino: u64) -> WResult<()> {
         let dir = self.inode(dino).ok_or("Lesefehler")?;
         if dir.flags & 0x1000 != 0 {
             return Err("Verzeichnis mit HTree-Index");
@@ -1140,6 +1140,14 @@ impl Ext4 {
         if dir.flags & 0x80000 == 0 {
             return Err("Verzeichnis ohne Extents");
         }
+        Ok(())
+    }
+
+    fn dir_add(&self, dino: u64, name: &str, ino: u64, ftype: u8) -> WResult<()> {
+        let sb = self.sb().ok_or("Lesefehler")?;
+        let draw = self.get_raw(dino)?;
+        self.can_add(dino)?;
+        let dir = self.inode(dino).ok_or("Lesefehler")?;
         let need = (8 + name.len() + 3) & !3;
         let bs = self.bs as usize;
         let end = if self.csum(&sb) { bs - 12 } else { bs };
@@ -1261,6 +1269,7 @@ impl Ext4 {
                 i
             }
             None => {
+                self.can_add(dino)?;
                 let i = self.new_inode(0o100644, false)?;
                 if let Err(e) = self.dir_add(dino, name, i, 1) {
                     let _ = self.free_inode(i, false);
@@ -1286,6 +1295,7 @@ impl Ext4 {
         if self.list(&d).iter().any(|e| e.0 == name) {
             return Err("existiert");
         }
+        self.can_add(dino)?;
         let ino = self.new_inode(0o120777, false)?;
         let made = if target.len() < 60 {
             self.get_raw(ino).and_then(|mut raw| {
@@ -1314,6 +1324,7 @@ impl Ext4 {
         if self.list(&d).iter().any(|e| e.0 == name) {
             return Err("existiert");
         }
+        self.can_add(dino)?;
         let ino = self.new_inode(0o040755, true)?;
         let sb = self.sb().ok_or("Lesefehler")?;
         let bs = self.bs as usize;
@@ -1342,7 +1353,14 @@ impl Ext4 {
             self.dir_tail_csum(&sb, ino, &raw, &mut b);
             self.put_block(b0, &b)?;
         }
-        self.dir_add(dino, name, ino, 2)?;
+        if let Err(e) = self.dir_add(dino, name, ino, 2) {
+            // nothing of the new directory stays allocated
+            if let Ok(raw) = self.get_raw(ino) {
+                let _ = self.free_runs(&self.inode_blocks(&raw));
+            }
+            let _ = self.free_inode(ino, true);
+            return Err(e);
+        }
         let mut praw = self.get_raw(dino)?;
         let links = le16(&praw, 0x1A) + 1;
         put16(&mut praw, 0x1A, links);
