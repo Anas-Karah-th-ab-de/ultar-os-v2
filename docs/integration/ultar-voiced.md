@@ -1,4 +1,4 @@
-﻿# ultar-voiced – Sprachsteuerung „Hey KM“ für den Helfer
+# ultar-voiced – Sprachsteuerung „Hey KM“ für den Helfer
 
 Stand: Paket `voice` (Punkt C8). Der Dienst `ultar-voiced` (Nutzer 841) lässt die Person den
 Helfer (`ultar-agentd`) mit der Stimme bedienen: Weckwort sagen, Anfrage sprechen, die Antwort
@@ -142,6 +142,44 @@ Alle Tests laufen ohne Mikrofon:
   `a_streamed_wav_of_unknown_length_runs_to_the_end`, der Stand-in-eSpeak der Prozesstests
   schreibt dasselbe Format). Arabische Erkennung ist damit nicht gemessen.
 
+## Messung der Spracherkennung (Whisper small und base, Arabisch zuerst)
+
+Dauertest `tests/real_speech.rs`: eSpeak NG spricht neun typische Anfragen (fünf Arabisch, zwei
+Englisch, zwei Deutsch; Arabisch zusätzlich mit Vokalzeichen), `whisper-server` schreibt sie ab,
+der Test gibt Wortgenauigkeit (1 minus Wortabstand durch Wortzahl, nach Normalisierung) und Zeit je
+Aufnahme aus. Er tut nichts, solange `ULTAR_WHISPER` nicht auf das `whisper-server`-Programm zeigt
+(dazu `ULTAR_WHISPER_MODELS`, `ULTAR_ESPEAK`, optional `ULTAR_WHISPER_MODEL_NAMES`, Standard
+`small,base`); der Aufruf steht im Kopf der Datei. Gemessen auf dem Testserver .18 (16 Kerne, mit
+`nice -n 10`, 4 Threads, Modelle `ggml-small.bin` und `ggml-base.bin`, mehrsprachig):
+
+| Modell | Arabisch | Arabisch mit Vokalzeichen | Englisch | Deutsch | Zeit je Aufnahme |
+|--------|----------|---------------------------|----------|---------|------------------|
+| small  | 0 %      | 0 %                       | 75 %     | 38 %    | 16,5 s           |
+| base   | 0 %      | 0 %                       | 38 %     | 12 %    | 4,1 s            |
+
+Einzelwerte (Anfrage, gehört), small: „افتح الإعدادات“ gehört als „وقتها“; „كم الساعة“ als
+„كيلومي تسأل“; „أطفئ الواي فاي“ als „فالويفة“; Englisch „Turn the wifi off“ als „Turn the Wi-Fi
+on.“ (75 %). Alle 14 Zeilen stehen in der Ausgabe des Tests (`--nocapture`).
+
+**Was das heißt, ehrlich:**
+- Mit der eSpeak-Stimme versteht auch `small` kein einziges arabisches Wort vollständig (0 %).
+  Die gehörten Wörter klingen oft ähnlich („كمي أسارة“ für „كم الساعة“): das Modell hört etwas
+  Ähnliches, aber die Stimme ist zu künstlich. Dass die Vokalzeichen nichts ändern, spricht
+  dafür, dass die Grenze die eSpeak-Stimme ist, nicht allein das Modell. **Das sagt deshalb nicht,
+  wie gut Whisper echte arabische Menschenstimmen erkennt; das ist weiterhin ungemessen** und
+  braucht aufgenommene Sprecher (Hochdeutsch/Hocharabisch und Dialekt, Mikrofon, Raum).
+- Sicher ist nur der Rang: `tiny` und `base` sind für Arabisch ungeeignet (schon Englisch fällt bei
+  `base` auf 38 %); `small` ist die untere Grenze. Empfehlung: Standard `small` (so ist es: ohne
+  Wahl nimmt der Dienst `small`, dann `base`, dann `tiny`), für Arabisch nicht darunter, und wo der
+  Speicher reicht `medium` (1,5 GB; nicht gemessen) – Settings zeigt dazu den Hinweis „Für Arabisch
+  Small oder größer“.
+- Die Zeit ist ein ernstes Problem: etwa 16,5 s je kurzer Anfrage mit `small` auf 4 Threads eines
+  PC-Servers (Whisper rechnet immer ein 30-s-Fenster), `base` etwa 4 s. Auf einem Telefon wäre es
+  langsamer. Ein Sprachbefehl mit `small` ist so für den Alltag zu träge. Unprobierte Wege, in der
+  Reihenfolge der Erwartung: mehr Threads, quantisierte Modelle (zum Beispiel `small` mit
+  5-Bit-Gewichten, etwa ein Drittel der Größe), iGPU/NPU (Paket `IGPU-NPU`). Bis das gemessen ist,
+  ist die Arabisch-Erkennung des Pakets nicht alltagstauglich nachgewiesen.
+
 ## Was nicht bewiesen ist (ehrlich)
 
 1. **Keine echten Menschenstimmen.** Alle Aufnahmen sind Synthese oder Töne. Wie gut das
@@ -165,10 +203,15 @@ Alle Tests laufen ohne Mikrofon:
    noch rufen.
 5. **Modelle.** Die Whisper-Modelle sind nicht im Paket; sie kommen mit dem Offline-Update
    nach `/data/ultar/voice/models`. Das Paket `whisper` ist gebaut und geprüft (siehe unten),
-   aber die Erkennungsqualität mit arabischer Sprache ist nicht gemessen; das Modell `small`
-   (466 MB, etwa 1 GB RAM) ist der Vorschlag, `tiny` und `base` für schwache Geräte.
-6. **Auslieferung.** Die Skripte, die Programme ins Abbild legen (`build-a30.sh`,
-   `make-vmware.sh`) kennen `ultar-voiced` noch nicht (nicht im Umfang).
+   aber die Erkennungsqualität mit echter arabischer Sprache ist nicht gemessen (mit eSpeak-
+   Stimme erkennt auch `small` kein arabisches Wort, siehe die Messung oben). Das Modell
+   `small` (466 MB, etwa 1 GB RAM) ist der Standard und für Arabisch die Untergrenze; `tiny`
+   und `base` taugen dafür nicht. Auch die Zeit (etwa 16 s je Anfrage) ist offen.
+6. **Auslieferung.** `build-a30.sh` und `make-vmware.sh` bauen `ultar-voiced` mit und legen
+   Programm und `voiced.toml` ins Abbild (der Dienst startet, ist aber aus, bis die Person ihn
+   in den Einstellungen einschaltet). Die Pakete `whisper` und `espeak-ng` und die Modelle
+   kommen noch nicht ins Abbild; ohne sie meldet der Dienst „keine Spracherkennung“ bzw.
+   „keine Sprachausgabe“. Der Strom des Mikrofons (`ultar-audiod`) ist ein eigenes Paket.
 
 ## SCOPE-EXTRA (über die erlaubte Liste hinaus angefasst)
 
