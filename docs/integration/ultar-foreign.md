@@ -172,10 +172,38 @@ data.
 `$HOME/android` – writable, never executable; native code is never extracted there
 (`ATL_SKIP_NATIVES_EXTRACTION=1`): its `lib` is a link to the read-only copy in the area.
 
+**Pictures (`bwrap-cell`).** ATL decodes every Android `Bitmap` with GTK; gdk-pixbuf 2.44 of the area loads
+images through glycin, which starts its loaders with `bwrap` – that needs user namespaces the app's cell does
+not give, so without help every picture stayed empty and the test app stopped with a `NullPointerException`.
+`tools/foreign/bwrap-cell.c` (installed by `tools/foreign/install-bwrap-cell.sh`, called by
+`make-android-runtime.sh`; Ubuntu's bwrap is diverted to `/usr/bin/bwrap.ubuntu`) accepts bubblewrap's options
+and runs the helper directly **in the same cell**: it keeps what needs no rights (`--clearenv/--setenv/
+--unsetenv`, `--chdir`, `--die-with-parent`, `--new-session`, `--argv0`, the seccomp filters it is handed –
+applied where the kernel has seccomp, so glycin's own syscall filter still holds on Linux), ignores namespace,
+mount, capability and id options and never gives the helper more than the app has; it is static and never
+set-id. The Linux area itself (`make-linux-runtime.sh`) should call the same script – GTK programs need it as
+well (stage P2 found mousepad's pictures failing the same way on the Ultar kernel).
+
+**Checked** (`tools/foreign/android-e2e.sh`, 28.11.2026, Linux server, real cells, headless Weston as the
+display): Gravity Defied (`org.happysanta.gd_29.apk` of ATL's test set, SHA-256 `0786257c…d675`, Java, APK
+signature v2) – inspected (label, version, signer, "internet only" suggested), refused variants (ARM only,
+one changed byte, JAR signing only, unsigned), cancel installs nothing, installed as `foreign.apk-gd` (uid
+20000), its window shows the game (menu, track, pictures), an update by another signer and an older one are
+refused, removal leaves nothing: `FOREIGN-ANDROID-E2E: ALLES OK`.
+
+**What ATL cannot do (yet).** ATL implements a part of the Android API on GTK: many apps stop at an
+unimplemented class or method; no Google services (by design); no WebView, location or microphone (off
+here); no GPU – OpenGL ES runs on Mesa's software renderer only, 3D games are slow; no other app's activities
+or content providers, no background services that outlive the window, no notifications into the system yet;
+ARM-only apps are refused (no translation of ARM code). ART runs without a compiled boot image: the cache in
+the app's data is never executable (`noexec`), so ART falls back to its interpreter and JIT – the first start
+takes some seconds longer. Shipping a precompiled boot image in the read-only area would remove that.
+
 ## Open points
 
 * Stage P0: the barrier (`ultar_launcher::foreign::set_net_barrier` is a placeholder returning `ENOSYS`;
-  `Platform.net_barrier` is false); then archive installs (`InstallFrom::Archive`) and `runtime_update`.
+  `Platform.net_barrier` is false) – replaced by P0's `NetGuard` on `integ/fa-linux`; then archive installs
+  (`InstallFrom::Archive`) and `runtime_update`.
 * Installing the signed component on a device (verify against `/etc/ultar/trusted-keys`, unpack into
   `/data/ultar/foreign/linux`) is not implemented; the images do not ship the service yet
   (`tools/vm/make-vmware.sh` `SERVICES_UP`).

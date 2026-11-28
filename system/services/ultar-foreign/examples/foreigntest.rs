@@ -189,12 +189,11 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
 
 /// The Android runtime of the area (component "Android apps", stage P5): ART runs a
 /// program of its own (`hello.dex` of `make-android-runtime.sh`), chrooted into the area as
-/// root – what ART needs of the kernel, before any cell.
+/// root – what ART needs of the kernel, before any cell. ART's data (`ANDROID_DATA`) is a tmpfs:
+/// the check asks the kernel for ART, writing the area's disk is the check `root-writes-area`.
 fn art(area: &Path, dex: &Path) -> Result<(), String> {
-    let work = area.join("tmp/ultar-art");
-    let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(work.join("dalvik-cache")).map_err(|e| format!("mkdir {e}"))?;
-    std::fs::copy(dex, work.join("hello.dex")).map_err(|e| format!("copy {e}"))?;
+    let code = std::fs::read(dex).map_err(|e| format!("read {e}"))?;
+    std::fs::create_dir_all(area.join("tmp/ultar-art")).map_err(|e| format!("mkdir {e}"))?;
     std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
     std::env::set_current_dir("/").map_err(|e| e.to_string())?;
     let run = |program: &str, args: &[&str]| {
@@ -206,14 +205,23 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
             .stdin(std::process::Stdio::piped())
             .output()
     };
-    let proc_mounted =
-        run("/usr/bin/mount", &["-t", "proc", "proc", "/proc"]).is_ok_and(|o| o.status.success());
+    let ok = |o: std::io::Result<std::process::Output>| o.is_ok_and(|o| o.status.success());
+    let tmpfs = ok(run(
+        "/usr/bin/mount",
+        &["-t", "tmpfs", "-o", "size=256m", "tmpfs", "/tmp/ultar-art"],
+    ));
+    std::fs::create_dir_all("/tmp/ultar-art/dalvik-cache").map_err(|e| format!("mkdir {e}"))?;
+    std::fs::write("/tmp/ultar-art/hello.dex", &code).map_err(|e| format!("write {e}"))?;
+    let proc_mounted = ok(run("/usr/bin/mount", &["-t", "proc", "proc", "/proc"]));
     let out = run(
         "/usr/bin/dalvikvm",
         &["-cp", "/tmp/ultar-art/hello.dex", "Hello"],
     );
     if proc_mounted {
         let _ = run("/usr/bin/umount", &["/proc"]);
+    }
+    if tmpfs {
+        let _ = run("/usr/bin/umount", &["/tmp/ultar-art"]);
     }
     let _ = std::fs::remove_dir_all("/tmp/ultar-art");
     let out = out.map_err(|e| format!("dalvikvm: {e}"))?;
@@ -224,13 +232,14 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
     let err = String::from_utf8_lossy(&out.stderr);
     let last: Vec<&str> = err.lines().rev().take(4).collect();
     Err(format!(
-        "(ART runs a program: dalvikvm {:?}, /proc {}) {}",
+        "(ART runs a program: dalvikvm {:?}, /proc {}, data {}) {}",
         out.status.code(),
         if proc_mounted {
             "mounted"
         } else {
             "NOT mounted"
         },
+        if tmpfs { "tmpfs" } else { "on the area's disk" },
         last.into_iter().rev().collect::<Vec<_>>().join(" | ")
     ))
 }
