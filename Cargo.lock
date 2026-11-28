@@ -9501,6 +9501,7 @@ dependencies = [
  "rustls-graviola",
  "rustls-rustcrypto",
  "symphonia",
+ "ultar-audio-stream",
  "ultar-brand",
  "ultar-hal-system",
  "ultar-i18n",
