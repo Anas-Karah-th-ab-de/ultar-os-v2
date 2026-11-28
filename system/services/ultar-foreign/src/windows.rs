@@ -201,6 +201,8 @@ fn keep_installer(source: &mut std::fs::File, dir: &Path, name: &str) -> std::io
         .create_new(true)
         .mode(0o644)
         .open(dir.join(name))?;
+    // readable by the app's own user in its cell (the service's umask is strict)
+    out.set_permissions(std::fs::Permissions::from_mode(0o644))?;
     let copied = std::io::copy(&mut source.take(detect::MAX_FILE + 1), &mut out)?;
     if copied > detect::MAX_FILE {
         return Err(std::io::Error::from(std::io::ErrorKind::FileTooLarge));
@@ -220,7 +222,11 @@ fn keep_icon(icons: &Path, id: &str, png: Option<&[u8]>) -> String {
         .truncate(true)
         .mode(0o644)
         .open(&path)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, png));
+        .and_then(|mut f| {
+            // readable by the launcher and the desktop (the service's umask is strict)
+            f.set_permissions(std::fs::Permissions::from_mode(0o644))?;
+            std::io::Write::write_all(&mut f, png)
+        });
     match written {
         Ok(()) => path.to_string_lossy().into_owned(),
         Err(_) => String::new(),
@@ -373,6 +379,31 @@ mod tests {
         assert_eq!(n("/d/مثبت.exe", Source::Exe), "setup.exe");
         assert!(!n(&format!("/d/{}.exe", "a".repeat(300)), Source::Exe).contains('/'));
         assert!(n(&format!("/d/{}.exe", "a".repeat(300)), Source::Exe).len() <= 64);
+    }
+
+    #[test]
+    fn the_kept_installer_and_icon_are_readable_by_the_app() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ultar-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let source_path = dir.join("source.exe");
+        std::fs::write(&source_path, b"MZ installer").unwrap();
+        // the service's strict umask
+        let old = rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o077));
+        let mut source = std::fs::File::open(&source_path).unwrap();
+        keep_installer(&mut source, &dir.join("setup"), "setup.exe").unwrap();
+        let icon = keep_icon(&dir, "foreign.exe-x", Some(b"\x89PNG"));
+        rustix::process::umask(old);
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&dir.join("setup")), 0o755);
+        assert_eq!(mode(&dir.join("setup/setup.exe")), 0o644);
+        assert_eq!(
+            std::fs::read(dir.join("setup/setup.exe")).unwrap(),
+            b"MZ installer"
+        );
+        assert_eq!(mode(Path::new(&icon)), 0o644);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

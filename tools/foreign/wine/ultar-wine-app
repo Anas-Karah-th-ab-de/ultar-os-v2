@@ -14,6 +14,14 @@
 set -u
 kind=${1:?kind} file=${2:?installer} name=${3:-}
 export WINEPREFIX="$HOME/.wine"
+# Ubuntu's Wine 10 server breaks with TMPDIR set (free(): invalid pointer at its start); without
+# it Wine keeps its server directory in /tmp, the cell's own
+unset TMPDIR
+# the server is not in PATH in Ubuntu's packaging
+for WINESERVER in /usr/lib/*-linux-gnu/wine/wineserver /usr/lib/wine/wineserver /usr/bin/wineserver; do
+  [ -x "$WINESERVER" ] && break
+done
+export WINESERVER
 export WINEDEBUG="${WINEDEBUG:--all}"
 # no download of Wine's .NET and HTML engines (the cell has no network unless the person
 # allowed it, and nothing is fetched behind the person's back)
@@ -35,11 +43,11 @@ drives() {
 prefix() {
   if [ ! -f "$WINEPREFIX/system.reg" ]; then
     wineboot -i >/dev/null 2>&1 || { say "the Windows area could not be made"; return 1; }
-    wineserver -w
+    "$WINESERVER" -w
   fi
   drives
   wine reg add 'HKCU\Software\Wine\Drivers' /v Graphics /d "${ULTAR_WINE_DRIVER:-wayland}" /f >/dev/null 2>&1
-  wineserver -w
+  "$WINESERVER" -w
   drives
 }
 
@@ -67,7 +75,7 @@ setup() {
       say "unknown kind $kind"; return 1 ;;
   esac
   code=$?
-  wineserver -w
+  "$WINESERVER" -w
   return $code
 }
 
@@ -102,7 +110,7 @@ run() {
     *) wine "$program" ;;
   esac
   code=$?
-  wineserver -w
+  "$WINESERVER" -w
   return $code
 }
 

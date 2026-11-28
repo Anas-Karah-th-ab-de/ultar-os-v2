@@ -37,8 +37,10 @@ fetch() { # url file sha256
   [ -z "$3" ] || [ "$got" = "$3" ] || fail "$2: SHA-256 $got, expected $3"
 }
 fetch https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.1/npp.8.7.1.Installer.x64.exe \
-  npp.8.7.1.Installer.x64.exe "${NPP_SHA256:-}"
-fetch https://www.7-zip.org/a/7z2409-x64.msi 7z2409-x64.msi "${SEVENZIP_SHA256:-}"
+  npp.8.7.1.Installer.x64.exe \
+  "${NPP_SHA256-aa130d151859eccc8b4cc535ae756682069d626087e8c56a35b630df4b5f0024}"
+fetch https://www.7-zip.org/a/7z2409-x64.msi 7z2409-x64.msi \
+  "${SEVENZIP_SHA256-ec6af1ea0367d16dde6639a89a080a524cebc4d4bedfe00ed0cac4b865a918d8}"
 cd "$REPO"
 cargo build -q -p ultar-foreign --bin ultar-foreign
 BIN=${CARGO_TARGET_DIR:-$REPO/target}/debug/ultar-foreign

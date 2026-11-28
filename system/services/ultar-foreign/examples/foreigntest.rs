@@ -237,7 +237,16 @@ fn windows_programs(area: &Path, private: impl Fn() -> Result<(), String>) -> Re
             }
         }
     }
-    let _ = run_for(&["/usr/bin/wineserver", "-k"], 60);
+    // Ubuntu keeps the server out of PATH
+    if let Some(server) = [
+        "/usr/lib/x86_64-linux-gnu/wine/wineserver",
+        "/usr/bin/wineserver",
+    ]
+    .into_iter()
+    .find(|s| Path::new(s).exists())
+    {
+        let _ = run_for(&[server, "-k"], 60);
+    }
     // how far the new prefix got
     result.map_err(|e| {
         let made: Vec<String> = ["system.reg", "drive_c/windows/system32/kernel32.dll"]
@@ -265,7 +274,7 @@ fn run_for(program: &[&str], secs: u64) -> Result<String, String> {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("HOME", "/tmp")
-        .env("TMPDIR", "/tmp")
+        // no TMPDIR: Ubuntu's Wine 10 server breaks with it (as in ultar-wine-app)
         .env("WINEPREFIX", "/tmp/wine")
         // Wine's own errors, not its notes about what it does not implement
         .env("WINEDEBUG", "err+all,warn-all,fixme-all")
