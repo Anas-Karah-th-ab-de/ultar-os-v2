@@ -56,6 +56,10 @@ fn runtime(cx: &mut Cx<'_>, content: NodeId, r: &RuntimeStateReply) -> Result<()
         Some(k("app.settings.foreign.runtime.sub")),
     )?;
     if !r.installed {
+        // the service looks for the signed component on drives and in the areas (where
+        // the Ultar Store puts its downloads) and asks an administrator
+        let install = Button::new(k("app.settings.foreign.install")).icon(IconId::Package);
+        cx.act(header, install, Act::ForeignUpdate)?;
         let row = Row::new(k("app.settings.foreign.runtime.none"))
             .sublabel(k("app.settings.foreign.runtime.none.sub"))
             .last();

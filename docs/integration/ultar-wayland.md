@@ -22,7 +22,7 @@ ultar-wayland [--compositor <socket>] [--runtime-dir <dir>] [--app-id <id>] -- <
 
 * Started inside the app cell, **with the app's uid**: the compositor sees an ordinary client of
   that uid (rights, limits and the window budget of that uid apply; nothing is shared with other
-  cells). Defaults: compositor `/run/ultar/ui/compositor` (or `ULTAR_COMPOSITOR_SOCKET`), app id
+  cells). Defaults: compositor `/run/ultar/ui/compositor.sock`, the system compositor's socket (or `ULTAR_COMPOSITOR_SOCKET`), app id
   from `ULTAR_APP_ID`, runtime dir `$XDG_RUNTIME_DIR` (else `/tmp/ultar-wayland-<uid>`, mode 0700).
 * It listens on `<runtime-dir>/wayland-0`, then starts the program with `WAYLAND_DISPLAY=wayland-0`,
   `XDG_SESSION_TYPE=wayland`, `GDK_BACKEND`, `QT_QPA_PLATFORM`, `SDL_VIDEODRIVER`/`SDL_VIDEO_DRIVER`,

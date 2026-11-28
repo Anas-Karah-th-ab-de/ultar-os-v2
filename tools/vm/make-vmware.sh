@@ -84,11 +84,13 @@ fi
 PROGRAMS="ultar-init uinit ultar-luks ultar-unlock ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd $SESSION_PROGRAMS"
 # the services the shell talks to (wave 8) and the app launcher
 PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-voiced ultar-llm-bus ultar-llm-cloud ultar-displayd ultar-accountd ultar-calld ultar-screend"
+# apps from other systems (docs/FREMD-APPS.md): the service; its Wayland bridge goes to its own directory below
+PROGRAMS="$PROGRAMS ultar-foreign"
 # the system apps (installed as signed packages through the launcher, step 2)
 PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web ultar-editor ultar-pdf ultar-doc ultar-sheet ultar-terminal ultar-remote"
 INSTALLER_IMG=${INSTALLER_IMG:-}
 [ -n "$INSTALLER_IMG" ] && PROGRAMS="$PROGRAMS ultar-installer-ui ultar-firstboot"
-SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd call mesh screend agentd voiced llmbus llmcloud"
+SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd call mesh screend agentd voiced llmbus llmcloud foreign"
 # The system updater (A/B slots of the Ultar kernel, docs/SYSTEM-UPDATE.md): not in a TREE_ONLY tree (the Galaxy A30
 # on its Linux kernel has no A/B layout).
 if [ -z "$TREE_ONLY" ]; then
@@ -104,13 +106,14 @@ if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
     -p ultar-init -p ultar-luks -p ultar-unlock -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
-    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-voiced -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-screend -p ultar-pkg \
+    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-voiced -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-screend -p ultar-pkg -p ultar-foreign -p ultar-wayland \
     -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-pdf -p ultar-doc -p ultar-sheet -p ultar-terminal -p ultar-remote -p ultar-update ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
 TOOL_BIN=${TOOL_BIN:-$BIN}
 for p in $PROGRAMS; do [ -x "$BIN/$p" ] || fail "program missing: $BIN/$p"; done
+[ -x "$BIN/ultar-wayland" ] || fail "program missing: $BIN/ultar-wayland"
 for p in upkg-keygen upkg-sign; do [ -x "$TOOL_BIN/$p" ] || fail "program missing: $TOOL_BIN/$p"; done
 
 # 2) System tree: the shipped configuration of rootfs/etc/ultar, the services this image has programs for
@@ -119,6 +122,12 @@ R=$W/root
 mkdir -p "$R"/{bin,sbin,usr/bin,usr/lib/ultar/drivers,usr/lib/ultar/apps,etc/ultar/services,data,tmp,run,root,home,var,proc,sys,dev,media}
 cp "$BIN/ultar-init" "$R/sbin/"
 for p in $PROGRAMS; do [ "$p" = ultar-init ] || cp "$BIN/$p" "$R/usr/bin/"; done
+# The Wayland bridge of apps from other systems: alone in its directory, which the launcher binds read-only
+# into each foreign app's cell at /.ultar ([paths] foreign_bridge in launcher.toml). The Linux area itself is
+# not part of the image: the person installs the component "Linux programs" (Store or USB), ultar-foreign
+# checks its signature and unpacks it to /data/ultar/foreign/linux (docs/integration/ultar-foreign.md).
+mkdir -p "$R/usr/lib/ultar/foreign"
+cp "$BIN/ultar-wayland" "$R/usr/lib/ultar/foreign/ultar-wayland"
 for f in init.toml ids.toml bus-policy.toml compositor-rights.toml devd-seat.toml; do cp "rootfs/etc/ultar/$f" "$R/etc/ultar/"; done
 cp -r rootfs/etc/ultar/trusted-keys "$R/etc/ultar/"
 for s in $SERVICES_UP; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done

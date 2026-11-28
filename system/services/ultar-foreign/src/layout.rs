@@ -53,8 +53,7 @@ impl Layout {
 
     /// Whether the Linux area is installed: its root holds `usr` and the package database.
     pub fn runtime_installed(&self) -> bool {
-        let r = self.runtime();
-        r.join("usr/bin").is_dir() && r.join("var/lib/dpkg/status").is_file()
+        area_ok(&self.runtime())
     }
 
     /// Whether the area has the component „Windows programs“: its build wrote `components=windows`
@@ -90,17 +89,7 @@ impl Layout {
 
     /// One `key=value` line of `/etc/ultar-runtime` (empty when missing, long or odd).
     fn runtime_field(&self, key: &str) -> String {
-        std::fs::read_to_string(self.runtime().join("etc/ultar-runtime"))
-            .ok()
-            .and_then(|t| {
-                t.lines().find_map(|l| {
-                    l.strip_prefix(key)
-                        .and_then(|v| v.strip_prefix('='))
-                        .map(str::to_owned)
-                })
-            })
-            .filter(|v| v.len() <= 64 && !v.chars().any(char::is_control))
-            .unwrap_or_default()
+        field_in(&self.runtime(), key)
     }
 
     /// Makes the service's own directories (`inbox` `0700`, `icons` `0755`).
@@ -116,6 +105,26 @@ impl Layout {
         }
         Ok(())
     }
+}
+
+/// Whether `area` is a Linux area: its root holds `usr` and the package database.
+pub fn area_ok(area: &Path) -> bool {
+    area.join("usr/bin").is_dir() && area.join("var/lib/dpkg/status").is_file()
+}
+
+/// One `key=value` line of `<area>/etc/ultar-runtime` (empty when missing, long or odd).
+pub fn field_in(area: &Path, key: &str) -> String {
+    std::fs::read_to_string(area.join("etc/ultar-runtime"))
+        .ok()
+        .and_then(|t| {
+            t.lines().find_map(|l| {
+                l.strip_prefix(key)
+                    .and_then(|v| v.strip_prefix('='))
+                    .map(str::to_owned)
+            })
+        })
+        .filter(|v| v.len() <= 64 && !v.chars().any(char::is_control))
+        .unwrap_or_default()
 }
 
 /// Bytes below `dir` (files only, links not followed; at most `limit` entries counted).

@@ -2,7 +2,7 @@
 //! documentation).
 //!
 //! ```text
-//! ultar-foreign --bus PATH --root DIR [--sources DIR:DIR] [--log-socket PATH] [--token-file PATH]
+//! ultar-foreign --bus PATH --root DIR [--sources DIR:DIR] [--trusted-keys DIR] [--log-socket PATH] [--token-file PATH]
 //! ultar-foreign --cell …        (its own cells' stage 1, started by itself)
 //! ultar-foreign --cell-init …   (stage 2)
 //! ```
@@ -33,7 +33,7 @@ fn main() -> ExitCode {
         Right::SetId,
         Right::CellChown,
     ]));
-    ultar_svckit::main("ultar-foreign", &["root", "sources"], rights, |args, _| {
+    ultar_svckit::main("ultar-foreign", &["root", "sources", "trusted-keys"], rights, |args, _| {
         let root = args.required_path("root").map_err(|_| Msg::BadArguments)?;
         let helper = std::env::current_exe().map_err(|_| Msg::BadArguments)?;
         // where the person's files may come from: their areas and drives (tests name
@@ -45,7 +45,12 @@ fn main() -> ExitCode {
         if sources.is_empty() || sources.iter().any(|s| !s.is_absolute()) {
             return Err(Msg::BadArguments);
         }
-        Ok(ForeignService::new(root, helper, sources))
+        let service = ForeignService::new(root, helper, sources);
+        // tests name their own keys; a device checks components against its built-in ones
+        Ok(match args.path("trusted-keys").map_err(|_| Msg::BadArguments)? {
+            Some(dir) => service.with_trusted_keys(dir),
+            None => service,
+        })
     })
 }
 

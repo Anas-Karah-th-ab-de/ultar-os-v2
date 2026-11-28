@@ -8751,6 +8751,7 @@ name = "ultar-foreign"
 version = "0.8.1"
 dependencies = [
  "ecdsa 0.16.9",
+ "flate2",
  "miniz_oxide 0.8.9",
  "p256 0.13.2",
  "p384 0.13.1",
@@ -8758,8 +8759,10 @@ dependencies = [
  "rustix",
  "serde",
  "sha2 0.10.9",
+ "tar",
  "toml 0.8.23",
  "ultar-bus",
+ "ultar-pkg",
  "ultar-service",
  "ultar-svckit",
  "ultar-sys",

@@ -19,6 +19,7 @@
 pub mod apk;
 pub mod apkjobs;
 pub mod cellrun;
+pub mod component;
 pub mod desktop;
 pub mod detect;
 pub mod harvest;
