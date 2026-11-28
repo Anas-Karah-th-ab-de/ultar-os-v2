@@ -1021,7 +1021,7 @@ count = 1
 [[entry]]
 rule = "size"
 path = "kernel/ultar-kern/src/ext4.rs"
-count = 4
+count = 3
 
 [[entry]]
 rule = "size"
