@@ -21,6 +21,8 @@
 
 pub mod action;
 pub mod app;
+mod app_open;
+mod app_search;
 pub mod build;
 pub mod cache;
 pub mod doc;
@@ -30,6 +32,7 @@ pub mod keys;
 pub mod layout;
 pub mod paint;
 pub mod place;
+mod probe;
 pub mod raster;
 pub mod search;
 pub mod service;

@@ -41,7 +41,10 @@ mod tests {
     fn the_contract_is_the_mesh_service() {
         // SetActivity is a versioned call to `mesh.set_activity`.
         assert_eq!(
-            (<SetActivity as Call>::SERVICE, <SetActivity as Call>::METHOD),
+            (
+                <SetActivity as Call>::SERVICE,
+                <SetActivity as Call>::METHOD
+            ),
             ("mesh", "set_activity")
         );
         assert_eq!(<SetActivity as Message>::VERSION, 1);

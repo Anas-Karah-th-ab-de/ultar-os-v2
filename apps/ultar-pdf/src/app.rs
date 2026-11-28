@@ -5,10 +5,8 @@
 use crate::doc::{Change, Doc, DocState};
 use crate::layout::Layout;
 use crate::place::{self, ReadError, Recents};
-use crate::search::{self, Hit, Search};
-use crate::state::{
-    fit_page_scale, fit_width_scale, page_display, rect_to_px, zoom_step, Fit, Rot,
-};
+use crate::search::{Hit, Search};
+use crate::state::{fit_page_scale, fit_width_scale, page_display, zoom_step, Fit, Rot};
 use crate::touch::Touches;
 use std::path::{Path, PathBuf};
 use ultar_ui::tokens::SizeClass;
@@ -58,9 +56,9 @@ pub(crate) struct Drag {
     pub moved: bool,
 }
 
-/// The nodes the reader needs to find again.
+/// The tool bar's nodes.
 #[derive(Default)]
-pub(crate) struct Nodes {
+pub(crate) struct BarNodes {
     pub open: Option<NodeId>,
     pub find: Option<NodeId>,
     pub zoom_out: Option<NodeId>,
@@ -71,16 +69,30 @@ pub(crate) struct Nodes {
     pub rotate: Option<NodeId>,
     pub page_field: Option<NodeId>,
     pub page_count: Option<NodeId>,
+}
+
+/// The start-side panel's nodes (wide windows).
+#[derive(Default)]
+pub(crate) struct SideNodes {
     pub pages_tab: Option<NodeId>,
     pub outline_tab: Option<NodeId>,
     pub thumbs: Option<NodeId>,
     pub outline: Option<NodeId>,
-    pub page: Option<NodeId>,
+}
+
+/// The search bar's nodes.
+#[derive(Default)]
+pub(crate) struct FinderNodes {
     pub search_field: Option<NodeId>,
     pub search_next: Option<NodeId>,
     pub search_prev: Option<NodeId>,
     pub search_count: Option<NodeId>,
     pub search_close: Option<NodeId>,
+}
+
+/// The nodes of the open and password questions and the empty state.
+#[derive(Default)]
+pub(crate) struct DialogNodes {
     pub empty_open: Option<NodeId>,
     pub dialog: Option<NodeId>,
     pub open_field: Option<NodeId>,
@@ -92,6 +104,51 @@ pub(crate) struct Nodes {
     pub password_cancel: Option<NodeId>,
 }
 
+/// The nodes the reader needs to find again.
+#[derive(Default)]
+pub(crate) struct Nodes {
+    pub bar: BarNodes,
+    pub side: SideNodes,
+    pub finder: FinderNodes,
+    pub dialogs: DialogNodes,
+    pub page: Option<NodeId>,
+}
+
+/// Where the reader looks: zoom, scroll, rotation, the page and the page rows.
+pub(crate) struct View {
+    pub fit: Fit,
+    pub scale: f32,
+    pub scroll: f32,
+    pub scroll_x: f32,
+    pub rot: Rot,
+    pub page: usize,
+    pub start_page: usize,
+    pub layout: Layout,
+}
+
+/// The start-side panel's state.
+pub(crate) struct Rail {
+    pub mode: PanelMode,
+    pub thumbs: Layout,
+    pub scroll: f32,
+}
+
+/// The search bar's state.
+pub(crate) struct Find {
+    pub open: bool,
+    pub hits: Search,
+    pub seq: u32,
+}
+
+/// Selecting text and the fingers on the page.
+pub(crate) struct Pick {
+    pub selection: Option<Selection>,
+    pub drag: Option<Drag>,
+    pub copy_page: Option<usize>,
+    pub touches: Touches,
+    pub pinch_from: u16,
+}
+
 /// The reader: its tree, its document and its view state.
 pub struct App {
     pub ui: Ui,
@@ -100,30 +157,10 @@ pub struct App {
     pub(crate) data: PathBuf,
     pub(crate) recents: Recents,
     pub(crate) nodes: Nodes,
-    // the view
-    pub(crate) fit: Fit,
-    pub(crate) scale: f32,
-    pub(crate) scroll: f32,
-    pub(crate) scroll_x: f32,
-    pub(crate) rot: Rot,
-    pub(crate) page: usize,
-    pub(crate) start_page: usize,
-    pub(crate) layout: Layout,
-    // the panel
-    pub(crate) panel: PanelMode,
-    pub(crate) thumbs: Layout,
-    pub(crate) panel_scroll: f32,
-    // search
-    pub(crate) searching: bool,
-    pub(crate) search: Search,
-    pub(crate) search_seq: u32,
-    // select and copy
-    pub(crate) selection: Option<Selection>,
-    pub(crate) drag: Option<Drag>,
-    pub(crate) copy_page: Option<usize>,
-    pub(crate) touches: Touches,
-    pub(crate) pinch_from: u16,
-    // questions
+    pub(crate) view: View,
+    pub(crate) rail: Rail,
+    pub(crate) find: Find,
+    pub(crate) pick: Pick,
     pub(crate) ask: Option<Ask>,
     pub(crate) tried_password: bool,
     pub(crate) out: Vec<Out>,
@@ -148,7 +185,7 @@ impl App {
         let start_page = doc.uri.as_deref().map_or(0, place::page_of);
         if doc.read_error.is_none() {
             if let Some(u) = &doc.uri {
-                recents.push(&place::without_page(u));
+                recents.push(place::without_page(u));
                 recents.save(&data);
             }
         }
@@ -159,25 +196,33 @@ impl App {
             data,
             recents,
             nodes: Nodes::default(),
-            fit: Fit::Width,
-            scale: 1.0,
-            scroll: 0.0,
-            scroll_x: 0.0,
-            rot: Rot::None,
-            page: start_page,
-            start_page,
-            layout: Layout::default(),
-            panel: PanelMode::Pages,
-            thumbs: Layout::default(),
-            panel_scroll: 0.0,
-            searching: false,
-            search: Search::default(),
-            search_seq: 0,
-            selection: None,
-            drag: None,
-            copy_page: None,
-            touches: Touches::default(),
-            pinch_from: 100,
+            view: View {
+                fit: Fit::Width,
+                scale: 1.0,
+                scroll: 0.0,
+                scroll_x: 0.0,
+                rot: Rot::None,
+                page: start_page,
+                start_page,
+                layout: Layout::default(),
+            },
+            rail: Rail {
+                mode: PanelMode::Pages,
+                thumbs: Layout::default(),
+                scroll: 0.0,
+            },
+            find: Find {
+                open: false,
+                hits: Search::default(),
+                seq: 0,
+            },
+            pick: Pick {
+                selection: None,
+                drag: None,
+                copy_page: None,
+                touches: Touches::default(),
+                pinch_from: 100,
+            },
             ask: None,
             tried_password: false,
             out: Vec::new(),
@@ -211,7 +256,11 @@ impl App {
             return None;
         }
         let uri = self.doc.uri.as_deref()?;
-        Some(format!("{}#page={}", place::without_page(uri), self.page + 1))
+        Some(format!(
+            "{}#page={}",
+            place::without_page(uri),
+            self.view.page + 1
+        ))
     }
 
     /// What the window has to do (taken once).
@@ -226,7 +275,7 @@ impl App {
 
     /// The window wants to know whether to poll quickly (work is under way).
     pub fn busy(&self) -> bool {
-        self.doc.pending() || (self.searching && self.search.active() && !self.search.done())
+        self.doc.pending() || (self.find.open && self.find.hits.active() && !self.find.hits.done())
     }
 
     /// The size class of the window.
@@ -236,7 +285,7 @@ impl App {
 
     /// The current page (from 0).
     pub fn current_page(&self) -> usize {
-        self.page
+        self.view.page
     }
 
     /// The pages of the document.
@@ -247,32 +296,32 @@ impl App {
     /// The zoom in percent (100 = one point per logical pixel).
     pub fn zoom_percent(&self) -> u16 {
         let s = self.ui.env().scale.max(0.01);
-        (self.scale / s * 100.0).round().clamp(1.0, 9999.0) as u16
+        (self.view.scale / s * 100.0).round().clamp(1.0, 9999.0) as u16
     }
 
     /// The zoom mode.
     pub fn fit(&self) -> Fit {
-        self.fit
+        self.view.fit
     }
 
     /// The user's rotation.
     pub fn rotation(&self) -> Rot {
-        self.rot
+        self.view.rot
     }
 
     /// The vertical scroll in device pixels.
     pub fn scroll_offset(&self) -> f32 {
-        self.scroll
+        self.view.scroll
     }
 
     /// All search hits found so far.
     pub fn hits(&self) -> &[Hit] {
-        self.search.hits()
+        self.find.hits.hits()
     }
 
     /// The selected text, if any is selected and its page text is loaded.
     pub fn selected_text(&self) -> Option<String> {
-        let s = self.selection?;
+        let s = self.pick.selection?;
         let text = self.doc.text(s.page)?;
         Some(text.text(s.first, s.last))
     }
@@ -290,9 +339,14 @@ impl App {
     /// The scale (points → device pixels) the current zoom mode gives for the current page.
     fn scale_for(&mut self) -> f32 {
         let (vw, vh) = self.view_px();
-        let size = self.doc.sizes.get(self.page).copied().unwrap_or((595.0, 842.0));
-        let (w, h) = page_display(size.0, size.1, self.rot);
-        let scale = match self.fit {
+        let size = self
+            .doc
+            .sizes
+            .get(self.view.page)
+            .copied()
+            .unwrap_or((595.0, 842.0));
+        let (w, h) = page_display(size.0, size.1, self.view.rot);
+        let scale = match self.view.fit {
             Fit::Width => fit_width_scale(vw, w),
             Fit::Page => fit_page_scale(vw, vh, w, h),
             Fit::Zoom(p) => p as f32 / 100.0 * self.ui.env().scale,
@@ -304,22 +358,28 @@ impl App {
     /// Keeps the scroll offsets inside the content.
     pub(crate) fn clamp_scroll(&mut self) {
         let (vw, vh) = self.view_px();
-        self.scroll = self.scroll.clamp(0.0, self.layout.max_scroll(vh));
-        self.scroll_x = self.scroll_x.clamp(0.0, self.layout.max_scroll_x(vw));
+        self.view.scroll = self.view.scroll.clamp(0.0, self.view.layout.max_scroll(vh));
+        self.view.scroll_x = self
+            .view
+            .scroll_x
+            .clamp(0.0, self.view.layout.max_scroll_x(vw));
     }
 
     /// Recomputes scale and layout for the current view (the reading position stays), asks the
     /// worker for what is visible and paints.
     pub fn refresh(&mut self) -> Result<(), UiError> {
         if self.doc.state == DocState::Open {
-            let anchor = if self.layout.rows.is_empty() {
-                (self.page.min(self.doc.sizes.len().saturating_sub(1)), 0.0)
+            let anchor = if self.view.layout.rows.is_empty() {
+                (
+                    self.view.page.min(self.doc.sizes.len().saturating_sub(1)),
+                    0.0,
+                )
             } else {
-                self.layout.anchor(self.scroll)
+                self.view.layout.anchor(self.view.scroll)
             };
-            self.scale = self.scale_for();
-            self.layout = Layout::new(&self.doc.sizes, self.scale, self.rot);
-            self.scroll = self.layout.scroll_of(anchor);
+            self.view.scale = self.scale_for();
+            self.view.layout = Layout::new(&self.doc.sizes, self.view.scale, self.view.rot);
+            self.view.scroll = self.view.layout.scroll_of(anchor);
             self.clamp_scroll();
             self.build_thumbs();
         }
@@ -332,7 +392,11 @@ impl App {
             self.clamp_scroll();
             if follow {
                 let (_, vh) = self.view_px();
-                self.page = self.layout.page_at(self.scroll, vh).unwrap_or(self.page);
+                self.view.page = self
+                    .view
+                    .layout
+                    .page_at(self.view.scroll, vh)
+                    .unwrap_or(self.view.page);
             }
             self.follow_thumbs();
             self.sync_chrome()?;
@@ -348,8 +412,12 @@ impl App {
             return;
         }
         let (_, vh) = self.view_px();
-        let vis = self.layout.visible(self.scroll, vh);
-        let mid = self.layout.page_at(self.scroll, vh).unwrap_or(self.page);
+        let vis = self.view.layout.visible(self.view.scroll, vh);
+        let mid = self
+            .view
+            .layout
+            .page_at(self.view.scroll, vh)
+            .unwrap_or(self.view.page);
         let mut order: Vec<usize> = vis.clone().collect();
         order.sort_by_key(|p| p.abs_diff(mid));
         let n = self.doc.sizes.len();
@@ -359,17 +427,36 @@ impl App {
                 order.push(p);
             }
         }
-        if let Some(p) = self.copy_page.filter(|p| *p < n) {
+        if let Some(p) = self.pick.copy_page.filter(|p| *p < n) {
             texts.push(p);
         }
-        let renders = order.into_iter().map(|p| (p, self.scale)).collect();
+        // Ask only for what the cache can hold together: at a high zoom a picture is big, and
+        // asking for more than fits would render pages that are thrown out again at once.
+        let mut room = crate::doc::PAGE_BUDGET;
+        let mut renders: Vec<(usize, f32)> = Vec::new();
+        for p in order {
+            let bytes = self.picture_bytes(p);
+            if renders.is_empty() || bytes <= room {
+                room = room.saturating_sub(bytes);
+                renders.push((p, self.view.scale));
+            }
+        }
         let thumbs = self.wanted_thumbs();
         self.doc.want(renders, texts, thumbs);
     }
 
+    /// The bytes the picture of `page` takes in the cache at the current scale (the worker draws
+    /// at most `MAX_PAGE_PIXELS`, the window stretches the picture beyond that).
+    fn picture_bytes(&self, page: usize) -> usize {
+        let size = self.doc.sizes.get(page).copied().unwrap_or((595.0, 842.0));
+        let (w, h) = page_display(size.0, size.1, self.view.rot);
+        let pixels = (w * self.view.scale) * (h * self.view.scale);
+        (pixels.min(crate::worker::MAX_PAGE_PIXELS) as usize).saturating_mul(4)
+    }
+
     /// Applies a zoom mode and keeps the reading position.
     pub fn set_fit(&mut self, fit: Fit) -> Result<(), UiError> {
-        self.fit = fit;
+        self.view.fit = fit;
         self.refresh()
     }
 
@@ -381,8 +468,8 @@ impl App {
 
     /// Turns the pages a quarter clockwise.
     pub fn rotate(&mut self) -> Result<(), UiError> {
-        self.rot = self.rot.next();
-        self.selection = None;
+        self.view.rot = self.view.rot.next();
+        self.pick.selection = None;
         self.refresh()
     }
 
@@ -391,15 +478,15 @@ impl App {
         if self.doc.sizes.is_empty() {
             return Ok(());
         }
-        self.page = page.min(self.doc.sizes.len() - 1);
-        self.scroll = self.layout.scroll_to(self.page);
+        self.view.page = page.min(self.doc.sizes.len() - 1);
+        self.view.scroll = self.view.layout.scroll_to(self.view.page);
         self.after_move(false)
     }
 
     /// Scrolls by device pixels (the wheel, a touch pan, the keys).
     pub(crate) fn scroll_by(&mut self, dx: f32, dy: f32) -> Result<(), UiError> {
-        self.scroll += dy;
-        self.scroll_x += dx;
+        self.view.scroll += dy;
+        self.view.scroll_x += dx;
         self.after_move(true)
     }
 
@@ -407,8 +494,11 @@ impl App {
     fn state_changed(&mut self) -> Result<(), UiError> {
         match self.doc.state {
             DocState::Open => {
-                self.page = self.start_page.min(self.doc.sizes.len().saturating_sub(1));
-                self.layout = Layout::default();
+                self.view.page = self
+                    .view
+                    .start_page
+                    .min(self.doc.sizes.len().saturating_sub(1));
+                self.view.layout = Layout::default();
                 self.rebuild()?;
             }
             DocState::NeedsPassword => {
@@ -450,137 +540,11 @@ impl App {
     }
 
     fn text_arrived(&mut self, page: usize) {
-        if self.copy_page == Some(page) {
-            self.copy_page = None;
+        if self.pick.copy_page == Some(page) {
+            self.pick.copy_page = None;
             if let Some(text) = self.doc.text(page) {
                 self.out.push(Out::Copy(text.all()));
             }
         }
-    }
-
-    // ---- search ---------------------------------------------------------------------------
-
-    /// Opens the search bar (Ctrl+F).
-    pub fn open_search(&mut self) -> Result<(), UiError> {
-        if self.doc.state != DocState::Open {
-            return Ok(());
-        }
-        self.searching = true;
-        self.rebuild()
-    }
-
-    /// Closes the search bar and forgets the hits.
-    pub fn close_search(&mut self) -> Result<(), UiError> {
-        self.searching = false;
-        self.search.clear();
-        self.doc.search(self.search_seq, Vec::new(), 0);
-        self.rebuild()
-    }
-
-    /// Searches `query` (a blank query clears the hits).
-    pub fn start_search(&mut self, query: &str) -> Result<(), UiError> {
-        self.search_seq = self.search_seq.wrapping_add(1);
-        let tokens = search::tokens(query);
-        self.search.begin(query, self.search_seq, self.doc.sizes.len());
-        self.doc.search(self.search_seq, tokens, self.page);
-        self.sync_chrome()?;
-        self.draw()
-    }
-
-    fn found(&mut self, id: u32, hits: Vec<Hit>) -> Result<(), UiError> {
-        let first = self.search.add_page(id, hits);
-        self.sync_chrome()?;
-        if first {
-            self.show_hit()?;
-        }
-        Ok(())
-    }
-
-    /// Moves to the next (`dir > 0`) or previous hit and scrolls to it.
-    pub fn step_hit(&mut self, dir: i8) -> Result<(), UiError> {
-        let found = if dir >= 0 {
-            self.search.next().is_some()
-        } else {
-            self.search.prev().is_some()
-        };
-        if found {
-            self.show_hit()?;
-        }
-        Ok(())
-    }
-
-    /// Scrolls so that the shown hit is in view (a third from the top).
-    fn show_hit(&mut self) -> Result<(), UiError> {
-        let Some(hit) = self.search.current().cloned() else {
-            return Ok(());
-        };
-        let (vw, vh) = self.view_px();
-        let (Some(row), Some(size), Some(r)) = (
-            self.layout.rows.get(hit.page).copied(),
-            self.doc.sizes.get(hit.page).copied(),
-            hit.rects.first().copied(),
-        ) else {
-            return Ok(());
-        };
-        let (l, t, rr, b) = rect_to_px(r, size, self.scale, self.rot);
-        self.scroll = row.y + (t + b) / 2.0 - vh / 3.0;
-        let centre = (self.layout.content_w.max(vw) - row.w) / 2.0 + (l + rr) / 2.0;
-        self.scroll_x = if self.layout.content_w > vw { centre - vw / 2.0 } else { 0.0 };
-        self.page = hit.page;
-        self.after_move(false)
-    }
-
-    // ---- opening --------------------------------------------------------------------------
-
-    /// Opens the file `entry` names (a `files://` URI or `area/name` path).
-    pub fn open_entry(&mut self, entry: &str) -> Result<(), UiError> {
-        self.ask = None;
-        let doc = match place::uri_of_entry(entry) {
-            Some(uri) => App::open(Some(&uri), &self.areas),
-            None => Doc::unreadable(None, ReadError::Missing),
-        };
-        self.replace_doc(doc)
-    }
-
-    /// Opens the same file again with the password the person typed.
-    pub(crate) fn retry_password(&mut self, password: &str) -> Result<(), UiError> {
-        let doc = self.doc.with_password(password);
-        self.ask = None;
-        self.replace_doc(doc)?;
-        self.tried_password = true;
-        Ok(())
-    }
-
-    /// Swaps in a freshly started document and resets the view.
-    fn replace_doc(&mut self, doc: Doc) -> Result<(), UiError> {
-        self.tried_password = false;
-        self.start_page = doc.uri.as_deref().map_or(0, place::page_of);
-        if doc.read_error.is_none() {
-            if let Some(u) = &doc.uri {
-                self.recents.push(&place::without_page(u));
-                self.recents.save(&self.data);
-            }
-        }
-        self.doc = doc;
-        self.selection = None;
-        self.drag = None;
-        self.search.clear();
-        self.scroll = 0.0;
-        self.scroll_x = 0.0;
-        self.page = self.start_page;
-        self.layout = Layout::default();
-        self.thumbs = Layout::default();
-        self.panel_scroll = 0.0;
-        self.rebuild()?;
-        let title = self.title();
-        self.out.push(Out::Title(title));
-        Ok(())
-    }
-
-    /// Shows why a file did not open (the empty state names the reason).
-    pub fn open_failed(&mut self, why: ReadError) -> Result<(), UiError> {
-        let uri = self.doc.uri.clone();
-        self.doc = Doc::unreadable(uri, why);
-        self.rebuild()
     }
 }

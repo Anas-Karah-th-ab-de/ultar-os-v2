@@ -32,7 +32,11 @@ pub fn find_in_text(page: usize, text: &PageText, tokens: &[String]) -> Vec<Hit>
     if tokens.is_empty() || text.words.len() < tokens.len() {
         return Vec::new();
     }
-    let folded: Vec<String> = text.words.iter().map(|w| normalize_for_search(&w.text)).collect();
+    let folded: Vec<String> = text
+        .words
+        .iter()
+        .map(|w| normalize_for_search(&w.text))
+        .collect();
     let mut out = Vec::new();
     for first in 0..=folded.len() - tokens.len() {
         let all = tokens
@@ -102,7 +106,7 @@ impl Search {
             self.hits.sort_by_key(|h| (h.page, h.first));
         }
         if first_hit {
-            self.current = self.hits.iter().next().map(|h| (h.page, h.first));
+            self.current = self.hits.first().map(|h| (h.page, h.first));
         }
         first_hit
     }
@@ -144,6 +148,7 @@ impl Search {
     }
 
     /// Moves to the next hit (wrapping around); `None` without hits.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<&Hit> {
         self.step(1)
     }
@@ -158,7 +163,9 @@ impl Search {
             return None;
         }
         let n = self.hits.len() as isize;
-        let at = self.position().map_or(if dir > 0 { -1 } else { 0 }, |p| p as isize);
+        let at = self
+            .position()
+            .map_or(if dir > 0 { -1 } else { 0 }, |p| p as isize);
         let to = (at + dir).rem_euclid(n) as usize;
         self.current = self.hits.get(to).map(|h| (h.page, h.first));
         self.hits.get(to)
@@ -202,7 +209,12 @@ mod tests {
 
     #[test]
     fn arabic_search_ignores_tashkeel_alef_forms_and_presentation_forms() {
-        let t = text(&["\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E}", "أحمد", "Hello", "مدرسة"]);
+        let t = text(&[
+            "\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E}",
+            "أحمد",
+            "Hello",
+            "مدرسة",
+        ]);
         assert_eq!(find_in_text(0, &t, &tokens("مرحبا")).len(), 1);
         assert_eq!(find_in_text(0, &t, &tokens("مَرحَبا")).len(), 1);
         assert_eq!(find_in_text(0, &t, &tokens("احمد")).len(), 1);
@@ -248,7 +260,11 @@ mod tests {
         assert!(!s.add_page(7, vec![hit(1, 3)]));
         assert!(s.done());
         assert_eq!(s.count(), 4);
-        assert_eq!(s.position(), Some(2), "page order, shown hit is the first that arrived");
+        assert_eq!(
+            s.position(),
+            Some(2),
+            "page order, shown hit is the first that arrived"
+        );
         assert_eq!(s.current().map(|h| (h.page, h.first)), Some((2, 5)));
     }
 

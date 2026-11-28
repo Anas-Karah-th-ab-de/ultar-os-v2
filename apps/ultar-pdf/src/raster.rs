@@ -64,7 +64,12 @@ impl Buf {
 
     /// Draws `img` stretched into the rectangle, turned by `rot` (nearest pixel).
     pub fn picture(&mut self, x0: i32, y0: i32, w: i32, h: i32, img: &PageImage, rot: Rot) {
-        if w <= 0 || h <= 0 || img.w == 0 || img.h == 0 || img.rgba.len() < img.w as usize * img.h as usize * 4 {
+        if w <= 0
+            || h <= 0
+            || img.w == 0
+            || img.h == 0
+            || img.rgba.len() < img.w as usize * img.h as usize * 4
+        {
             return;
         }
         let (sw, sh) = (img.w as usize, img.h as usize);

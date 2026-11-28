@@ -32,6 +32,9 @@ pub enum DocState {
     Damaged,
 }
 
+/// What is still missing: pictures (page, scale), page texts, thumbnails (page, scale).
+pub type Missing = (Vec<(usize, f32)>, Vec<usize>, Vec<(usize, f32)>);
+
 /// What `poll` took from the worker.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Change {
@@ -164,8 +167,12 @@ impl Doc {
                 self.state = DocState::Open;
                 Some(Change::State)
             }
-            Evt::Opened(Err(Failure::Pdf(OpenError::Password))) => self.fail(DocState::NeedsPassword),
-            Evt::Opened(Err(Failure::Pdf(OpenError::Unsupported))) => self.fail(DocState::Unsupported),
+            Evt::Opened(Err(Failure::Pdf(OpenError::Password))) => {
+                self.fail(DocState::NeedsPassword)
+            }
+            Evt::Opened(Err(Failure::Pdf(OpenError::Unsupported))) => {
+                self.fail(DocState::Unsupported)
+            }
             Evt::Opened(Err(Failure::Pdf(OpenError::Damaged))) => self.fail(DocState::Damaged),
             Evt::Opened(Err(Failure::Read(e))) => {
                 self.read_error = Some(e);
@@ -209,7 +216,12 @@ impl Doc {
 
     /// Tells the worker what is wanted now, most important first; what is cached (or
     /// failed) is left out, and an unchanged wish is not sent again.
-    pub fn want(&mut self, renders: Vec<(usize, f32)>, texts: Vec<usize>, thumbs: Vec<(usize, f32)>) {
+    pub fn want(
+        &mut self,
+        renders: Vec<(usize, f32)>,
+        texts: Vec<usize>,
+        thumbs: Vec<(usize, f32)>,
+    ) {
         let want = Want {
             renders: renders
                 .into_iter()
@@ -248,6 +260,30 @@ impl Doc {
             || a.thumbs
                 .iter()
                 .any(|&(p, s)| !self.thumbs.has(Key::new(p, s)) && !self.failed.contains(&p))
+    }
+
+    /// What is still missing, for the logs and the tests: (pictures, texts, thumbnails).
+    pub fn missing(&self) -> Missing {
+        let a = &self.asked;
+        let pictures = a
+            .renders
+            .iter()
+            .filter(|&&(p, s)| !self.pages.has(Key::new(p, s)) && !self.failed.contains(&p))
+            .copied()
+            .collect();
+        let texts = a
+            .texts
+            .iter()
+            .filter(|p| !self.texts.contains_key(p))
+            .copied()
+            .collect();
+        let thumbs = a
+            .thumbs
+            .iter()
+            .filter(|&&(p, s)| !self.thumbs.has(Key::new(p, s)) && !self.failed.contains(&p))
+            .copied()
+            .collect();
+        (pictures, texts, thumbs)
     }
 
     /// The picture of `page` at exactly `scale`.

@@ -45,7 +45,12 @@ impl Layout {
             let (dw, dh) = page_display(w, h, rot);
             let (dw, dh) = (dw * scale, dh * scale);
             widest = widest.max(dw);
-            rows.push(PageRow { page: i, y, w: dw, h: dh });
+            rows.push(PageRow {
+                page: i,
+                y,
+                w: dw,
+                h: dh,
+            });
             y += dh + gap;
         }
         let total_h = if rows.is_empty() { 0.0 } else { y - gap };
@@ -138,12 +143,19 @@ impl Layout {
     }
 
     /// The page under the view point `(x, y)` (device pixels from the view's top start corner).
-    pub fn locate(&self, x: f32, y: f32, view_w: f32, scroll: f32, scroll_x: f32) -> Option<Located> {
+    pub fn locate(
+        &self,
+        x: f32,
+        y: f32,
+        view_w: f32,
+        scroll: f32,
+        scroll_x: f32,
+    ) -> Option<Located> {
         let cy = scroll + y;
         let i = self.rows.partition_point(|r| r.y + r.h <= cy);
         let r = self.rows.get(i).filter(|r| r.y <= cy)?;
-        let left = self.origin_x(r.page, view_w, scroll_x);
-        let (px, py) = (x - left, cy - r.y);
+        let left = self.origin_x(r.page, view_w, scroll_x); // physical
+        let (px, py) = (x - left, cy - r.y); // physical
         (px >= 0.0 && px < r.w).then_some(Located {
             page: r.page,
             x: px,
@@ -218,9 +230,9 @@ mod tests {
         // Zoomed in: the content is wider than the view and moves with the scroll.
         let big = Layout::new(&sizes(), 2.0, Rot::None);
         assert!(big.max_scroll_x(800.0) > 0.0);
-        let left = big.origin_x(0, 800.0, 0.0);
-        assert!((left - PAGE_MARGIN).abs() < 0.01);
-        assert!((big.origin_x(0, 800.0, 100.0) - (left - 100.0)).abs() < 0.01);
+        let left = big.origin_x(0, 800.0, 0.0); // physical
+        assert!((left - PAGE_MARGIN).abs() < 0.01); // physical
+        assert!((big.origin_x(0, 800.0, 100.0) - (left - 100.0)).abs() < 0.01); // physical
     }
 
     #[test]
@@ -228,7 +240,11 @@ mod tests {
         let l = Layout::new(&sizes(), 1.0, Rot::None);
         let hit = l.locate(150.0, 20.0, 800.0, 0.0, 0.0);
         assert_eq!(hit.map(|h| h.page), Some(0));
-        let h = hit.unwrap_or(Located { page: 9, x: 0.0, y: 0.0 });
+        let h = hit.unwrap_or(Located {
+            page: 9,
+            x: 0.0,
+            y: 0.0,
+        });
         assert!((h.x - 47.5).abs() < 0.01 && (h.y - 20.0).abs() < 0.01);
         // Left of the page, and in the gap: nothing.
         assert_eq!(l.locate(10.0, 20.0, 800.0, 0.0, 0.0), None);

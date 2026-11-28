@@ -221,12 +221,18 @@ mod tests {
         assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::None), (0.0, 0.0));
         // Turned clockwise the old top-start corner is at the top end of a 200×400 picture.
         assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Cw), (200.0, 0.0));
-        assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Half), (400.0, 200.0));
+        assert_eq!(
+            page_to_px((0.0, 100.0), size, 2.0, Rot::Half),
+            (400.0, 200.0)
+        );
         assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Ccw), (0.0, 400.0));
         for rot in [Rot::None, Rot::Cw, Rot::Half, Rot::Ccw] {
             let p = (37.0, 61.0);
             let back = px_to_page(page_to_px(p, size, 1.5, rot), size, 1.5, rot);
-            assert!((back.0 - p.0).abs() < 0.01 && (back.1 - p.1).abs() < 0.01, "{rot:?}");
+            assert!(
+                (back.0 - p.0).abs() < 0.01 && (back.1 - p.1).abs() < 0.01,
+                "{rot:?}"
+            );
         }
         let r = rect_to_px((10.0, 10.0, 30.0, 20.0), size, 1.0, Rot::None);
         assert_eq!(r, (10.0, 80.0, 30.0, 90.0));

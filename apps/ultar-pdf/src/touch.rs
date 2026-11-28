@@ -85,33 +85,72 @@ mod tests {
     #[test]
     fn one_finger_pans() {
         let mut t = Touches::default();
-        assert_eq!(t.handle(&Event::TouchDown { id: 1, pos: p(10.0, 10.0) }), None);
         assert_eq!(
-            t.handle(&Event::TouchMove { id: 1, pos: p(12.0, 30.0) }),
+            t.handle(&Event::TouchDown {
+                id: 1,
+                pos: p(10.0, 10.0)
+            }),
+            None
+        );
+        assert_eq!(
+            t.handle(&Event::TouchMove {
+                id: 1,
+                pos: p(12.0, 30.0)
+            }),
             Some(Gesture::Pan { dx: 2.0, dy: 20.0 })
         );
-        assert_eq!(t.handle(&Event::TouchUp { id: 1, pos: p(12.0, 30.0) }), None);
-        assert_eq!(t.handle(&Event::TouchMove { id: 1, pos: p(0.0, 0.0) }), None);
+        assert_eq!(
+            t.handle(&Event::TouchUp {
+                id: 1,
+                pos: p(12.0, 30.0)
+            }),
+            None
+        );
+        assert_eq!(
+            t.handle(&Event::TouchMove {
+                id: 1,
+                pos: p(0.0, 0.0)
+            }),
+            None
+        );
     }
 
     #[test]
     fn two_fingers_pinch_and_the_rest_pans_again() {
         let mut t = Touches::default();
-        t.handle(&Event::TouchDown { id: 1, pos: p(0.0, 0.0) });
+        t.handle(&Event::TouchDown {
+            id: 1,
+            pos: p(0.0, 0.0),
+        });
         assert_eq!(
-            t.handle(&Event::TouchDown { id: 2, pos: p(100.0, 0.0) }),
+            t.handle(&Event::TouchDown {
+                id: 2,
+                pos: p(100.0, 0.0)
+            }),
             Some(Gesture::PinchStart)
         );
         assert_eq!(
-            t.handle(&Event::TouchMove { id: 2, pos: p(200.0, 0.0) }),
-            Some(Gesture::PinchMove { start: 100.0, dist: 200.0 })
+            t.handle(&Event::TouchMove {
+                id: 2,
+                pos: p(200.0, 0.0)
+            }),
+            Some(Gesture::PinchMove {
+                start: 100.0,
+                dist: 200.0
+            })
         );
         assert_eq!(
-            t.handle(&Event::TouchUp { id: 2, pos: p(200.0, 0.0) }),
+            t.handle(&Event::TouchUp {
+                id: 2,
+                pos: p(200.0, 0.0)
+            }),
             Some(Gesture::PinchEnd)
         );
         assert_eq!(
-            t.handle(&Event::TouchMove { id: 1, pos: p(0.0, 5.0) }),
+            t.handle(&Event::TouchMove {
+                id: 1,
+                pos: p(0.0, 5.0)
+            }),
             Some(Gesture::Pan { dx: 0.0, dy: 5.0 })
         );
     }
@@ -119,9 +158,24 @@ mod tests {
     #[test]
     fn a_third_finger_is_ignored() {
         let mut t = Touches::default();
-        t.handle(&Event::TouchDown { id: 1, pos: p(0.0, 0.0) });
-        t.handle(&Event::TouchDown { id: 2, pos: p(10.0, 0.0) });
-        t.handle(&Event::TouchDown { id: 3, pos: p(20.0, 0.0) });
-        assert_eq!(t.handle(&Event::TouchMove { id: 3, pos: p(50.0, 0.0) }), None);
+        t.handle(&Event::TouchDown {
+            id: 1,
+            pos: p(0.0, 0.0),
+        });
+        t.handle(&Event::TouchDown {
+            id: 2,
+            pos: p(10.0, 0.0),
+        });
+        t.handle(&Event::TouchDown {
+            id: 3,
+            pos: p(20.0, 0.0),
+        });
+        assert_eq!(
+            t.handle(&Event::TouchMove {
+                id: 3,
+                pos: p(50.0, 0.0)
+            }),
+            None
+        );
     }
 }

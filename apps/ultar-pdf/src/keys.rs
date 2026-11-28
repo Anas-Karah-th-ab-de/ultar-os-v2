@@ -28,8 +28,8 @@ pub enum Effect {
     /// Scroll one line.
     LineDown,
     LineUp,
-    LineLeft,
-    LineRight,
+    LineLeft,  // physical
+    LineRight, // physical
     /// Scroll one viewport down/up.
     PageDown,
     PageUp,
@@ -69,8 +69,8 @@ pub fn apply(key: Key, m: Modifiers, cx: Context) -> Effect {
         Key::Space => Effect::PageDown,
         Key::ArrowDown => Effect::LineDown,
         Key::ArrowUp => Effect::LineUp,
-        Key::ArrowLeft => Effect::LineLeft,
-        Key::ArrowRight => Effect::LineRight,
+        Key::ArrowLeft => Effect::LineLeft,   // physical
+        Key::ArrowRight => Effect::LineRight, // physical
         Key::Home => Effect::First,
         Key::End => Effect::Last,
         _ => Effect::None,
@@ -112,17 +112,26 @@ fn with_ctrl(key: Key, shift: bool) -> Effect {
 /// works while a field has the keyboard, and the arrows scroll instead of moving the focus).
 pub fn is_shortcut(key: Key, m: Modifiers, cx: Context) -> bool {
     if m.ctrl && !m.alt && !m.meta {
-        return !(cx.typing && matches!(key, Key::Char('a' | 'c' | 'x' | 'v' | 'z' | 'A' | 'C' | 'X' | 'V' | 'Z')))
+        return !(cx.typing
+            && matches!(
+                key,
+                Key::Char('a' | 'c' | 'x' | 'v' | 'z' | 'A' | 'C' | 'X' | 'V' | 'Z')
+            ))
             && with_ctrl(key, m.shift) != Effect::None;
     }
     match key {
         Key::Escape => cx.searching,
         Key::Enter => cx.searching && m.shift,
         Key::F(3) => true,
-        Key::PageDown | Key::PageUp | Key::ArrowDown | Key::ArrowUp | Key::ArrowLeft
-        | Key::ArrowRight | Key::Home | Key::End | Key::Space => {
-            !cx.typing && !m.alt && !m.meta && apply(key, m, cx) != Effect::None
-        }
+        Key::PageDown
+        | Key::PageUp
+        | Key::ArrowDown
+        | Key::ArrowUp
+        | Key::ArrowLeft  // physical
+        | Key::ArrowRight  // physical
+        | Key::Home
+        | Key::End
+        | Key::Space => !cx.typing && !m.alt && !m.meta && apply(key, m, cx) != Effect::None,
         _ => false,
     }
 }
@@ -196,21 +205,35 @@ mod tests {
         assert_eq!(apply(Key::Home, plain(), IDLE), Effect::First);
         assert_eq!(apply(Key::End, ctrl(), FIND), Effect::Last);
         for key in [Key::PageDown, Key::ArrowLeft, Key::Home, Key::Space] {
-            assert_eq!(apply(key, plain(), FIND), Effect::None, "{key:?} in a field");
+            // physical
+            assert_eq!(
+                apply(key, plain(), FIND),
+                Effect::None,
+                "{key:?} in a field"
+            );
         }
     }
 
     #[test]
     fn the_window_hands_over_only_what_the_widgets_would_misuse() {
-        assert!(is_shortcut(Key::Char('f'), ctrl(), FIND), "Ctrl+F inside the search field");
-        assert!(!is_shortcut(Key::Char('c'), ctrl(), FIND), "Ctrl+C copies the field's text");
+        assert!(
+            is_shortcut(Key::Char('f'), ctrl(), FIND),
+            "Ctrl+F inside the search field"
+        );
+        assert!(
+            !is_shortcut(Key::Char('c'), ctrl(), FIND),
+            "Ctrl+C copies the field's text"
+        );
         assert!(is_shortcut(Key::Char('c'), ctrl(), IDLE));
         assert!(is_shortcut(Key::ArrowDown, plain(), IDLE));
         assert!(!is_shortcut(Key::ArrowDown, plain(), FIND));
         assert!(is_shortcut(Key::Escape, plain(), FIND));
         assert!(!is_shortcut(Key::Escape, plain(), IDLE));
         assert!(is_shortcut(Key::Enter, shift(), FIND));
-        assert!(!is_shortcut(Key::Enter, plain(), FIND), "Enter submits the field");
+        assert!(
+            !is_shortcut(Key::Enter, plain(), FIND),
+            "Enter submits the field"
+        );
         assert!(!is_shortcut(Key::Tab, plain(), IDLE));
     }
 }

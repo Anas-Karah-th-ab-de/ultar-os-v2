@@ -64,7 +64,11 @@ impl PageText {
                 break;
             };
             if i > first {
-                out.push(if self.lines[i] == self.lines[i - 1] { ' ' } else { '\n' });
+                out.push(if self.lines[i] == self.lines[i - 1] {
+                    ' '
+                } else {
+                    '\n'
+                });
             }
             out.push_str(&w.text);
         }
@@ -95,7 +99,11 @@ mod tests {
     }
 
     fn line(words: Vec<Word>) -> Line {
-        let text = words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+        let text = words
+            .iter()
+            .map(|w| w.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         Line {
             text,
             x0: words[0].x0,
@@ -109,7 +117,10 @@ mod tests {
     fn page() -> PageText {
         PageText::new(&[
             line(vec![word("مرحبا", 150.0, 700.0), word("بكم", 100.0, 700.0)]),
-            line(vec![word("hello", 50.0, 680.0), word("world", 100.0, 680.0)]),
+            line(vec![
+                word("hello", 50.0, 680.0),
+                word("world", 100.0, 680.0),
+            ]),
         ])
     }
 

@@ -184,6 +184,7 @@ fn decode(part: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -191,7 +192,10 @@ mod tests {
     fn a_files_uri_is_a_path_below_the_areas() {
         let a = Path::new("/areas");
         assert_eq!(
-            path_of("files://documents/%D9%85%D9%84%D8%A7%D8%AD%D8%B8%D8%A7%D8%AA.pdf", a),
+            path_of(
+                "files://documents/%D9%85%D9%84%D8%A7%D8%AD%D8%B8%D8%A7%D8%AA.pdf",
+                a
+            ),
             Some(PathBuf::from("/areas/documents/ملاحظات.pdf"))
         );
         assert_eq!(path_of("files://documents/../x.pdf", a), None);
@@ -209,9 +213,18 @@ mod tests {
 
     #[test]
     fn typed_paths_become_uris_and_names_are_decoded() {
-        assert_eq!(uri_of_entry("files://documents/a.pdf#page=2").as_deref(), Some("files://documents/a.pdf#page=2"));
-        assert_eq!(uri_of_entry(" documents/ملف 1.pdf ").as_deref(), Some("files://documents/%D9%85%D9%84%D9%81%201.pdf"));
-        assert_eq!(uri_of_entry("/areas/downloads/x.pdf").as_deref(), Some("files://downloads/x.pdf"));
+        assert_eq!(
+            uri_of_entry("files://documents/a.pdf#page=2").as_deref(),
+            Some("files://documents/a.pdf#page=2")
+        );
+        assert_eq!(
+            uri_of_entry(" documents/ملف 1.pdf ").as_deref(),
+            Some("files://documents/%D9%85%D9%84%D9%81%201.pdf")
+        );
+        assert_eq!(
+            uri_of_entry("/areas/downloads/x.pdf").as_deref(),
+            Some("files://downloads/x.pdf")
+        );
         assert_eq!(uri_of_entry("   "), None);
         assert_eq!(uri_of_entry("/"), None);
         // a typed page suffix stays one, in any digits
@@ -221,10 +234,16 @@ mod tests {
         // what comes out opens below the areas, and the traversal stays out
         let a = Path::new("/areas");
         let uri = uri_of_entry("documents/ملف 1.pdf").unwrap_or_default();
-        assert_eq!(path_of(&uri, a), Some(PathBuf::from("/areas/documents/ملف 1.pdf")));
+        assert_eq!(
+            path_of(&uri, a),
+            Some(PathBuf::from("/areas/documents/ملف 1.pdf"))
+        );
         let up = uri_of_entry("documents/../../etc/passwd").unwrap_or_default();
         assert_eq!(path_of(&up, a), None);
-        assert_eq!(decode_name("files://documents/%D9%85%D9%84%D9%81.pdf#page=3"), "ملف.pdf");
+        assert_eq!(
+            decode_name("files://documents/%D9%85%D9%84%D9%81.pdf#page=3"),
+            "ملف.pdf"
+        );
         assert_eq!(without_page("files://d/a.pdf?page=2"), "files://d/a.pdf");
     }
 
@@ -238,7 +257,10 @@ mod tests {
         r.push("files://documents/a.pdf");
         r.push("files://documents/b.pdf");
         r.push("files://documents/a.pdf");
-        assert_eq!(r.entries, vec!["files://documents/a.pdf", "files://documents/b.pdf"]);
+        assert_eq!(
+            r.entries,
+            vec!["files://documents/a.pdf", "files://documents/b.pdf"]
+        );
         r.save(&d);
         assert_eq!(Recents::load(&d).entries, r.entries);
         let _ = std::fs::remove_dir_all(&d);

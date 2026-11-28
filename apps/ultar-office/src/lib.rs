@@ -15,6 +15,7 @@ pub mod code;
 pub mod doc;
 pub mod docx;
 pub mod pdf;
+mod pdf_text;
 pub mod sheet;
 pub mod xlsx;
 

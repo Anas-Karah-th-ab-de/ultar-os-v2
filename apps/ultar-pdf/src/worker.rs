@@ -14,7 +14,7 @@ use std::sync::Arc;
 use ultar_office::pdf::{OpenError, OutlineItem, PageImage, PdfDoc, PdfInfo};
 
 /// Most pixels of one page picture (a larger zoom is drawn from a smaller picture).
-pub const MAX_PAGE_PIXELS: f32 = 6_000_000.0;
+pub const MAX_PAGE_PIXELS: f32 = 4_000_000.0;
 /// Most pixels of one thumbnail.
 pub const MAX_THUMB_PIXELS: f32 = 120_000.0;
 /// Largest file the reader opens.
@@ -79,13 +79,19 @@ pub enum Evt {
         img: Arc<PageImage>,
     },
     /// The page could not be drawn (damaged content).
-    Failed { page: usize },
+    Failed {
+        page: usize,
+    },
     Text {
         page: usize,
         text: Arc<PageText>,
     },
     /// The hits on one page of search `id` (empty when the page has none).
-    Found { id: u32, page: usize, hits: Vec<Hit> },
+    Found {
+        id: u32,
+        page: usize,
+        hits: Vec<Hit>,
+    },
 }
 
 struct Scan {
@@ -123,9 +129,11 @@ pub fn run(source: Source, password: Option<String>, rx: Receiver<Cmd>, tx: Send
     let opened = load(source).and_then(|bytes| {
         let pw = password.as_deref().unwrap_or("");
         // A damaged file may panic deep inside the parser: that is "damaged", not a crash.
-        catch_unwind(AssertUnwindSafe(|| PdfDoc::open_with_password_kind(bytes, pw)))
-            .unwrap_or(Err(OpenError::Damaged))
-            .map_err(Failure::Pdf)
+        catch_unwind(AssertUnwindSafe(|| {
+            PdfDoc::open_with_password_kind(bytes, pw)
+        }))
+        .unwrap_or(Err(OpenError::Damaged))
+        .map_err(Failure::Pdf)
     });
     let doc = match opened {
         Ok(doc) => doc,
@@ -252,7 +260,8 @@ impl Worker {
         if let Some(t) = self.texts.get(&page) {
             return t.clone();
         }
-        let lines = catch_unwind(AssertUnwindSafe(|| self.doc.page_lines(page))).unwrap_or_default();
+        let lines =
+            catch_unwind(AssertUnwindSafe(|| self.doc.page_lines(page))).unwrap_or_default();
         let text = Arc::new(PageText::new(&lines));
         self.texts.insert(page, text.clone());
         self.text_order.push_back(page);

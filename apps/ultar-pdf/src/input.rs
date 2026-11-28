@@ -21,12 +21,12 @@ impl App {
     pub fn key_context(&self) -> Context {
         let focus = self.ui.focused();
         let typing = focus.is_some()
-            && (focus == self.nodes.search_field
-                || focus == self.nodes.page_field
-                || focus == self.nodes.open_field
-                || focus == self.nodes.password_field);
+            && (focus == self.nodes.finder.search_field
+                || focus == self.nodes.bar.page_field
+                || focus == self.nodes.dialogs.open_field
+                || focus == self.nodes.dialogs.password_field);
         Context {
-            searching: self.searching,
+            searching: self.find.open,
             typing,
         }
     }
@@ -67,8 +67,8 @@ impl App {
             Effect::ClearSelection => self.clear_selection()?,
             Effect::LineDown => self.scroll_by(0.0, line)?,
             Effect::LineUp => self.scroll_by(0.0, -line)?,
-            Effect::LineLeft => self.scroll_by(-line, 0.0)?,
-            Effect::LineRight => self.scroll_by(line, 0.0)?,
+            Effect::LineLeft => self.scroll_by(-line, 0.0)?, // physical
+            Effect::LineRight => self.scroll_by(line, 0.0)?, // physical
             Effect::PageDown => self.scroll_by(0.0, vh * 0.9)?,
             Effect::PageUp => self.scroll_by(0.0, -vh * 0.9)?,
             Effect::First => self.goto(0)?,
@@ -87,11 +87,11 @@ impl App {
     }
 
     fn select_all(&mut self) -> Result<(), UiError> {
-        let Some(text) = self.doc.text(self.page).filter(|t| !t.is_empty()) else {
+        let Some(text) = self.doc.text(self.view.page).filter(|t| !t.is_empty()) else {
             return Ok(());
         };
-        self.selection = Some(Selection {
-            page: self.page,
+        self.pick.selection = Some(Selection {
+            page: self.view.page,
             first: 0,
             last: text.words.len() - 1,
         });
@@ -99,7 +99,7 @@ impl App {
     }
 
     fn clear_selection(&mut self) -> Result<(), UiError> {
-        if self.selection.take().is_some() {
+        if self.pick.selection.take().is_some() {
             self.draw()?;
         }
         Ok(())
@@ -137,7 +137,8 @@ impl App {
 
     fn inside(&mut self, node: Option<NodeId>, pos: Point) -> bool {
         self.ui.layout();
-        node.and_then(|n| self.ui.rect(n)).is_some_and(|r| r.contains(pos))
+        node.and_then(|n| self.ui.rect(n))
+            .is_some_and(|r| r.contains(pos))
     }
 
     fn on_wheel(&mut self, pos: Point, lines: f32) -> Result<(), UiError> {
@@ -145,9 +146,9 @@ impl App {
         if self.inside(self.nodes.page, pos) {
             return self.scroll_by(0.0, step);
         }
-        if self.inside(self.nodes.thumbs, pos) {
-            let h = self.view_h_of(self.nodes.thumbs);
-            self.panel_scroll = (self.panel_scroll + step).clamp(0.0, self.thumbs.max_scroll(h));
+        if self.inside(self.nodes.side.thumbs, pos) {
+            let h = self.view_h_of(self.nodes.side.thumbs);
+            self.rail.scroll = (self.rail.scroll + step).clamp(0.0, self.rail.thumbs.max_scroll(h));
             self.update_wants();
             return self.draw();
         }
@@ -161,15 +162,15 @@ impl App {
     }
 
     fn on_down(&mut self, pos: Point) -> Result<(), UiError> {
-        if self.inside(self.nodes.thumbs, pos) {
+        if self.inside(self.nodes.side.thumbs, pos) {
             return self.click_thumb(pos);
         }
         if !self.inside(self.nodes.page, pos) {
             return Ok(());
         }
-        let had = self.selection.take().is_some();
+        let had = self.pick.selection.take().is_some();
         let (x, y) = self.in_node(self.nodes.page, pos).unwrap_or((0.0, 0.0));
-        self.drag = self.word_at(x, y).map(|(page, word)| Drag {
+        self.pick.drag = self.word_at(x, y).map(|(page, word)| Drag {
             page,
             anchor: word,
             start: (pos.x, pos.y),
@@ -182,11 +183,12 @@ impl App {
     }
 
     fn click_thumb(&mut self, pos: Point) -> Result<(), UiError> {
-        let Some((x, y)) = self.in_node(self.nodes.thumbs, pos) else {
+        let Some((x, y)) = self.in_node(self.nodes.side.thumbs, pos) else {
             return Ok(());
         };
-        let w = self.thumbs.content_w;
-        if let Some(Located { page, .. }) = self.thumbs.locate(x, y, w, self.panel_scroll, 0.0) {
+        let w = self.rail.thumbs.content_w;
+        if let Some(Located { page, .. }) = self.rail.thumbs.locate(x, y, w, self.rail.scroll, 0.0)
+        {
             return self.goto(page);
         }
         Ok(())
@@ -195,22 +197,24 @@ impl App {
     /// The page and the word under (or nearest to) a point of the page area (device pixels).
     fn word_at(&mut self, x: f32, y: f32) -> Option<(usize, usize)> {
         let (vw, _) = self.view_px();
-        let at = self.layout.locate(x, y, vw, self.scroll, self.scroll_x)?;
+        let at = self
+            .view
+            .layout
+            .locate(x, y, vw, self.view.scroll, self.view.scroll_x)?;
         let size = self.doc.sizes.get(at.page).copied()?;
         let text = self.doc.text(at.page)?;
-        let p = px_to_page((at.x, at.y), size, self.scale, self.rot);
+        let p = px_to_page((at.x, at.y), size, self.view.scale, self.view.rot);
         text.nearest_word(p).map(|w| (at.page, w))
     }
 
     fn on_move(&mut self, pos: Point) -> Result<(), UiError> {
-        let Some(mut drag) = self.drag else {
+        let Some(mut drag) = self.pick.drag else {
             return Ok(());
         };
         let s = self.ui.env().scale;
-        let moved = drag.moved
-            || (pos.x - drag.start.0).hypot(pos.y - drag.start.1) * s > SLOP * s;
+        let moved = drag.moved || (pos.x - drag.start.0).hypot(pos.y - drag.start.1) * s > SLOP * s;
         drag.moved = moved;
-        self.drag = Some(drag);
+        self.pick.drag = Some(drag);
         if !moved {
             return Ok(());
         }
@@ -218,7 +222,7 @@ impl App {
         let Some(word) = self.drag_word(drag.page, x, y) else {
             return Ok(());
         };
-        self.selection = Some(Selection {
+        self.pick.selection = Some(Selection {
             page: drag.page,
             first: drag.anchor.min(word),
             last: drag.anchor.max(word),
@@ -229,9 +233,9 @@ impl App {
     /// The word the drag has reached: on its page the nearest one, above or below the page the
     /// first or the last.
     fn drag_word(&mut self, page: usize, x: f32, y: f32) -> Option<usize> {
-        let row = self.layout.rows.get(page).copied()?;
+        let row = self.view.layout.rows.get(page).copied()?;
         let text = self.doc.text(page)?;
-        let cy = self.scroll + y;
+        let cy = self.view.scroll + y;
         if cy < row.y {
             return Some(0);
         }
@@ -239,15 +243,15 @@ impl App {
             return text.words.len().checked_sub(1);
         }
         let (vw, _) = self.view_px();
-        let left = self.layout.origin_x(page, vw, self.scroll_x);
+        let left = self.view.layout.origin_x(page, vw, self.view.scroll_x); // physical
         let size = self.doc.sizes.get(page).copied()?;
-        let p = px_to_page((x - left, cy - row.y), size, self.scale, self.rot);
+        let p = px_to_page((x - left, cy - row.y), size, self.view.scale, self.view.rot); // physical
         text.nearest_word(p)
     }
 
     /// The press ends: what was selected stays, a press without a drag selected nothing.
     fn on_up(&mut self) -> Result<(), UiError> {
-        self.drag = None;
+        self.pick.drag = None;
         Ok(())
     }
 
@@ -264,14 +268,14 @@ impl App {
             }
         }
         let s = self.ui.env().scale;
-        match self.touches.handle(&event) {
+        match self.pick.touches.handle(&event) {
             Some(Gesture::Pan { dx, dy }) => self.scroll_by(-dx * s, -dy * s),
             Some(Gesture::PinchStart) => {
-                self.pinch_from = self.zoom_percent();
+                self.pick.pinch_from = self.zoom_percent();
                 Ok(())
             }
             Some(Gesture::PinchMove { start, dist }) => {
-                let to = pinch_percent(self.pinch_from, start, dist);
+                let to = pinch_percent(self.pick.pinch_from, start, dist);
                 if to == self.zoom_percent() {
                     return Ok(());
                 }
@@ -296,30 +300,30 @@ impl App {
         let n = &self.nodes;
         let clicked = matches!(a.kind, ActionKind::Activated);
         let entered = matches!(a.kind, ActionKind::Submitted);
-        if node == n.dialog && matches!(a.kind, ActionKind::Closed) {
+        if node == n.dialogs.dialog && matches!(a.kind, ActionKind::Closed) {
             self.ask = None;
             return self.rebuild();
         }
-        if clicked && (node == n.open || node == n.empty_open) {
+        if clicked && (node == n.bar.open || node == n.dialogs.empty_open) {
             self.ask = Some(Ask::Open);
             return self.rebuild();
         }
-        if clicked && node == n.find {
+        if clicked && node == n.bar.find {
             return self.open_search();
         }
-        if clicked && node == n.zoom_out {
+        if clicked && node == n.bar.zoom_out {
             return self.zoom_by(-1);
         }
-        if clicked && node == n.zoom_in {
+        if clicked && node == n.bar.zoom_in {
             return self.zoom_by(1);
         }
-        if clicked && node == n.fit_width {
+        if clicked && node == n.bar.fit_width {
             return self.set_fit(Fit::Width);
         }
-        if clicked && node == n.fit_page {
+        if clicked && node == n.bar.fit_page {
             return self.set_fit(Fit::Page);
         }
-        if clicked && node == n.rotate {
+        if clicked && node == n.bar.rotate {
             return self.rotate();
         }
         self.action_more(a, clicked, entered)
@@ -329,29 +333,33 @@ impl App {
         let node = Some(a.node);
         let n = &self.nodes;
         let typed = self.ui.text(a.node).map(str::to_owned).unwrap_or_default();
-        if entered && node == n.page_field {
+        if entered && node == n.bar.page_field {
             return self.go_to_field(&typed);
         }
-        if matches!(a.kind, ActionKind::TextChanged) && node == n.search_field {
+        if matches!(a.kind, ActionKind::TextChanged) && node == n.finder.search_field {
             return self.start_search(&typed);
         }
-        if entered && node == n.search_field {
+        if entered && node == n.finder.search_field {
             return self.step_hit(1);
         }
-        if clicked && node == n.search_next {
+        if clicked && node == n.finder.search_next {
             return self.step_hit(1);
         }
-        if clicked && node == n.search_prev {
+        if clicked && node == n.finder.search_prev {
             return self.step_hit(-1);
         }
-        if clicked && node == n.search_close {
+        if clicked && node == n.finder.search_close {
             return self.close_search();
         }
-        if clicked && (node == n.pages_tab || node == n.outline_tab) {
-            self.panel = if node == n.pages_tab { PanelMode::Pages } else { PanelMode::Outline };
+        if clicked && (node == n.side.pages_tab || node == n.side.outline_tab) {
+            self.rail.mode = if node == n.side.pages_tab {
+                PanelMode::Pages
+            } else {
+                PanelMode::Outline
+            };
             return self.rebuild();
         }
-        if let (ActionKind::Selected(i), true) = (a.kind, node == n.outline) {
+        if let (ActionKind::Selected(i), true) = (a.kind, node == n.side.outline) {
             let page = self.doc.outline.get(i).map(|o| o.page);
             return page.map_or(Ok(()), |p| self.goto(p));
         }
@@ -361,21 +369,33 @@ impl App {
     fn action_dialog(&mut self, a: Action, clicked: bool, entered: bool) -> Result<(), UiError> {
         let node = Some(a.node);
         let n = &self.nodes;
-        if (clicked && (node == n.open_cancel || node == n.password_cancel))
-            || matches!(a.kind, ActionKind::Closed) && node == n.dialog
+        if (clicked && (node == n.dialogs.open_cancel || node == n.dialogs.password_cancel))
+            || matches!(a.kind, ActionKind::Closed) && node == n.dialogs.dialog
         {
             self.ask = None;
             return self.rebuild();
         }
-        if (clicked && node == n.open_ok) || (entered && node == n.open_field) {
-            let entry = n.open_field.and_then(|f| self.ui.text(f).ok()).unwrap_or("").to_owned();
+        if (clicked && node == n.dialogs.open_ok) || (entered && node == n.dialogs.open_field) {
+            let entry = n
+                .dialogs
+                .open_field
+                .and_then(|f| self.ui.text(f).ok())
+                .unwrap_or("")
+                .to_owned();
             return self.open_entry(&entry);
         }
-        if (clicked && node == n.password_ok) || (entered && node == n.password_field) {
-            let pw = n.password_field.and_then(|f| self.ui.text(f).ok()).unwrap_or("").to_owned();
+        if (clicked && node == n.dialogs.password_ok)
+            || (entered && node == n.dialogs.password_field)
+        {
+            let pw = n
+                .dialogs
+                .password_field
+                .and_then(|f| self.ui.text(f).ok())
+                .unwrap_or("")
+                .to_owned();
             return self.retry_password(&pw);
         }
-        if let (ActionKind::Selected(i), true) = (a.kind, node == n.recents) {
+        if let (ActionKind::Selected(i), true) = (a.kind, node == n.dialogs.recents) {
             let entry = self.recents.entries.get(i).cloned();
             return entry.map_or(Ok(()), |e| self.open_entry(&e));
         }

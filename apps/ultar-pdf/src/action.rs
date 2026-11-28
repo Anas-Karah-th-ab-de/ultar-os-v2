@@ -64,8 +64,8 @@ impl App {
                 if crate::search::tokens(&query).is_empty() {
                     return Ok(AgentReply::Invalid);
                 }
-                self.searching = true;
-                self.search.query = query.clone();
+                self.find.open = true;
+                self.find.hits.query = query.clone();
                 self.rebuild()?;
                 self.start_search(&query)?;
                 ("pdf.agent.search", AgentReply::Done)
@@ -89,11 +89,11 @@ impl App {
             self.copy_selection();
             return Ok(());
         }
-        let index = page.map_or(self.page, |p| p - 1);
+        let index = page.map_or(self.view.page, |p| p - 1);
         match self.doc.text(index) {
             Some(text) => self.out.push(Out::Copy(text.all())),
             None => {
-                self.copy_page = Some(index);
+                self.pick.copy_page = Some(index);
                 self.update_wants();
             }
         }
