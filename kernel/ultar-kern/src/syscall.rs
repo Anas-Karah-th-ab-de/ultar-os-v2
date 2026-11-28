@@ -2023,11 +2023,13 @@ fn sys_mkdir(dirfd: i64, path: u64, mode: u64) -> i64 {
         Ok(loc) if loc.read_only => -EROFS,
         Ok(loc) if loc.confined && kernel_tree(&loc.host) => -EPERM,
         Ok(loc) if fs::stat(&loc.host).is_none() && crate::perm::may_create(&loc.host).is_err() => -EACCES,
-        Ok(loc) if fs::mkdir(&loc.host) => {
-            crate::perm::created(&loc.host, crate::perm::S_IFDIR, mode as u32);
-            0
-        }
-        Ok(_) => -EEXIST,
+        Ok(loc) => match fs::mkdir_res(&loc.host) {
+            Ok(()) => {
+                crate::perm::created(&loc.host, crate::perm::S_IFDIR, mode as u32);
+                0
+            }
+            Err(e) => e,
+        },
         Err(e) => e,
     }
 }

@@ -861,24 +861,44 @@ pub fn mounts() -> Vec<(String, &'static str)> {
 }
 
 pub fn mkdir(path: &str) -> bool {
+    mkdir_res(path).is_ok()
+}
+
+/// Like [`mkdir`] with the reason of a failure. A directory the ext4 writer cannot make on its disk is
+/// an error (`ENOSPC` without room, else `EIO`) – never a directory in memory instead: files in it
+/// would seem stored and were not.
+pub fn mkdir_res(path: &str) -> Result<(), i64> {
+    const EEXIST: i64 = 17;
+    const EIO: i64 = 5;
+    const ENOSPC: i64 = 28;
+    let ok = |done: bool| if done { Ok(()) } else { Err(-EEXIST) };
     if crate::devices::sysfs::is_tree(path) {
-        return false;
+        return Err(-EEXIST);
     }
     if tmpfs::is_private(path) {
-        return tmpfs::mkdir(path);
+        return ok(tmpfs::mkdir(path));
     }
     if crate::groups::files::is_tree(path) {
-        return crate::groups::files::mkdir(path);
+        return ok(crate::groups::files::mkdir(path));
     }
     if stat(path).is_some() {
-        return false;
+        return Err(-EEXIST);
     }
     if let Some((i, rel)) = ext4_target(path) {
-        if let Some(Ok(())) = with_ext4(i, |x| x.mkdir(&rel)) {
-            return true;
-        }
+        return match with_ext4(i, |x| x.mkdir(&rel)) {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => {
+                crate::kprintln!("[fs] {path}: {e} - Verzeichnis nicht angelegt");
+                Err(if e == crate::ext4::NO_SPACE { -ENOSPC } else { -EIO })
+            }
+            None => Err(-EIO),
+        };
     }
-    tmpfs::store(&alloc::format!("{path}/"), Arc::new(Vec::new()))
+    if tmpfs::store(&alloc::format!("{path}/"), Arc::new(Vec::new())) {
+        Ok(())
+    } else {
+        Err(-ENOSPC)
+    }
 }
 
 /// A symbolic link on a writable ext4 (the caller checked the view: only cells make them there).

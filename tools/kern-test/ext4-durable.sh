@@ -8,7 +8,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 D="$(mktemp)"; DISK="$(mktemp)"; L1="$(mktemp)"; L2="$(mktemp)"; trap 'rm -f "$D" "$DISK" "$L1" "$L2"' EXIT
-mke2fs -q -t ext4 ${EXT4_BLOCK:+-b "$EXT4_BLOCK"} "$D" 160M
+# an indexed (HTree) directory of 600 entries: mkdir inside it must reach the disk or fail, never stay in memory
+SRC="$(mktemp -d)"; mkdir "$SRC/bigdir"; for i in $(seq 1 600); do : > "$SRC/bigdir/eintrag-mit-langem-namen-$i"; done
+mke2fs -q -t ext4 ${EXT4_BLOCK:+-b "$EXT4_BLOCK"} -d "$SRC" "$D" 160M
+rm -rf "$SRC"
+e2fsck -fyD "$D" >/dev/null 2>&1 || true
+debugfs -R "htree_dump /bigdir" "$D" 2>&1 | grep -q "Root node dump" || echo "note  /bigdir carries no HTree index"
 python3 tools/kern-test/gptimg.py "$DISK" "ultar-data:linux:$D"
 run() { # log, command
   QARGS="-drive file=$DISK,if=none,id=c,format=raw -device virtio-blk-pci,drive=c" SMP="${SMP:-2}" MEM=1536 WAIT="${WAIT:-600}" \

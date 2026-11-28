@@ -108,10 +108,37 @@ int main(int argc, char **argv) {
         free(b);
         check(done, "64 MiB file changed although the free space holds no second copy of it");
         check(same(big, 64 * MIB, 1), "the changed 64 MiB file reads back");
+        // a directory in an indexed (HTree) directory: made on the disk or refused – never kept in memory
+        char sub[160];
+        snprintf(sub, sizeof sub, "%s/bigdir/neu", dir);
+        if (access(sub, F_OK) != 0 && access(dir, F_OK) == 0) {
+            snprintf(bundle, sizeof bundle, "%s/bigdir", dir);
+            if (access(bundle, F_OK) == 0) {
+                int m = mkdir(sub, 0755);
+                printf("ok   mkdir in the indexed directory: %s\n", m == 0 ? "made" : strerror(errno));
+                FILE *f = fopen("/tmp/ext4test-mkdir", "w");
+                if (f) { fprintf(f, "%d\n", m == 0); fclose(f); }
+                char flag[192];
+                snprintf(flag, sizeof flag, "%s/mkdir-result", dir);
+                int fd = open(flag, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+                if (fd >= 0) { if (write(fd, m == 0 ? "1" : "0", 1) != 1) failures++; fsync(fd); close(fd); }
+            }
+        }
         printf(failures ? "EXT4TEST: FEHLER (%d)\n" : "EXT4TEST: GESCHRIEBEN\n", failures);
     } else {
         check(same(big, 64 * MIB, 1), "64 MiB file intact after the hard stop");
         check(same(bundle, 18 * MIB, 2), "18 MiB file intact after the hard stop");
+        // what mkdir answered in the indexed directory must hold after the restart
+        char flag[192], sub[160], r = 0;
+        snprintf(flag, sizeof flag, "%s/mkdir-result", dir);
+        snprintf(sub, sizeof sub, "%s/bigdir/neu", dir);
+        int fd = open(flag, O_RDONLY);
+        if (fd >= 0 && read(fd, &r, 1) == 1) {
+            struct stat st;
+            int there = stat(sub, &st) == 0 && S_ISDIR(st.st_mode);
+            check(r == '1' ? there : !there, r == '1' ? "the directory made in the indexed directory is on the disk" : "the refused directory is nowhere (not kept in memory)");
+        }
+        if (fd >= 0) close(fd);
         printf(failures ? "EXT4TEST: FEHLER (%d)\n" : "EXT4TEST: ALLES OK\n", failures);
     }
     return failures != 0;
