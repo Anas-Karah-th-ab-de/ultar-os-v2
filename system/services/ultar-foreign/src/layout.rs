@@ -76,6 +76,13 @@ impl Layout {
                 .is_file()
     }
 
+    /// Whether the component „Android apps“ is in the Linux area (its start program).
+    pub fn android_installed(&self) -> bool {
+        self.runtime()
+            .join(crate::apk::RUN.trim_start_matches('/'))
+            .is_file()
+    }
+
     /// The version of the Linux area (`/etc/ultar-runtime`, written by its build).
     pub fn runtime_version(&self) -> String {
         self.runtime_field("version")

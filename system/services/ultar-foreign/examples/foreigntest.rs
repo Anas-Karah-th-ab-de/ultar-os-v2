@@ -1,9 +1,9 @@
 //! `foreigntest` – what the kernel under it offers the apps from other systems
 //! (`tools/kern-test/foreign-e2e.sh` runs it on the Ultar kernel in QEMU; on Linux as
-//! root it should say `FOREIGN: ALLES OK` but for the network barrier of stage P0).
+//! root it should say `FOREIGN: ALLES OK`).
 //!
 //! ```text
-//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE]
+//! foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux [--deb FILE] [--dex FILE]
 //! ```
 //!
 //! With the area's component „Windows programs“ (`components=windows`) it also runs Wine
@@ -351,6 +351,106 @@ fn tail(text: &str) -> String {
     t
 }
 
+/// The Android runtime of the area (component "Android apps", stage P5): ART runs a
+/// program of its own (`hello.dex` of `make-android-runtime.sh`), chrooted into the area as
+/// root – what ART needs of the kernel, before any cell. ART's data (`ANDROID_DATA`) is a tmpfs:
+/// the check asks the kernel for ART, writing the area's disk is the check `root-writes-area`.
+fn art(area: &Path, dex: &Path) -> Result<(), String> {
+    use std::time::Instant;
+    let code = std::fs::read(dex).map_err(|e| format!("read {e}"))?;
+    std::fs::create_dir_all(area.join("tmp/ultar-art")).map_err(|e| format!("mkdir {e}"))?;
+    std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
+    std::env::set_current_dir("/").map_err(|e| e.to_string())?;
+    let command = |program: &str, args: &[&str]| {
+        let mut c = Command::new(program);
+        c.args(args)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("ANDROID_DATA", "/tmp/ultar-art")
+            .stdin(std::process::Stdio::null());
+        c
+    };
+    let ok = |args: &[&str]| {
+        command("/usr/bin/mount", args)
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let tmpfs = ok(&["-t", "tmpfs", "-o", "size=256m", "tmpfs", "/tmp/ultar-art"]);
+    std::fs::create_dir_all("/tmp/ultar-art/dalvik-cache").map_err(|e| format!("mkdir {e}"))?;
+    std::fs::write("/tmp/ultar-art/hello.dex", &code).map_err(|e| format!("write {e}"))?;
+    let proc_mounted = ok(&["-t", "proc", "proc", "/proc"]);
+    // A program of the area, stopped after `secs` (ART may hang on a kernel): its end, stdout, stderr.
+    let run_for = |program: &str, args: &[&str], secs: u64| -> (String, String, String) {
+        let files = (
+            std::fs::File::create("/tmp/ultar-art/out"),
+            std::fs::File::create("/tmp/ultar-art/err"),
+        );
+        let (Ok(out), Ok(err)) = files else {
+            return ("no output files".into(), String::new(), String::new());
+        };
+        let mut child = match command(program, args).stdout(out).stderr(err).spawn() {
+            Ok(c) => c,
+            Err(e) => return (format!("start: {e}"), String::new(), String::new()),
+        };
+        let end = Instant::now() + Duration::from_secs(secs);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break format!("exit {:?}", s.code()),
+                Ok(None) if Instant::now() < end => std::thread::sleep(Duration::from_millis(200)),
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break format!("still running after {secs} s");
+                }
+                Err(e) => break format!("wait: {e}"),
+            }
+        };
+        let read = |f: &str| std::fs::read_to_string(f).unwrap_or_default();
+        (
+            status,
+            read("/tmp/ultar-art/out"),
+            read("/tmp/ultar-art/err"),
+        )
+    };
+    let last = |text: &str| {
+        let lines: Vec<&str> = text.lines().rev().take(3).collect();
+        lines.into_iter().rev().collect::<Vec<_>>().join(" | ")
+    };
+    let hello = ["-cp", "/tmp/ultar-art/hello.dex", "Hello"];
+    let (end, out, err) = run_for("/usr/bin/dalvikvm", &hello, 300);
+    let done = |out: &str| out.lines().any(|l| l == "ultar-art-ok 42");
+    let mut report = String::new();
+    if !done(&out) {
+        // Where the kernel says the program lies (glibc's `$ORIGIN`, which ART's run path uses), and
+        // whether ART runs when the loader is told the program's path itself.
+        let (_, exe, _) = run_for("/usr/bin/readlink", &["/proc/self/exe"], 20);
+        let mut through_loader = vec!["/usr/bin/dalvikvm"];
+        through_loader.extend(hello);
+        let (l_end, l_out, l_err) = run_for("/lib64/ld-linux-x86-64.so.2", &through_loader, 300);
+        report = format!(
+            "(ART runs a program: dalvikvm {end}, /proc {}, data {}; /proc/self/exe of readlink = {:?}; \
+             through ld.so: {}) {}",
+            if proc_mounted { "mounted" } else { "NOT mounted" },
+            if tmpfs { "tmpfs" } else { "on the area's disk" },
+            exe.trim(),
+            if done(&l_out) { "ok".to_owned() } else { format!("{l_end}, {}", last(&l_err)) },
+            last(&err)
+        );
+    }
+    if proc_mounted {
+        let _ = command("/usr/bin/umount", &["/proc"]).status();
+    }
+    if tmpfs {
+        let _ = command("/usr/bin/umount", &["/tmp/ultar-art"]).status();
+    }
+    let _ = std::fs::remove_dir_all("/tmp/ultar-art");
+    if report.is_empty() {
+        Ok(())
+    } else {
+        Err(report)
+    }
+}
+
 fn arg(words: &[String], name: &str) -> Option<String> {
     let at = words.iter().position(|w| w == name)?;
     words.get(at + 1).cloned()
@@ -389,7 +489,11 @@ fn main() {
     let words: Vec<String> = std::env::args().skip(1).collect();
     let area = PathBuf::from(arg(&words, "--area").unwrap_or_else(|| "/data/foreign/linux".into()));
     if let Some(name) = arg(&words, "--check") {
-        std::process::exit(match raw(&name, &area) {
+        let result = match (name.as_str(), arg(&words, "--dex")) {
+            ("android-art", Some(dex)) => art(&area, Path::new(&dex)),
+            _ => raw(&name, &area),
+        };
+        std::process::exit(match result {
             Ok(()) => 0,
             Err(detail) => {
                 eprintln!("{detail}");
@@ -446,6 +550,22 @@ fn main() {
             ),
             Err(e) => println!("FOREIGN-WINDOWS: FEHLT (Wine): {e}"),
         }
+    }
+    // the Android runtime (stage P5), when the area has it
+    if let Some(dex) = arg(&words, "--dex") {
+        let out = Command::new(&me)
+            .args(["--check", "android-art", "--area"])
+            .arg(&area)
+            .args(["--dex", &dex])
+            .output();
+        report(
+            "android-art",
+            match out {
+                Ok(o) if o.status.success() => Ok(()),
+                Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_owned()),
+                Err(e) => Err(e.to_string()),
+            },
+        );
     }
     // the service's cells with the area's Ubuntu programs
     let inspected = cell(

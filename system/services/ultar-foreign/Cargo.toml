@@ -14,6 +14,14 @@ path = "src/lib.rs"
 name = "ultar-foreign"
 path = "src/bin/ultar-foreign.rs"
 
+[features]
+# APK test signing (src/apk/testsign.rs, examples/apk-variant.rs) – never in the service
+test-sign = []
+
+[[example]]
+name = "apk-variant"
+required-features = ["test-sign"]
+
 [dependencies]
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
@@ -22,6 +30,13 @@ ultar-sys = { path = "../../hal/ultar-sys" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 rustix = { version = "1", default-features = false, features = ["std", "thread", "process", "mount", "fs"] }
+# Android apps (src/apk): ZIP inflate, APK Signature Scheme v2/v3 (RSA, ECDSA P-256/P-384)
+miniz_oxide = "0.8"
+sha2 = { version = "0.10", features = ["oid"] }
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
+ecdsa = { version = "0.16", default-features = false, features = ["verifying", "std"] }
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

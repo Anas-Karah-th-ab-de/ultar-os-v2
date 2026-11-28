@@ -681,5 +681,8 @@ fn dummy() -> ultar_bus::messages::foreign::Inspected {
         verified: false,
         installable: false,
         suggested: Choices::default(),
+        signer: String::new(),
+        refusal: None,
+        not_granted: Vec::new(),
     }
 }

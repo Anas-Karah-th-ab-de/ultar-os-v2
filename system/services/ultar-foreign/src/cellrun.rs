@@ -430,6 +430,10 @@ pub fn stage_two(words: &[String]) -> i32 {
     if let Err(step) = build_view(&job).and_then(|()| confine(job.mode)) {
         return step.code();
     }
+    // the service's own readers (APK files) run here, confined, in this very process
+    if job.program[0].starts_with(crate::apk::internal::PREFIX) {
+        return crate::apk::run_internal(&job.program);
+    }
     let mut command = Command::new(&job.program[0]);
     // the installation cell's messages (apt and dpkg write their errors there) go with its
     // output; the inspection cell's output stays the fields alone
