@@ -259,13 +259,17 @@ impl ForeignService {
             let _ = std::fs::remove_file(&record.icon);
         }
         self.save(bus);
-        let deb = record.source == Source::Deb.word();
-        if !deb {
+        let windows = matches!(
+            Source::from_word(&record.source),
+            Some(Source::Exe | Source::Msi)
+        );
+        if windows {
             // a Windows program lives in its own data (gone with the launcher's uninstall)
             // and its installer here: nothing of it is in the Linux area
             crate::windows::forget(&self.ctx, &record);
         }
-        if deb && !self.state.package_used(&record.package, &record.id) {
+        // a Linux package or an Android app: out of the Linux area again
+        if !windows && !self.state.package_used(&record.package, &record.id) {
             let ctx = self.ctx.clone();
             self.busy = bus.later(move |_client: &Client| {
                 let purged = jobs::take_out(&ctx, &record);
