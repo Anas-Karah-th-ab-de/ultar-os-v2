@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest dritest avxtest schutztest crypttest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest dritest avxtest schutztest crypttest growtest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest dritest avxtest schutztest crypttest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest dritest avxtest schutztest crypttest growtest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -66,4 +66,8 @@ schutztest: schutztest.c
 
 # encrypted data partition: locked state, header node, wrong key, unlock, read/write (tools/kern-test/crypt-data.sh)
 crypttest: crypttest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
+
+# the ext4 writer on a grown file system: inodes and blocks of new groups (tools/kern-test/ext4-grow.sh)
+growtest: growtest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<
