@@ -49,6 +49,9 @@ mod runtime;
 fn main() -> ExitCode {
     // before any thread: the bundle's fonts and Mesa drivers; then the sound sink (feature media)
     runtime::setup();
+    // GStreamer (download buffering of media over http) and glib read the cache folder once,
+    // at start; the page cell has only a private /tmp, so it is named before anything starts
+    std::env::set_var("XDG_CACHE_HOME", "/tmp");
     media::install();
     let Some(args) = args::parse(std::env::args_os().skip(1)) else {
         eprintln!("ultar-web-engine: started with unknown options (only the browser starts it)");

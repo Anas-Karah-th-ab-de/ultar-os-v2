@@ -8,13 +8,15 @@
 //! * `audio.mic_state`: who records, for the mark in the shell.
 
 use crate::conn::Rights;
-use crate::engine::{Engine, Event, ListenerSpec};
+use crate::engine::{known_uid, Engine, Event, ListenerSpec, Uid, NO_UID};
 use crate::service::AudioService;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 use ultar_audio_stream::{MAX_RATE, MIN_RATE};
 use ultar_bus::messages::audio::MicState;
+use ultar_bus::messages::launcher::AppStatus;
 use ultar_bus::messages::voice::{
     AudioDone, Capture, MicChunk, Play, MAX_CHUNK_SAMPLES, SAMPLE_RATE,
 };
@@ -24,6 +26,9 @@ use ultar_svckit::{Bus, Poster};
 
 /// How long a microphone request of the bus counts without being renewed.
 pub const LEASE: Duration = Duration::from_secs(60);
+/// How often the launcher is asked for the user ids of apps (they change when apps are
+/// installed or removed); until all are known, at every tick.
+pub const APPS_EVERY: Duration = Duration::from_secs(60);
 /// Clips waiting to be played at most.
 const MAX_PENDING: usize = 8;
 /// How often the engine thread looks while it has something to do, and while it has not.
@@ -62,9 +67,11 @@ pub fn rights_of(policy: &Policy, identity: &str) -> Rights {
     }
 }
 
-/// The sockets of a list of identities: `identity` or `identity:uid`, below `dir`. The uid is
-/// the user the identity runs as (`rootfs/etc/ultar/ids.toml`); without one the identity is
-/// the service's own user (tests, development).
+/// The sockets of a list of identities: `identity`, `identity:uid` or `app.<id>:launcher`,
+/// below `dir`. The uid is the user the identity runs as (`rootfs/etc/ultar/ids.toml`);
+/// `launcher` (apps only) asks the launcher for it at run time (apps get their user id when
+/// they are installed); without anything the identity is the service's own user (tests,
+/// development).
 pub fn listeners(
     dir: &std::path::Path,
     list: &str,
@@ -72,12 +79,18 @@ pub fn listeners(
 ) -> Result<Vec<ListenerSpec>, String> {
     let mut specs = Vec::new();
     for item in list.split(',').filter(|s| !s.is_empty()) {
-        let (identity, uid) = match item.split_once(':') {
+        let (identity, uid, app) = match item.split_once(':') {
+            Some((i, "launcher")) => {
+                let id = i.strip_prefix("app.").filter(|a| !a.is_empty());
+                let id = id.ok_or_else(|| format!("app of {item}"))?;
+                (i, known_uid(NO_UID), Some(id.to_owned()))
+            }
             Some((i, u)) => (
                 i,
-                u.parse::<u32>().map_err(|_| format!("user id of {item}"))?,
+                known_uid(u.parse::<u32>().map_err(|_| format!("user id of {item}"))?),
+                None,
             ),
-            None => (item, own_uid()?),
+            None => (item, known_uid(own_uid()?), None),
         };
         Identity::new(identity).map_err(|_| format!("identity {identity}"))?;
         if specs.iter().any(|s: &ListenerSpec| s.identity == identity) {
@@ -88,6 +101,7 @@ pub fn listeners(
             identity: identity.to_owned(),
             rights: rights_of(policy, identity),
             uid,
+            app,
             // everybody may connect; the peer credentials decide who it is
             mode: Some(0o666),
         });
@@ -113,13 +127,28 @@ pub struct Sound {
     leases: BTreeMap<String, Instant>,
     card: bool,
     mic: MicState,
+    /// Apps whose user id the launcher tells, and when it was asked last.
+    apps: Vec<(String, Uid)>,
+    apps_asked: Option<Instant>,
+}
+
+/// Puts the user ids the launcher listed into the slots of the apps that wait for one; an
+/// app that is not installed (any more) gets none, so nobody is let in as it.
+pub fn fill_slots(slots: &[(String, Uid)], apps: &[AppStatus]) {
+    for (id, slot) in slots {
+        let uid = apps.iter().find(|a| &a.app == id).map_or(NO_UID, |a| a.uid);
+        slot.store(uid, Ordering::Relaxed);
+    }
 }
 
 impl Sound {
     /// A sound server around `engine` (not running yet).
     pub fn new(engine: Engine) -> Self {
         let (tx, rx) = channel();
+        let apps = engine.app_slots();
         Self {
+            apps,
+            apps_asked: None,
             tx,
             rx: Some(rx),
             engine: Some(engine),
@@ -129,6 +158,27 @@ impl Sound {
             card: false,
             mic: MicState::default(),
         }
+    }
+
+    /// Whether the launcher has to be asked for the user ids of apps now.
+    pub fn apps_due(&self, now: Instant) -> bool {
+        if self.apps.is_empty() {
+            return false;
+        }
+        let unknown = self
+            .apps
+            .iter()
+            .any(|(_, s)| s.load(Ordering::Relaxed) == NO_UID);
+        match self.apps_asked {
+            None => true,
+            Some(at) => unknown || now.duration_since(at) >= APPS_EVERY,
+        }
+    }
+
+    /// The launcher's list of apps arrived.
+    pub fn apps_listed(&mut self, now: Instant, apps: &[AppStatus]) {
+        self.apps_asked = Some(now);
+        fill_slots(&self.apps, apps);
     }
 
     /// Starts the engine thread.
@@ -330,13 +380,41 @@ call = ["audio.play", "audio.ring"]
     }
 
     #[test]
+    fn an_app_gets_its_user_id_from_the_launcher_and_loses_it_when_removed() {
+        use ultar_bus::messages::launcher::AppStatus;
+        let p = Policy::from_toml_str(POLICY).unwrap();
+        let dir = std::path::Path::new("/run/ultar/audio");
+        let l = listeners(dir, "app.browser:launcher,system.calld:829", &p).unwrap();
+        assert_eq!(l[0].app.as_deref(), Some("browser"));
+        assert_eq!(l[0].uid.load(Ordering::Relaxed), NO_UID);
+        assert_eq!(l[1].app, None);
+        assert!(listeners(dir, "system.calld:launcher", &p).is_err());
+        let slots = vec![("browser".to_owned(), l[0].uid.clone())];
+        let app = |id: &str, uid: u32| AppStatus {
+            app: id.into(),
+            uid,
+            profile: "app.standard".into(),
+            version: "1".into(),
+            instances: Vec::new(),
+        };
+        fill_slots(&slots, &[app("files", 20_001), app("browser", 20_007)]);
+        assert_eq!(l[0].uid.load(Ordering::Relaxed), 20_007);
+        fill_slots(&slots, &[app("files", 20_001)]);
+        assert_eq!(l[0].uid.load(Ordering::Relaxed), NO_UID);
+    }
+
+    #[test]
     fn the_stream_list_is_checked() {
         let p = Policy::from_toml_str(POLICY).unwrap();
         let dir = std::path::Path::new("/run/ultar/audio");
         let l = listeners(dir, "system.calld:829,app.web", &p).unwrap();
         assert_eq!(l.len(), 2);
-        assert_eq!(l[0].uid, 829);
-        assert_ne!(l[1].uid, 829, "without a user id it is the service's own");
+        assert_eq!(l[0].uid.load(Ordering::Relaxed), 829);
+        assert_ne!(
+            l[1].uid.load(Ordering::Relaxed),
+            829,
+            "without one it is the service's own"
+        );
         assert_eq!(l[0].mode, Some(0o666));
         assert_eq!(l[0].path, dir.join("system.calld.sock"));
         assert!(l[0].rights.call && !l[1].rights.call);

@@ -3,11 +3,13 @@
 //! ```text
 //! ultar-audiod --bus PATH --state DIR [--root DIR] [--log-socket PATH] [--token-file PATH]
 //!              [--policy FILE --stream-dir DIR --streams ID[:GID],...]
-//!              [--device NODE | --play-file FILE --capture-file FILE]
+//!              [--device NODE | --alsa-play NODE [--alsa-capture NODE] | --play-file FILE --capture-file FILE]
 //! ```
 //! * `--root` is the directory the sound cards' controls are found below (`/`).
 //! * `--device` is the kernel's card (`/dev/ultar/pcm`); with it the service keeps the
-//!   kernel right `sound` and is the only holder of the card. `--play-file` and
+//!   kernel right `sound` and is the only holder of the card. `--alsa-play` (and
+//!   `--alsa-capture`) name the ALSA stream nodes of a Linux card (`/dev/snd/pcmC0D0p`,
+//!   `/dev/snd/pcmC0D0c`). `--play-file` and
 //!   `--capture-file` make two plain files the card (development, tests).
 //! * `--streams` lists the programs that get a stream socket below `--stream-dir`, one
 //!   socket per identity (group `GID` may connect); what each may do comes from the bus
@@ -17,7 +19,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 use std::process::ExitCode;
-use ultar_audiod::device::{Device, FileDevice, NodeDevice};
+use ultar_audiod::device::{AlsaDevice, Device, FileDevice, NodeDevice};
 use ultar_audiod::engine::{Engine, Opener};
 use ultar_audiod::sound::listeners;
 use ultar_audiod::AudioService;
@@ -33,6 +35,12 @@ fn opener(args: &CommonArgs) -> Result<Option<Opener>, Msg> {
     if let Some(node) = args.path("device").map_err(bad)? {
         return Ok(Some(Box::new(move || {
             NodeDevice::open(&node).map(|d| Box::new(d) as Box<dyn Device>)
+        })));
+    }
+    if let Some(play) = args.path("alsa-play").map_err(bad)? {
+        let capture = args.path("alsa-capture").map_err(bad)?;
+        return Ok(Some(Box::new(move || {
+            AlsaDevice::open(&play, capture.as_deref()).map(|d| Box::new(d) as Box<dyn Device>)
         })));
     }
     match (
@@ -78,6 +86,8 @@ fn main() -> ExitCode {
             "root",
             "policy",
             "device",
+            "alsa-play",
+            "alsa-capture",
             "play-file",
             "capture-file",
             "streams",

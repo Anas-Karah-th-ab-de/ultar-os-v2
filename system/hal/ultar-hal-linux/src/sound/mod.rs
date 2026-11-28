@@ -3,11 +3,13 @@
 //!
 //! [`CardControls`] is the HAL trait the audio service uses; [`SoundCards`] is the real
 //! backend. A machine without sound cards (QEMU without a sound device, the Ultar kernel
-//! today) lists none – the service then reports "no device". Playback streams are not
-//! part of this module.
+//! today) lists none – the service then reports "no device". The sample streams (playback and
+//! capture) are in [`pcm`].
 
 mod elem;
 mod ioctl;
+pub mod pcm;
+mod pcm_ioctl;
 
 pub use elem::{choose, decode_info, ElemInfo, ElemType, Playback};
 

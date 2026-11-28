@@ -9,6 +9,7 @@
 pub mod audio;
 pub mod clock;
 pub mod player;
+pub mod relay;
 pub mod sink;
 pub mod video;
 

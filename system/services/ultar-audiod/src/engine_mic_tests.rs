@@ -265,3 +265,97 @@ fn a_stream_that_runs_dry_gets_a_bigger_cushion_and_never_clicks() {
     println!("largest step between samples with an irregular client: {jump:.4}");
     assert!(jump < 0.3 / 96.0 * 1.3, "no click: {jump}");
 }
+
+/// Pushes `data` `steps` times, one engine step after each.
+fn feed(r: &mut Rig, s: &mut Stream, data: &[i16], steps: usize) {
+    for _ in 0..steps {
+        s.push(data).unwrap();
+        r.step();
+    }
+}
+
+/// Mean level of channel `ch` (0 left, 1 right) over the last `n` samples of `x`.
+fn side(x: &[i16], n: usize, ch: usize) -> f32 {
+    let t = &x[x.len() - n..];
+    let sum: f32 = t.iter().skip(ch).step_by(2).map(|&s| f32::from(s)).sum();
+    sum / (n / 2) as f32 / 32768.0
+}
+
+#[test]
+fn mono_audio_plays_both_channels_in_both_speakers_and_can_be_switched_off() {
+    let mut r = Rig::new("mono", &[("system.web", play_rights())]);
+    let mut a = r.connect("system.web", media()).unwrap();
+    // only the left channel carries sound
+    let left_only: Vec<i16> = (0..240).flat_map(|_| [(0.4 * 32768.0) as i16, 0]).collect();
+    feed(&mut r, &mut a, &left_only, 100);
+    let p = r.played();
+    assert!(
+        (side(&p, 400, 0) - 0.4).abs() < 0.002,
+        "{}",
+        side(&p, 400, 0)
+    );
+    assert!(side(&p, 400, 1).abs() < 0.002, "{}", side(&p, 400, 1));
+    r.eng.set_mono(true);
+    feed(&mut r, &mut a, &left_only, 100);
+    let p = r.played();
+    for ch in 0..2 {
+        assert!(
+            (side(&p, 400, ch) - 0.2).abs() < 0.002,
+            "ch {ch} {}",
+            side(&p, 400, ch)
+        );
+    }
+    r.eng.set_mono(false);
+    feed(&mut r, &mut a, &left_only, 100);
+    let p = r.played();
+    assert!((side(&p, 400, 0) - 0.4).abs() < 0.002);
+    assert!(side(&p, 400, 1).abs() < 0.002);
+}
+
+#[test]
+fn a_quiet_card_gives_the_recorder_nothing_and_the_sound_goes_on_when_it_returns() {
+    let mut r = Rig::new("quiet", &[("system.mesh", mic_rights())]);
+    let mut c = r.connect("system.mesh", capture(48_000, 2)).unwrap();
+    let mut got = Vec::new();
+    // an underrun of the capture side: the card has nothing to read
+    for _ in 0..100 {
+        r.step();
+        c.pull(&mut got).unwrap();
+    }
+    assert!(got.is_empty(), "invented {} samples", got.len());
+    assert_eq!(r.eng.streams(), 1, "the recorder stays");
+    let mut n = 0u64;
+    for _ in 0..100 {
+        r.mic(&tone(&mut n, 240));
+        r.step();
+        c.pull(&mut got).unwrap();
+    }
+    let peak = got.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
+    assert!(
+        got.len() > 40_000 && peak > 15_000,
+        "{} samples, peak {peak}",
+        got.len()
+    );
+}
+
+#[test]
+fn sound_that_piled_up_in_the_card_while_nobody_recorded_is_thrown_away() {
+    let mut r = Rig::new("pile", &[("system.mesh", mic_rights())]);
+    // two seconds of loud old sound: the card's capture overran with nobody listening
+    r.mic(&level(96_000, 0.9));
+    r.run(50);
+    let mut c = r.connect("system.mesh", capture(48_000, 2)).unwrap();
+    let mut got = Vec::new();
+    r.run(100);
+    c.pull(&mut got).unwrap();
+    let old = got.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
+    assert!(old < 1_000, "the old sound arrived: peak {old}");
+    let mut n = 0u64;
+    for _ in 0..100 {
+        r.mic(&tone(&mut n, 240));
+        r.step();
+        c.pull(&mut got).unwrap();
+    }
+    let peak = got.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
+    assert!(peak > 15_000, "the new sound did not arrive: peak {peak}");
+}
