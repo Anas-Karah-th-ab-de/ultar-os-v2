@@ -134,9 +134,30 @@ pub fn fast_timer(on: bool) {
     }
 }
 
+/// Time of all cores in timer steps of the fast rate ([`FAST_DIV`] per normal tick): busy
+/// and idle (the core sat in `hlt` when its timer came) – `/proc/stat`'s `cpu` line.
+static CPU_BUSY: AtomicU64 = AtomicU64::new(0);
+static CPU_IDLE: AtomicU64 = AtomicU64::new(0);
+
+/// Busy and idle time of all cores in ticks of [`HZ`] (`/proc/stat`).
+pub fn cpu_times() -> (u64, u64) {
+    (
+        CPU_BUSY.load(Ordering::Relaxed) / FAST_DIV,
+        CPU_IDLE.load(Ordering::Relaxed) / FAST_DIV,
+    )
+}
+
 pub fn tick() {
     EPOCH.fetch_add(1, Ordering::Relaxed);
-    let fast = FAST.load(Ordering::Relaxed) & (1u64 << (crate::percpu::id() % 64)) != 0;
+    let bit = 1u64 << (crate::percpu::id() % 64);
+    let fast = FAST.load(Ordering::Relaxed) & bit != 0;
+    // a fast step is 1/FAST_DIV of a normal tick
+    let weight = if fast { 1 } else { FAST_DIV };
+    if IDLE.load(Ordering::Relaxed) & bit != 0 {
+        CPU_IDLE.fetch_add(weight, Ordering::Relaxed);
+    } else {
+        CPU_BUSY.fetch_add(weight, Ordering::Relaxed);
+    }
     if fast && !crate::svcdev::dri::waiting() {
         fast_timer(false);
     }

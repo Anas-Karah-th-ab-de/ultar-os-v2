@@ -4,7 +4,9 @@
 # other choices (language, keyboard, time zone, accessibility, device name)
 # become values in the settings service's store (/data/ultar/settings, adopted
 # by settingsd when it starts) and edition + components the selection record
-# /data/ultar/install/selection.toml for the Store. Then the record is wiped.
+# /data/ultar/install/selection.toml for the Store; the PC's public SSH key (optional) goes
+# into the developer access, /data/ultar/entwickler/authorized_keys (ultar-sshd). Then the
+# record is wiped.
 # Every later start finds no record and ends at once. authd and settingsd start
 # after it (installation image, tools/vm/make-vmware.sh).
 exec = "/usr/bin/ultar-firstboot"
@@ -13,6 +15,7 @@ args = [
     "--auth-dir", "/data/ultar/auth", "--owner", "813",
     "--settings-dir", "/data/ultar/settings",
     "--install-dir", "/data/ultar/install",
+    "--developer-dir", "/data/ultar/entwickler",
 ]
 oneshot = true
 console = true

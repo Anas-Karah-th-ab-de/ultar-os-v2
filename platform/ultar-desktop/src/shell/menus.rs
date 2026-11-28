@@ -31,8 +31,8 @@ pub enum MenuKind {
     App,
     /// The desktop background.
     Desk,
-    /// A shortcut on the desktop.
-    Shortcut(usize),
+    /// An icon on the desktop.
+    Item(crate::model::places::DeskItem),
 }
 
 /// Item ids: layouts are 0..8, windows are `WINDOW_BASE + index`.
@@ -75,7 +75,7 @@ pub fn open_menu(s: &Shell) -> Option<(MenuKind, Menu)> {
         Open::TileMenu(i) => MenuKind::Tile(i),
         Open::AppMenu => MenuKind::App,
         Open::DeskMenu(..) => MenuKind::Desk,
-        Open::ShortcutMenu(i, ..) => MenuKind::Shortcut(i),
+        Open::ItemMenu(item, ..) => MenuKind::Item(item),
         _ => return None,
     };
     Some((kind, build(s, kind)))
@@ -135,7 +135,7 @@ fn build(s: &Shell, kind: MenuKind) -> Menu {
         ]),
         MenuKind::App => app_menu(s),
         MenuKind::Desk => super::desk::desk_menu(s),
-        MenuKind::Shortcut(i) => super::desk::shortcut_menu(s, i),
+        MenuKind::Item(item) => super::desk::item_menu(s, item),
     }
 }
 
@@ -278,7 +278,7 @@ pub(super) fn chosen(s: &mut Shell, id: u32) -> Outcome {
             None => Outcome::none(),
         },
         (Open::DeskMenu(..), id) => super::desk::desk_chosen(s, id),
-        (Open::ShortcutMenu(i, ..), id) => super::desk::shortcut_chosen(s, i, id),
+        (Open::ItemMenu(item, ..), id) => super::desk::item_chosen(s, item, id),
         (Open::TileMenu(usize::MAX), OPEN) => launch(s, FILES, Opening::uri(TRASH_URI)),
         (Open::TileMenu(i), id) => tile_chosen(s, i, id),
         (Open::AppMenu, id) => {

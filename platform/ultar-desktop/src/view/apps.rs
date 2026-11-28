@@ -1,7 +1,8 @@
 //! The app grid (board AppGrid; DESKTOP-SPEC §5.1; CLICKS `apps.*`): a search field, the
 //! categories as tabs, the apps of the bar ("On the bar") and every app in alphabetical
-//! order of the language, each a cell with a context menu (open, new window, pin, details
-//! in the Store, remove), and at the bottom how the grid is ordered and its keys.
+//! order of the language, each a cell with a context menu (open, new window, pin, add to
+//! the desktop, details in the Store, remove) that can be dragged onto the desktop, and at
+//! the bottom how the grid is ordered and its keys.
 
 use super::geometry::{self, Placement};
 use super::{new_ui, Look, Target, View};
@@ -97,12 +98,7 @@ pub fn build(
         top: Some(place.top),
         bottom: None,
     }));
-    let flex = Flex::column()
-        .padding(Padding::all(Space::S24))
-        .gap(Space::S16);
-    let card = Card::new().floating().flex(flex);
-    let root = ui.root();
-    let card = ui.add_sized(root, card, Sizing::width(rect.w).with_height(rect.h))?;
+    let card = card(&mut ui, rect)?;
     ui.set_size(place.surface)?;
     let mut view = View::new(ui);
     let field = SearchField::new(Label::key("desk.apps.search"))
@@ -145,6 +141,19 @@ fn list_title(d: &Desktop) -> &'static str {
     } else {
         "desk.apps.title"
     }
+}
+
+/// The floating card of the grid. It takes the drops of its own cells: an app dragged out
+/// of it and dropped beside it lands on the desktop as a shortcut.
+fn card(ui: &mut ultar_ui::ui::Ui, rect: Rect) -> Result<NodeId, UiError> {
+    let flex = Flex::column()
+        .padding(Padding::all(Space::S24))
+        .gap(Space::S16);
+    let card = Card::new().floating().flex(flex);
+    let root = ui.root();
+    let card = ui.add_sized(root, card, Sizing::width(rect.w).with_height(rect.h))?;
+    ui.set_drop_target(card, true)?;
+    Ok(card)
 }
 
 fn tabs(
@@ -202,6 +211,9 @@ fn section(
                 view.ui.set_disabled(id, true)?;
                 view.ui
                     .set_tooltip(id, Some(Label::key("desk.reason.no_launcher")))?;
+            } else {
+                // Dragged out of the grid onto the desktop: its shortcut goes there.
+                view.ui.set_draggable(id, true)?;
             }
         }
         // Keep the columns of a short last row.

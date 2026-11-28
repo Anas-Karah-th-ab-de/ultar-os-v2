@@ -32,6 +32,13 @@ const JOB_BYTES: u32 = 64;
 const MAX_PENDING: u64 = 200;
 /// 2 MiB entries the GT got for buffers (for the log).
 pub static HUGE_ENTRIES: AtomicU64 = AtomicU64::new(0);
+/// Time the engines worked for all programs so far (ns): the GPU load the desktop shows.
+static BUSY_NS: AtomicU64 = AtomicU64::new(0);
+
+/// Time the engines worked so far (ns, `/proc/ultar/gpu_busy_ns`).
+pub fn busy_ns() -> u64 {
+    BUSY_NS.load(Ordering::Relaxed)
+}
 /// Pages bound per cache attribute the programs asked for (for the log).
 pub static PAT_ASKED: [AtomicU64; 5] = [const { AtomicU64::new(0) }; 5];
 
@@ -69,7 +76,9 @@ impl Usage {
 
     fn idle(&mut self, now: u64) {
         if self.busy_from != 0 {
-            self.busy_ns += now - self.busy_from;
+            let worked = now - self.busy_from;
+            self.busy_ns += worked;
+            BUSY_NS.fetch_add(worked, Ordering::Relaxed);
             self.busy_from = 0;
         }
     }

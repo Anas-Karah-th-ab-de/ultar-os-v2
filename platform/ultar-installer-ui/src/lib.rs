@@ -16,10 +16,12 @@ pub mod components;
 pub mod engine;
 pub mod firstboot;
 pub mod firstboot_settings;
+pub mod firstboot_ssh;
 pub mod i18n;
 pub mod model;
 pub mod ports;
 pub mod secret;
+pub mod ssh_key;
 pub mod view;
 pub mod wizard;
 

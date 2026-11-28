@@ -12,12 +12,17 @@
 //!
 //! A second port speaks HTTP `CONNECT` with the same secret and the same rules, for engines
 //! that only know HTTP proxies (the Servo engine of the browser, [`Tor::http_proxy_url`]).
+//!
+//! A third front speaks the same `CONNECT` on a Unix socket at a path the app gives
+//! ([`Tor::unix_proxy`], mode 0600, no secret): for an engine in a cell without any network,
+//! whose only way out is that file.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 mod http;
 mod socks;
+mod unix;
 
 use arti_client::config::TorClientConfigBuilder;
 use arti_client::{IsolationToken, StreamPrefs, TorClient};
@@ -49,6 +54,8 @@ pub struct Tor {
     user: String,
     password: String,
     state: watch::Receiver<State>,
+    /// Hands Unix sockets to the Tor thread ([`Tor::unix_proxy`]).
+    unix: tokio::sync::mpsc::UnboundedSender<std::os::unix::net::UnixListener>,
 }
 
 /// Which protocol a port speaks.
@@ -83,16 +90,30 @@ impl Tor {
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         let secret = (user.clone(), password.clone());
         let listeners = [listener, http_listener];
+        let (unix, unix_rx) = tokio::sync::mpsc::unbounded_channel();
         std::thread::Builder::new()
             .name("ultar-tor".into())
-            .spawn(move || runtime.block_on(run(listeners, config, tx, secret)))?;
+            .spawn(move || runtime.block_on(run(listeners, config, tx, secret, unix_rx)))?;
         Ok(Tor {
             port,
             http_port,
             user,
             password,
             state,
+            unix,
         })
+    }
+
+    /// Opens the third front: HTTP `CONNECT` on a Unix socket at `path` (made with mode 0600; a
+    /// left-over socket of an earlier run is replaced). The path must be absolute and clean, in
+    /// an existing folder. No secret is asked: only whoever can reach the file can use it, so
+    /// give the folder to the engine's cell and to nobody else. Same refusals and circuits as
+    /// the other fronts.
+    pub fn unix_proxy(&self, path: &Path) -> std::io::Result<()> {
+        let listener = unix::bind(path)?;
+        self.unix
+            .send(listener)
+            .map_err(|_| std::io::Error::other("tor thread ended"))
     }
 
     /// The proxy address for an HTTP client (`socks5h://user:password@127.0.0.1:port`).
@@ -125,6 +146,7 @@ async fn run(
     config: arti_client::config::TorClientConfig,
     tx: watch::Sender<State>,
     secret: (String, String),
+    mut unix_requests: tokio::sync::mpsc::UnboundedReceiver<std::os::unix::net::UnixListener>,
 ) {
     let [socks_listener, http_listener] = listeners;
     let tokio_listeners = tokio::net::TcpListener::from_std(socks_listener)
@@ -154,6 +176,18 @@ async fn run(
         circuits: Circuits::default(),
     };
     tokio::spawn(serve(http_listener, port.clone(), Front::Http));
+    let unix_port = port.clone();
+    tokio::spawn(async move {
+        while let Some(listener) = unix_requests.recv().await {
+            let Ok(listener) = tokio::net::UnixListener::from_std(listener) else {
+                continue;
+            };
+            let port = unix_port.clone();
+            tokio::spawn(unix::serve(listener, move |host, p| {
+                port.clone().open(host, p)
+            }));
+        }
+    });
     serve(socks_listener, port, Front::Socks).await;
 }
 
@@ -249,7 +283,7 @@ async fn serve(listener: tokio::net::TcpListener, port: Port, front: Front) {
             let open = |host, p| port.open(host, p);
             let _ = match front {
                 Front::Socks => socks::handle(stream, &secret, open).await,
-                Front::Http => http::handle(stream, &secret, open).await,
+                Front::Http => http::handle(stream, Some(&secret), open).await,
             };
         });
     }

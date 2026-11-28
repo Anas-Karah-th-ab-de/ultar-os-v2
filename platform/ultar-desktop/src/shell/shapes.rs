@@ -78,7 +78,7 @@ pub(super) fn for_top_bar(open: Open, popup: &mut Popup, screen: Size) {
         | Open::Projection(_)
         | Open::MeshSend
         | Open::DeskMenu(..)
-        | Open::ShortcutMenu(..)
+        | Open::ItemMenu(..)
         | Open::Rename(_) => popup.offset.1 += bottom_panel,
     }
 }

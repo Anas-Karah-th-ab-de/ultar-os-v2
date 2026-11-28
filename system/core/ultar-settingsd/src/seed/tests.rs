@@ -19,7 +19,7 @@ fn seed_builds_and_covers_every_area() {
         [
             (Panel::Display, 23),
             (Panel::Appearance, 9),
-            (Panel::DesktopBar, 15),
+            (Panel::DesktopBar, 16),
             (Panel::Windows, 8),
             (Panel::Notifications, 11),
             (Panel::Power, 12),
@@ -46,7 +46,7 @@ fn seed_builds_and_covers_every_area() {
             (Panel::Emergency, 8),
         ]
     );
-    assert_eq!(registry.defs().len(), 282);
+    assert_eq!(registry.defs().len(), 283);
 }
 
 #[test]

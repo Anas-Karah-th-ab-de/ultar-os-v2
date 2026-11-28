@@ -1,14 +1,17 @@
-//! The desktop's shortcuts on the background and the rename dialog of one (DESKTOP-SPEC §5.1
-//! "Arbeitsfläche"): the shortcuts stand in columns from the corner of
+//! The icons on the desktop background and the rename dialog of a shortcut (DESKTOP-SPEC
+//! §5.1 "Arbeitsfläche", CLICKS `desk.icon`): the home folder, the drives, the app shortcuts
+//! and the desktop folder's items stand in columns from the corner of
 //! `desktop.icons.start_corner`, 24 from the edges and 8 apart, in the size of
 //! `desktop.icons.size`; a full column continues in the next one.
 
 use super::geometry::{self, Placement};
 use super::{card_sheet, new_ui, Look, Target, View};
-use crate::model::places::{self, MAX_NAME};
+use crate::model::desk_files;
+use crate::model::places::{self, DeskItem, MAX_NAME};
 use crate::model::Desktop;
 use ultar_i18n::Translator;
 use ultar_ui::geom::Size;
+use ultar_ui::icon::IconId;
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
 use ultar_ui::paint::TextSpec;
 use ultar_ui::text::Weight;
@@ -23,27 +26,56 @@ const BETWEEN: Space = Space::S8;
 /// Width of the rename dialog.
 const RENAME_WIDTH: f32 = 100.0 * Space::S4.points();
 
-/// The shortcuts that are shown, by index: none while `desktop.icons.enabled` is off, and
-/// only those whose app is installed.
-pub fn shown(d: &Desktop) -> Vec<usize> {
+/// The icons that are shown, in their order: the home folder, the mounted drives, the app
+/// shortcuts (only those whose app is installed), then the desktop folder's items; none
+/// while `desktop.icons.enabled` is off.
+pub fn shown(d: &Desktop) -> Vec<DeskItem> {
     if !d.prefs.desk.shown {
         return Vec::new();
     }
-    (0..d.places.shortcuts.len())
-        .filter(|i| {
-            let app = &d.places.shortcuts[*i].app;
-            d.catalog.iter().any(|a| &a.id == app)
-        })
-        .collect()
+    let mut items = vec![DeskItem::Home];
+    let drives = d.svc.drives.as_ref().map_or(0, Vec::len);
+    items.extend((0..drives).map(DeskItem::Drive));
+    items.extend(
+        (0..d.places.shortcuts.len())
+            .filter(|i| {
+                let app = &d.places.shortcuts[*i].app;
+                d.catalog.iter().any(|a| &a.id == app)
+            })
+            .map(DeskItem::Shortcut),
+    );
+    items.extend((0..d.places.files.len()).map(DeskItem::File));
+    items
 }
 
-/// The size of one shortcut's cell in this look.
+/// Icon and name of an icon on the desktop.
+pub fn look_of(d: &Desktop, item: DeskItem, tr: &Translator) -> Option<(IconId, Label)> {
+    Some(match item {
+        DeskItem::Home => (IconId::Home, Label::key("desk.desk.home")),
+        DeskItem::Drive(i) => {
+            let drive = d.svc.drives.as_ref()?.get(i)?;
+            (IconId::Usb, Label::data(&drive.name))
+        }
+        DeskItem::Shortcut(i) => {
+            let shortcut = d.places.shortcuts.get(i)?;
+            let app = d.catalog.iter().find(|a| a.id == shortcut.app)?;
+            let name = places::shown_name(shortcut, &d.catalog, tr);
+            (app.icon, Label::data(&name))
+        }
+        DeskItem::File(i) => {
+            let file = d.places.files.get(i)?;
+            (desk_files::icon(file), Label::data(&file.name))
+        }
+    })
+}
+
+/// The size of one icon's cell in this look.
 fn cell(look: Look, side: u16, tr: &Translator) -> Result<Size, UiError> {
     let mut probe = new_ui(look, Size::new(1000.0, 1000.0), tr)?;
     probe.set_root_flex(Flex::column().cross(CrossAlign::Start));
     let root = probe.root();
     let brick = BrickKind::DeskIcon {
-        icon: ultar_ui::icon::IconId::Folder,
+        icon: IconId::Folder,
         side,
         selected: false,
     };
@@ -51,8 +83,16 @@ fn cell(look: Look, side: u16, tr: &Translator) -> Result<Size, UiError> {
     Ok(probe.content_size())
 }
 
-/// Puts the shortcuts into `area` (a growing child of the background's overlay) of
-/// `height` points.
+/// One cell of the layout: an icon, or the place an app dragged out of the app grid would
+/// take.
+#[derive(Clone, Copy)]
+enum Slot<'a> {
+    Item(DeskItem),
+    Ghost(&'a str),
+}
+
+/// Puts the icons into `area` (a growing child of the background's overlay) of `height`
+/// points.
 pub fn shortcuts(
     view: &mut View,
     area: NodeId,
@@ -60,8 +100,11 @@ pub fn shortcuts(
     (look, height): (Look, f32),
     tr: &Translator,
 ) -> Result<(), UiError> {
-    let list = shown(d);
-    if list.is_empty() {
+    let mut slots: Vec<Slot> = shown(d).into_iter().map(Slot::Item).collect();
+    if let Some(app) = d.places.dragging.as_deref().filter(|_| d.prefs.desk.shown) {
+        slots.push(Slot::Ghost(app));
+    }
+    if slots.is_empty() {
         return Ok(());
     }
     let desk = d.prefs.desk;
@@ -80,7 +123,7 @@ pub fn shortcuts(
         .main(main)
         .cross(CrossAlign::Stretch);
     let layer = view.ui.add_sized(area, layer, Sizing::grow(1))?;
-    let mut columns: Vec<&[usize]> = list.chunks(per_column).collect();
+    let mut columns: Vec<&[Slot]> = slots.chunks(per_column).collect();
     if desk.corner.end() {
         // The first column stands at the end edge.
         columns.reverse();
@@ -96,13 +139,16 @@ pub fn shortcuts(
                     MainAlign::Start
                 });
         let node = view.ui.add_sized(layer, flex, Sizing::AUTO)?;
-        let mut items = column.to_vec();
+        let mut cells = column.to_vec();
         if desk.corner.bottom() {
             // The first one stands in the bottom corner.
-            items.reverse();
+            cells.reverse();
         }
-        for i in items {
-            icon(view, node, d, i, (side, tr))?;
+        for slot in cells {
+            match slot {
+                Slot::Item(item) => icon(view, node, d, item, (side, tr))?,
+                Slot::Ghost(app) => ghost(view, node, d, app, side)?,
+            }
         }
     }
     Ok(())
@@ -112,23 +158,41 @@ fn icon(
     view: &mut View,
     column: NodeId,
     d: &Desktop,
-    index: usize,
+    item: DeskItem,
     (side, tr): (u16, &Translator),
 ) -> Result<(), UiError> {
-    let shortcut = &d.places.shortcuts[index];
-    let Some(app) = d.catalog.iter().find(|a| a.id == shortcut.app) else {
+    let Some((icon, label)) = look_of(d, item, tr) else {
         return Ok(());
     };
-    let name = places::shown_name(shortcut, &d.catalog, tr);
     let brick = BrickKind::DeskIcon {
-        icon: app.icon,
+        icon,
         side,
-        selected: d.places.selected == Some(index),
+        selected: d.places.selected == Some(item),
     };
-    let id = view.ui.add(column, Brick::new(brick, Label::data(&name)))?;
-    view.ui.set_tooltip(id, Some(Label::data(&name)))?;
-    view.mark(id, Target::Shortcut(index));
+    let id = view.ui.add(column, Brick::new(brick, label.clone()))?;
+    view.ui.set_tooltip(id, Some(label))?;
+    view.mark(id, Target::Desk(item));
     Ok(())
+}
+
+/// Where the dragged app's shortcut would go: its icon, faint (disabled), not operable.
+fn ghost(
+    view: &mut View,
+    column: NodeId,
+    d: &Desktop,
+    app: &str,
+    side: u16,
+) -> Result<(), UiError> {
+    let Some(info) = d.catalog.iter().find(|a| a.id == app) else {
+        return Ok(());
+    };
+    let brick = BrickKind::DeskIcon {
+        icon: info.icon,
+        side,
+        selected: true,
+    };
+    let id = view.ui.add(column, Brick::new(brick, info.label()))?;
+    view.ui.set_disabled(id, true)
 }
 
 /// The rename dialog of shortcut `index`: its name in a field (Enter renames), Cancel and

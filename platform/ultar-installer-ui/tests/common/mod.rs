@@ -234,7 +234,12 @@ pub fn app_with(
 /// A wizard on `step` with everything before it filled in (as on the boards).
 pub fn wizard_at(source: &Path, disks: Vec<DiskInfo>, step: Step) -> Wizard {
     let mut w = Wizard::new(source.to_path_buf(), disks);
-    w.account = ["أنس".into(), "anas".into(), "ultar-pc".into()];
+    w.account = [
+        "أنس".into(),
+        "anas".into(),
+        "ultar-pc".into(),
+        String::new(),
+    ];
     w.reached = step;
     w.step = step;
     if step >= Step::Disk && !w.disks.is_empty() {

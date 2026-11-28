@@ -17,8 +17,17 @@ pub struct Args {
     pub filter: Option<PathBuf>,
     /// The only way out: the browser's Tor port for HTTP `CONNECT`.
     pub proxy: Option<String>,
+    /// The only way out of a cell without network: the browser's Unix socket for HTTP
+    /// `CONNECT` (`--proxy-socket`). The relay inside the cell leads Servo's proxy to it.
+    pub proxy_socket: Option<PathBuf>,
     /// The cell the host must build before Servo starts.
     pub cell: Cell,
+    /// Internal, set by the host itself for its second stage (`--cell-init ROOT`): the folder
+    /// the cell's root is built on. Only accepted as the first process of a new pid namespace.
+    pub cell_init: Option<PathBuf>,
+    /// Test only (`--cell-selftest`): inside the finished cell check what the cell allows and
+    /// report it, instead of starting Servo.
+    pub selftest: bool,
 }
 
 /// The cell options (`--cell-ro`, `--cell-rw`, `--cell-net`, `--cell-memory-mb`, `--no-cell`).
@@ -58,6 +67,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Option<Args> {
             "--user-agent" => a.product = Some(it.next()?.into_string().ok()?),
             "--filter" => a.filter = Some(it.next()?.into()),
             "--proxy" => a.proxy = Some(it.next()?.into_string().ok()?),
+            "--proxy-socket" => a.proxy_socket = Some(it.next()?.into()),
+            "--cell-init" => a.cell_init = Some(it.next()?.into()),
+            "--cell-selftest" => a.selftest = true,
             "--cell-ro" => a.cell.read_only.push(it.next()?.into()),
             "--cell-rw" => a.cell.read_write.push(it.next()?.into()),
             "--cell-net" => a.cell.network = true,
@@ -102,6 +114,30 @@ mod tests {
         assert_eq!(a.cell.memory_mb, Some(2048));
         assert!(a.cell.network && !a.cell.none);
         assert!(parse(os(&["--no-cell"])).unwrap().cell.none);
+    }
+
+    #[test]
+    fn the_cell_options_of_the_second_stage_and_the_socket_are_understood() {
+        let a = parse(os(&[
+            "--proxy-socket",
+            "/p/tor.sock",
+            "--cell-rw",
+            "/p",
+            "--cell-init",
+            "/tmp/root",
+            "--cell-selftest",
+        ]))
+        .unwrap();
+        assert_eq!(
+            a.proxy_socket.as_deref(),
+            Some(std::path::Path::new("/p/tor.sock"))
+        );
+        assert_eq!(
+            a.cell_init.as_deref(),
+            Some(std::path::Path::new("/tmp/root"))
+        );
+        assert!(a.selftest && a.proxy.is_none());
+        assert!(parse(os(&["--cell-init"])).is_none());
     }
 
     #[test]

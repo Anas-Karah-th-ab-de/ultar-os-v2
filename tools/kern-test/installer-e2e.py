@@ -9,7 +9,7 @@ USB tablet, PS/2 keyboard, no virtio):
    reports step, focus and the Next button on the console (--report); this driver presses keys through the QEMU
    monitor (sendkey: the PS/2 keyboard -> the kernel's event node -> the compositor -> the installer) and follows
    those lines: Tab until Next has the focus, Enter; on the account step it types the full name, the user name
-   (Latin layout: Super+Space), the password twice; on the summary it ticks the erase line (Space) and presses
+   (Latin layout: Super+Space), the password twice and the PC's SSH key; on the summary it ticks the erase line (Space) and presses
    Install. Then it waits for "installation written", presses Restart on the last step and waits until the
    machine restarts (the service manager ends every service, the kernel resets; QEMU has -no-reboot).
 2. The target alone (NVMe) starts: loader (A/B) -> kernel -> ultar-init (profile system) -> ultar-firstboot turns
@@ -28,6 +28,8 @@ SETTINGS_STORED = 9
 USER = os.environ.get("USER_NAME", "anas")
 FULL = "Anas Kara"
 PASSWORD = "km-Secret-2026"
+# the PC's public SSH key typed on the account step; the first start puts it into the developer access
+SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl pc"
 # The kernel polls the USB keyboard (no interrupts): a key is held long enough to be seen down and up.
 HOLD_MS = int(os.environ.get("HOLD_MS", "300"))
 # Pause after each typed character: under TCG one frame of the installer takes long, and the kernel polls the
@@ -181,7 +183,7 @@ def install(medium, target, prefix):
                     vm.monitor(f"sendkey meta_l-spc {HOLD_MS}")  # Super+Space: the Latin layout for the names
                     vm.pump(TYPE_GAP)
                     latin = True
-                for field, text in (("AccountField(0)", FULL), ("AccountField(1)", USER), ("Password(0)", PASSWORD), ("Password(1)", PASSWORD)):
+                for field, text in (("AccountField(0)", FULL), ("AccountField(1)", USER), ("Password(0)", PASSWORD), ("Password(1)", PASSWORD), ("AccountField(3)", SSH_KEY)):
                     if not d.focus(field):
                         return f"Tab does not reach {field}"
                     d.type(text)
@@ -247,7 +249,7 @@ def first_start(target, prefix):
     try:
         created = vm.wait_for(re.compile(rb"\[firstboot\] account (\S+) created"), WAIT)
         listed = vm.wait_for(re.compile(rb"\[firstboot\] account " + re.escape(USER.encode()) + rb"\r?\n"), WAIT)
-        settings = re.search(rb"\[firstboot\] settings stored=(\d+) kept=\d+ refused=\[([^\]]*)\] damaged=\[([^\]]*)\] selection=(\w+)", vm.buf)
+        settings = re.search(rb"\[firstboot\] settings stored=(\d+) kept=\d+ refused=\[([^\]]*)\] damaged=\[([^\]]*)\] selection=(\w+) ssh_key=(\w+)", vm.buf)
         slot = re.search(rb"\[boot\] slot ([ab])", vm.buf)
         problems = []
         if not created or created.group(1).decode() != USER:
@@ -258,6 +260,8 @@ def first_start(target, prefix):
             problems.append("the first start did not report the settings")
         elif int(settings.group(1)) < SETTINGS_STORED or settings.group(2) or settings.group(3) or settings.group(4) != b"true":
             problems.append("settings not applied: " + settings.group(0).decode(errors="replace"))
+        elif settings.group(5) != b"Added":
+            problems.append("the SSH key of the installer was not added: " + settings.group(0).decode(errors="replace"))
         if not slot:
             problems.append("not started by the A/B loader from a slot")
         if re.search(rb"kernel panic|PANIK", vm.buf, re.I):

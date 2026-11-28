@@ -126,6 +126,8 @@ pub struct DeskPrefs {
     pub size: IconSize,
     /// `desktop.icons.start_corner`.
     pub corner: Corner,
+    /// `desktop.metrics.enabled`: the system display (CPU, memory, GPU, network).
+    pub metrics: bool,
 }
 
 impl Default for DeskPrefs {
@@ -134,16 +136,18 @@ impl Default for DeskPrefs {
             shown: true,
             size: IconSize::Medium,
             corner: Corner::TopStart,
+            metrics: true,
         }
     }
 }
 
 impl DeskPrefs {
-    /// The settings of the desktop's shortcuts.
-    pub const KEYS: [&'static str; 3] = [
+    /// The settings of the desktop's icons and its system display.
+    pub const KEYS: [&'static str; 4] = [
         "desktop.icons.enabled",
         "desktop.icons.size",
         "desktop.icons.start_corner",
+        "desktop.metrics.enabled",
     ];
 
     /// Takes one of [`DeskPrefs::KEYS`]; `false` for any other key or value type.
@@ -155,6 +159,7 @@ impl DeskPrefs {
         use ultar_bus::messages::settings::SettingValue;
         match (key, value) {
             ("desktop.icons.enabled", SettingValue::Flag(on)) => self.shown = *on,
+            ("desktop.metrics.enabled", SettingValue::Flag(on)) => self.metrics = *on,
             ("desktop.icons.size", SettingValue::Text(t)) => {
                 self.size = IconSize::parse(t).unwrap_or_default();
             }

@@ -18,32 +18,33 @@ pub fn opts() -> Opts {
 
 /// Servo's preferences for `persona`, sending everything through `proxy`.
 pub fn preferences(persona: &Persona, proxy: &str) -> Preferences {
-    let mut p = Preferences::default();
-    p.user_agent = persona.user_agent.into();
-    p.intl_locale_override = "en-US".into();
-    // the only way out: Tor; plain HTTP is upgraded to HTTPS (onion sites keep HTTP)
-    p.network_http_proxy_uri = proxy.into();
-    p.network_https_proxy_uri = proxy.into();
-    p.network_http_no_proxy = String::new();
-    p.network_enforce_tls_enabled = true;
-    p.network_enforce_tls_onion = false;
-    // what could reach or identify the device
-    p.dom_webrtc_enabled = false;
-    p.dom_webrtc_transceiver_enabled = false;
-    p.dom_bluetooth_enabled = false;
-    p.dom_gamepad_enabled = false;
-    p.dom_webgpu_enabled = false;
-    p.dom_webxr_enabled = false;
-    p.dom_serviceworker_enabled = false;
-    p.dom_async_clipboard_enabled = false;
-    p.devtools_server_enabled = false;
-    // a page that asks for the location (and is allowed) gets the invented place
-    p.dom_geolocation_enabled = true;
-    p.dom_geolocation_test_position_enabled = true;
-    p.dom_geolocation_test_latitude = persona.place.lat;
-    p.dom_geolocation_test_longitude = persona.place.lon;
-    p.dom_geolocation_test_accuracy = persona.place.accuracy_m;
-    p
+    Preferences {
+        user_agent: persona.user_agent.into(),
+        intl_locale_override: "en-US".into(),
+        // the only way out: Tor; plain HTTP is upgraded to HTTPS (onion sites keep HTTP)
+        network_http_proxy_uri: proxy.into(),
+        network_https_proxy_uri: proxy.into(),
+        network_http_no_proxy: String::new(),
+        network_enforce_tls_enabled: true,
+        network_enforce_tls_onion: false,
+        // what could reach or identify the device
+        dom_webrtc_enabled: false,
+        dom_webrtc_transceiver_enabled: false,
+        dom_bluetooth_enabled: false,
+        dom_gamepad_enabled: false,
+        dom_webgpu_enabled: false,
+        dom_webxr_enabled: false,
+        dom_serviceworker_enabled: false,
+        dom_async_clipboard_enabled: false,
+        devtools_server_enabled: false,
+        // a page that asks for the location (and is allowed) gets the invented place
+        dom_geolocation_enabled: true,
+        dom_geolocation_test_position_enabled: true,
+        dom_geolocation_test_latitude: persona.place.lat,
+        dom_geolocation_test_longitude: persona.place.lon,
+        dom_geolocation_test_accuracy: persona.place.accuracy_m,
+        ..Preferences::default()
+    }
 }
 
 /// The page script with the persona's values filled in.

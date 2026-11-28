@@ -64,7 +64,8 @@ radio = 831
 disk = 832
 # The user's file areas (/data/ultar/areas/*, 0770 launcher:userfiles): system apps that
 # declare file areas get this group in their cell (ultar-launcher areas.rs); the launcher
-# cleans the person's downloads folder (storage.clean_downloads). The volume service does
+# cleans the person's downloads folder (storage.clean_downloads); the desktop shell reads
+# the area `desktop` (its items on the background). The volume service does
 # not have it: it handles untrusted USB file systems and must not reach the areas.
 userfiles = 836
 # The relay token of the Ultar account (/data/ultar/account-relay, 0750/0640 accountd:accountrelay):
@@ -91,7 +92,7 @@ desktop = ["busd"]
 audio = ["audiod"]
 radio = ["netd", "btd"]
 disk = ["volumed"]
-userfiles = ["launcher"]
+userfiles = ["launcher", "desktop"]
 # Their sockets at the bus and the log service are open to their own groups.
 displayd = ["busd", "logd"]
 accountd = ["busd", "logd"]

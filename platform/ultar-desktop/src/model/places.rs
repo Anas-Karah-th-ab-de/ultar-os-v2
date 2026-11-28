@@ -1,5 +1,5 @@
 //! Where the person put apps (DESKTOP-SPEC §5.1): pinned on the bar, and as shortcuts on the
-//! desktop background (`desk.shortcut`: added from the background's menu or an app's menu in
+//! desktop background (beside the home folder, the drives and the desktop folder's items) (`desk.shortcut`: added from the background's menu or an app's menu in
 //! the app grid, opened with a double click, renamed, removed). The shortcuts are kept per
 //! person beside the shell (`<state>/<person>/desktop.json`): read at start, written when
 //! they change. Removing a shortcut never touches the app.
@@ -25,19 +25,38 @@ pub struct Shortcut {
     pub name: Option<String>,
 }
 
-/// The pinned apps of the bar and the shortcuts of the desktop.
+/// One icon on the desktop background (CLICKS `desk.icon`, `desk.shortcut`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DeskItem {
+    /// The person's home folder (opens in Files).
+    Home,
+    /// A mounted drive (index into `Services::drives`).
+    Drive(usize),
+    /// An app shortcut (index into [`Places::shortcuts`]).
+    Shortcut(usize),
+    /// An item of the desktop folder (index into [`Places::files`]).
+    File(usize),
+}
+
+/// The pinned apps of the bar and what the desktop shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Places {
     /// Pinned app ids (the bar's order).
     pub pinned: Vec<String>,
     /// The desktop's shortcuts in their order (from the start corner).
     pub shortcuts: Vec<Shortcut>,
-    /// The selected shortcut (a single click), by index.
-    pub selected: Option<usize>,
+    /// The items of the desktop folder as last read.
+    pub files: Vec<super::desk_files::DeskFile>,
+    /// The selected icon (a single click).
+    pub selected: Option<DeskItem>,
     /// The app grid was opened to choose the app of a new shortcut ("New shortcut").
     pub picking: bool,
+    /// An app dragged out of the app grid (the background shows where it would go).
+    pub dragging: Option<String>,
     /// The text of the rename dialog while it is typed.
     pub draft: String,
+    /// The system display's values as last read.
+    pub metrics: super::metrics::Metrics,
 }
 
 impl Places {
@@ -58,7 +77,7 @@ impl Places {
     /// when it is there already (then it is selected) or the desktop is full.
     pub fn add(&mut self, app: &str) -> bool {
         if let Some(i) = self.shortcuts.iter().position(|s| s.app == app) {
-            self.selected = Some(i);
+            self.selected = Some(DeskItem::Shortcut(i));
             return false;
         }
         if self.shortcuts.len() >= MAX_SHORTCUTS || app.is_empty() {
@@ -68,7 +87,7 @@ impl Places {
             app: app.to_owned(),
             name: None,
         });
-        self.selected = Some(self.shortcuts.len() - 1);
+        self.selected = Some(DeskItem::Shortcut(self.shortcuts.len() - 1));
         true
     }
 
@@ -155,7 +174,11 @@ mod tests {
         let mut p = Places::new(Vec::new());
         assert!(p.add("org.ultar.terminal") && p.add("org.ultar.files"));
         assert!(!p.add("org.ultar.terminal"), "a second shortcut of an app");
-        assert_eq!(p.selected, Some(0), "the existing one is selected");
+        assert_eq!(
+            p.selected,
+            Some(DeskItem::Shortcut(0)),
+            "the existing one is selected"
+        );
         assert!(p.on_desktop("org.ultar.files") && !p.on_desktop("org.ultar.editor"));
         assert!(p.rename(1, "  Meine Dateien  ", "Files"));
         assert_eq!(p.shortcuts[1].name.as_deref(), Some("Meine Dateien"));

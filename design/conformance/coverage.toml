@@ -393,10 +393,10 @@ note = "select (Ctrl/Shift), double click / Enter opens (folder here, file via l
 
 [action."desk.icon"]
 status = "ok"
-impl = "apps/ultar-files/src/view/desk.rs (ultar-files --desktop)"
-test = "apps/ultar-files/tests/clicks.rs + apps/ultar-files/tests/design_conformance.rs"
+impl = "platform/ultar-desktop/src/view/desk.rs + src/shell/desk_items.rs (the shell's background: home folder, drives, app shortcuts, the desktop folder's items); apps/ultar-files/src/view/desk.rs (ultar-files --desktop, not started by the session)"
+test = "platform/ultar-desktop/tests/desk_items.rs + tests/clicks.rs; apps/ultar-files/tests/desk_actions.rs"
 boards = "DesktopTop:2, Main:2"
-note = "select, double click / Enter opens in Files, menu Open/Rename/Move to trash/Properties (+Eject); DesktopTop: icons start 24 below the work area, the surface does not know the panel height"
+note = "select, double click opens (folder/drive in Files, a file with its default app via launcher.resolve), menu Open/Show in Files/Rename/Move to trash/Properties (Files does the change: files://desktop/<name>?action=…, +Eject on a drive); no Enter: the background takes no keyboard"
 
 [action."shell.appmenu"]
 status = "ok"

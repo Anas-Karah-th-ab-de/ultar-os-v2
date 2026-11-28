@@ -7,7 +7,7 @@
 
 use super::bar::{launch, SETTINGS};
 use super::{Effect, Opening, Outcome, Shell};
-use crate::model::places;
+use crate::model::places::{self, DeskItem};
 use crate::model::prefs::IconSize;
 use crate::model::Open;
 use crate::view::Target;
@@ -23,9 +23,9 @@ pub const TERMINAL: &str = "org.ultar.terminal";
 pub mod item {
     /// New shortcut (choose the app in the app grid).
     pub const NEW_SHORTCUT: u32 = 1;
-    /// New folder (the desktop folder is Files'; not yet reachable from the shell).
+    /// New folder in the desktop folder (Files makes it, its name ready to type).
     pub const NEW_FOLDER: u32 = 2;
-    /// Paste (as above).
+    /// Paste (Files keeps its clipboard per window: not reachable from the desktop yet).
     pub const PASTE: u32 = 3;
     /// Icon sizes: large, medium, small (`SIZE + index of IconSize::ALL`).
     pub const SIZE: u32 = 10;
@@ -33,6 +33,8 @@ pub mod item {
     pub const SHOW: u32 = 13;
     /// Sort by name.
     pub const SORT: u32 = 14;
+    /// Show the system display (processor, memory, GPU, network).
+    pub const METRICS: u32 = 15;
     /// Change the background (Settings › Appearance).
     pub const WALLPAPER: u32 = 20;
     /// Display settings.
@@ -76,7 +78,10 @@ pub(super) fn desk_menu(s: &Shell) -> Menu {
     let desk = s.d.prefs.desk;
     let mut items = vec![
         MenuItem::new(item::NEW_SHORTCUT, Label::key("desk.desk.new_shortcut")).icon(IconId::Plus),
-        MenuItem::new(item::NEW_FOLDER, Label::key("desk.desk.new_folder")).disabled(),
+        gate(MenuItem::new(
+            item::NEW_FOLDER,
+            Label::key("desk.desk.new_folder"),
+        )),
         MenuItem::new(item::PASTE, Label::key("desk.desk.paste")).disabled(),
     ];
     for (i, (size, key)) in SIZES.iter().enumerate() {
@@ -85,6 +90,7 @@ pub(super) fn desk_menu(s: &Shell) -> Menu {
         items.push(if i == 0 { entry.separated() } else { entry });
     }
     items.push(MenuItem::new(item::SHOW, Label::key("desk.desk.show")).checked(desk.shown));
+    items.push(MenuItem::new(item::METRICS, Label::key("desk.desk.metrics")).checked(desk.metrics));
     let sort = MenuItem::new(item::SORT, Label::key("desk.desk.sort"));
     items.push(if s.d.places.shortcuts.len() > 1 && desk.shown {
         sort
@@ -113,7 +119,7 @@ pub(super) fn desk_menu(s: &Shell) -> Menu {
 }
 
 /// The menu of shortcut `index`.
-pub(super) fn shortcut_menu(s: &Shell, index: usize) -> Menu {
+fn shortcut_menu(s: &Shell, index: usize) -> Menu {
     let Some(app) = s.d.places.shortcuts.get(index).map(|c| c.app.as_str()) else {
         return Menu::new(Vec::new());
     };
@@ -138,13 +144,13 @@ pub(super) fn shortcut_menu(s: &Shell, index: usize) -> Menu {
     ])
 }
 
-/// The secondary button on the background at screen point `at`: on a shortcut its menu
-/// (and it is selected), elsewhere the background's menu.
+/// The secondary button on the background at screen point `at`: on an icon its menu (and
+/// it is selected), elsewhere the background's menu.
 pub(super) fn open_at(s: &mut Shell, target: Option<&Target>, at: (i32, i32)) -> Outcome {
     s.d.open = match target {
-        Some(Target::Shortcut(i)) if *i < s.d.places.shortcuts.len() => {
-            s.d.places.selected = Some(*i);
-            Open::ShortcutMenu(*i, at.0, at.1)
+        Some(Target::Desk(item)) if crate::view::desk::look_of(&s.d, *item, &s.tr).is_some() => {
+            s.d.places.selected = Some(*item);
+            Open::ItemMenu(*item, at.0, at.1)
         }
         _ => {
             s.d.places.selected = None;
@@ -154,18 +160,42 @@ pub(super) fn open_at(s: &mut Shell, target: Option<&Target>, at: (i32, i32)) ->
     Outcome::surfaces()
 }
 
-/// A click on the background: a shortcut is selected; a double click opens it.
+/// A click on the background: an icon is selected; a double click opens it.
 pub(super) fn on_desk(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outcome {
-    let Target::Shortcut(i) = target else {
+    let Target::Desk(item) = target else {
         return Outcome::none();
     };
     match kind {
-        ActionKind::DoubleActivated => open(s, *i),
-        ActionKind::Activated if s.d.places.selected != Some(*i) => {
-            s.d.places.selected = Some(*i);
+        ActionKind::DoubleActivated => open_item(s, *item),
+        ActionKind::Activated if s.d.places.selected != Some(*item) => {
+            s.d.places.selected = Some(*item);
             background()
         }
         _ => Outcome::none(),
+    }
+}
+
+/// Opens an icon: a shortcut's app, the home folder, a drive, a desktop folder item.
+fn open_item(s: &mut Shell, item: DeskItem) -> Outcome {
+    match item {
+        DeskItem::Shortcut(i) => open(s, i),
+        _ => super::desk_items::open(s, item),
+    }
+}
+
+/// The menu of an icon.
+pub(super) fn item_menu(s: &Shell, item: DeskItem) -> Menu {
+    match item {
+        DeskItem::Shortcut(i) => shortcut_menu(s, i),
+        _ => super::desk_items::menu(s, item),
+    }
+}
+
+/// A chosen item of an icon's menu.
+pub(super) fn item_chosen(s: &mut Shell, item: DeskItem, id: u32) -> Outcome {
+    match item {
+        DeskItem::Shortcut(i) => shortcut_chosen(s, i, id),
+        _ => super::desk_items::chosen(s, item, id),
     }
 }
 
@@ -213,11 +243,17 @@ pub(super) fn desk_chosen(s: &mut Shell, id: u32) -> Outcome {
             s.d.prefs.desk.shown = shown;
             setting("desktop.icons.enabled", SettingValue::Flag(shown))
         }
+        item::METRICS => {
+            let on = !s.d.prefs.desk.metrics;
+            s.d.prefs.desk.metrics = on;
+            setting("desktop.metrics.enabled", SettingValue::Flag(on))
+        }
         item::SORT => {
             let (catalog, tr) = (&s.d.catalog, &s.tr);
             s.d.places.sort(|c| places::shown_name(c, catalog, tr));
             changed()
         }
+        item::NEW_FOLDER => super::desk_items::new_folder(s),
         item::WALLPAPER => launch(s, SETTINGS, Opening::settings_page("appearance")),
         item::DISPLAY => launch(s, SETTINGS, Opening::settings_page("display")),
         item::SETTINGS => launch(s, SETTINGS, Opening::settings_page("desktop_bar")),
@@ -235,7 +271,7 @@ fn setting(key: &str, value: SettingValue) -> Outcome {
 }
 
 /// A chosen item of shortcut `index`'s menu.
-pub(super) fn shortcut_chosen(s: &mut Shell, index: usize, id: u32) -> Outcome {
+fn shortcut_chosen(s: &mut Shell, index: usize, id: u32) -> Outcome {
     let Some(app) = s.d.places.shortcuts.get(index).map(|c| c.app.clone()) else {
         return Outcome::none();
     };
@@ -281,6 +317,30 @@ pub(super) fn picked(s: &mut Shell, app: &str) -> Outcome {
         ));
     }
     out
+}
+
+/// An app cell of the app grid started to move: the background shows, faint, where its
+/// shortcut would go.
+pub(super) fn drag_started(s: &mut Shell, app: &str) -> Outcome {
+    if !s.d.catalog.iter().any(|a| a.id == app) || s.d.places.on_desktop(app) {
+        return Outcome::none();
+    }
+    s.d.places.dragging = Some(app.to_owned());
+    background()
+}
+
+/// The drag ended: dropped outside the grid's card (on the desktop) the app's shortcut goes
+/// there and the grid closes; inside the card nothing changes.
+pub(super) fn drag_ended(s: &mut Shell, app: &str, on_desktop: bool) -> Outcome {
+    let shown = s.d.places.dragging.take().is_some();
+    if on_desktop && s.d.catalog.iter().any(|a| a.id == app) {
+        return picked(s, app);
+    }
+    if shown {
+        background()
+    } else {
+        Outcome::none()
+    }
 }
 
 /// "Add to desktop" / "Remove from desktop" in an app's menu of the app grid.

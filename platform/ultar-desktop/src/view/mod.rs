@@ -16,6 +16,7 @@ pub mod menu;
 pub mod mesh_list;
 pub mod mesh_send;
 pub mod mesh_toasts;
+pub mod metrics;
 pub mod note;
 pub mod overview;
 pub mod projection;
@@ -206,8 +207,12 @@ pub enum Target {
     MeshSendCancel,
     /// The mesh's toasts (the toolkit's toast reports its button and closing here).
     MeshToasts,
-    /// Desktop background: a shortcut (index into `Places::shortcuts`).
-    Shortcut(usize),
+    /// Desktop background: an icon (home folder, drive, app shortcut, desktop folder item).
+    Desk(crate::model::places::DeskItem),
+    /// Desktop background, system display: the value of a gauge (changed in place).
+    MetricValue(crate::model::metrics::Gauge),
+    /// Desktop background, system display: the history chart of a gauge (changed in place).
+    MetricGraph(crate::model::metrics::Gauge),
     /// Rename dialog of a shortcut: the name field.
     RenameField,
     /// Rename dialog: rename.
