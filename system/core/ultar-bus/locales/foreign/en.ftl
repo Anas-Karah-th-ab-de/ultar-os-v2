@@ -3,6 +3,8 @@
 foreign.confirm.install = Install “{arg0}” ({arg1}). This program comes from another system and was not checked by KM Code Craft. It runs isolated in its own cell; network: {arg2}; folders: {arg3}.
 foreign.confirm.archive = Install the package “{arg0}” from the sources of the Linux area. The program runs isolated in its own cell; network: {arg2}; folders: {arg3}.
 foreign.confirm.update = Update the packages of the Linux area from its signed sources.
+foreign.confirm.runtime = Install the component “Linux programs” (version {arg0}, signed by {arg1}) as the Linux area. Linux programs run in it, each isolated in its own cell.
+foreign.confirm.runtime.windows = Install the component “Windows programs” (the Linux area with Wine, version {arg0}, signed by {arg1}). Linux and Windows programs run in it, each isolated in its own cell.
 foreign.confirm.change = Allow “{arg0}” more. This program comes from another system and was not checked by KM Code Craft; network: {arg2}; folders: {arg3}.
 foreign.source.deb = Linux package
 foreign.source.exe = Windows program

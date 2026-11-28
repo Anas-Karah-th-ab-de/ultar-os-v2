@@ -19,14 +19,15 @@
 #                  fonts and the app wrapper /usr/lib/ultar/wine/ultar-wine-app
 #   TEST_EXTRA     tests only, never shipped: more packages (e.g. "xvfb x11-apps" for the
 #                  Windows end to end's screenshot)
-#   ULTAR_PKG_KEY  file with the hex private key: OUT also gets the signed component
-#                  foreign.linux-runtime-<version>-<arch>.uap (ultar-pkg, kind "data")
+#   ULTAR_PKG_KEY  file with the hex private key: OUT also gets the signed component, two
+#                  files: foreign.linux-runtime-<version>-<arch>.uap (ultar-pkg, kind "data",
+#                  small: pins the archive) and foreign.linux-runtime-<version>-<arch>.tar.gz
 #   UPKG_SIGN      upkg-sign program (default: target/release/upkg-sign, then PATH)
 #
 # Output (OUT, default ./out/foreign-linux):
 #   linux/                       the tree (what ultar-foreign keeps at /data/ultar/foreign/linux)
 #   linux-<version>-<arch>.ext4  the same as an ext4 image, and its .sha256
-#   *.uap                        the signed component (with ULTAR_PKG_KEY)
+#   foreign.linux-runtime-*.uap  the signed component and its archive (*.tar.gz, with ULTAR_PKG_KEY)
 #
 # What the area has: apt/dpkg, GTK 3 and 4, the Qt 6 Wayland plugin, Mesa (llvmpipe),
 # Noto fonts with Arabic, CA certificates, the locales ar/en/de and a replacement for
@@ -303,22 +304,35 @@ if [ -n "${ULTAR_PKG_KEY:-}" ]; then
   [ -n "$SIGN" ] || { [ -x "$REPO/target/release/upkg-sign" ] && SIGN="$REPO/target/release/upkg-sign"; } || true
   [ -n "$SIGN" ] || SIGN=$(command -v upkg-sign || true)
   [ -n "$SIGN" ] || fail "ULTAR_PKG_KEY given but no upkg-sign (cargo build --release -p ultar-pkg)"
+  # the component is two files (docs/integration/ultar-foreign.md, „Der Linux-Bereich als
+  # Komponente“): the tree as a streamed archive of any size, and a small signed package that
+  # pins its size and SHA-256 (the Store's and the launcher's package limits only see this one)
+  STEM="foreign.linux-runtime-$VERSION-$ARCH"
+  ARCHIVE="$OUT/$STEM.tar.gz"
+  (cd "$TREE" && tar --numeric-owner --sort=name --exclude='./proc/*' --exclude='./sys/*' \
+     --exclude='./dev/*' --exclude='./run/*' --exclude='./tmp/*' -cf - .) | gzip -6n >"$ARCHIVE"
   P="$WORK/component"
-  mkdir -p "$P/payload"
-  ln "$IMAGE" "$P/payload/linux.ext4" 2>/dev/null || cp "$IMAGE" "$P/payload/linux.ext4"
-  (cd "$P/payload" && sha256sum linux.ext4 >linux.ext4.sha256)
+  rm -rf "$P"; mkdir -p "$P/payload"
   cp "$TREE/etc/ultar-runtime" "$P/payload/runtime.txt"
   cat >"$P/manifest.toml" <<MANIFEST
 id = "foreign.linux-runtime"
-name = "Linux area for apps from other systems (Ubuntu $RELEASE)"
+name = "Linux area (Ubuntu $RELEASE)"
 version = "$VERSION"
 arch = "$PKG_ARCH"
 kind = "data"
 publisher = "KM Code Craft"
-size = $(stat -c %s "$IMAGE")
+size = $(stat -c %s "$ARCHIVE")
+
+[component]
+archive = "$STEM.tar.gz"
+size = $(stat -c %s "$ARCHIVE")
+sha256 = "$(sha256sum "$ARCHIVE" | cut -d' ' -f1)"
+unpacked = $(du -sb "$TREE" | cut -f1)
+components = "$(echo $COMPONENTS)"
 MANIFEST
-  UAP="$OUT/foreign.linux-runtime-$VERSION-$ARCH.uap"
+  UAP="$OUT/$STEM.uap"
   "$SIGN" "$P/manifest.toml" "$P/payload" "$UAP" "$ULTAR_PKG_KEY"
+  echo "make-linux-runtime: component $(basename "$UAP") + $(basename "$ARCHIVE") ($(stat -c %s "$ARCHIVE") bytes)"
 fi
 
 echo "make-linux-runtime: $SUITE ($RELEASE) $ARCH, $(du -sh "$TREE" | cut -f1) in $TREE"

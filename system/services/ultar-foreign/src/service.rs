@@ -45,11 +45,46 @@ impl ForeignService {
                 layout,
                 helper,
                 sources,
+                trusted: PathBuf::from(ultar_pkg::TRUSTED_DIR),
             },
             state,
             busy: false,
             next_job: 1,
             runtime_size: std::cell::Cell::new(None),
+        }
+    }
+
+    /// Checks components against the keys in `dir` (tests; a device has its built-in ones).
+    #[must_use]
+    pub fn with_trusted_keys(mut self, dir: PathBuf) -> Self {
+        self.ctx.trusted = dir;
+        self
+    }
+
+    /// Installs or replaces the Linux area from a signed component on a drive or in the
+    /// areas (`component.rs`); an area holding the person's programs is never replaced.
+    fn runtime_update(&mut self, caller: String, bus: &Bus<'_, Self>) -> InstallOutcome {
+        if self.busy {
+            return InstallOutcome::Busy;
+        }
+        let job = self.job_id();
+        let ctx = self.ctx.clone();
+        // `.deb` programs live in the area, Windows programs run with its Wine
+        let holds_apps = !self.state.apps.is_empty();
+        self.busy = bus.later(move |client| {
+            let result = crate::component::update(&ctx, client, job, &caller, holds_apps)
+                .map(|u| match u {
+                    crate::component::Updated::Cancelled => None,
+                    crate::component::Updated::Installed(_) | crate::component::Updated::Unchanged => {
+                        Some(Vec::new())
+                    }
+                });
+            Box::new(move |s: &mut ForeignService, bus| s.finished(job, result, bus))
+        });
+        if self.busy {
+            InstallOutcome::Started(job)
+        } else {
+            InstallOutcome::Busy
         }
     }
 
@@ -284,6 +319,15 @@ impl Service for ForeignService {
         if self.ctx.layout.ensure().is_err() {
             bus.log(Record::new(Level::Error, "foreign.root_not_usable"));
         }
+        // an area replaced before the last start is emptied now, before any app of it runs
+        let root = &self.ctx.layout.root;
+        if ["linux.old", "linux.new"].iter().any(|n| root.join(n).exists()) {
+            let ctx = self.ctx.clone();
+            self.busy = bus.later(move |_client: &Client| {
+                crate::component::tidy(&ctx);
+                Box::new(|s: &mut ForeignService, _: &Bus<'_, ForeignService>| s.busy = false)
+            });
+        }
     }
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
@@ -333,17 +377,10 @@ impl Service for ForeignService {
                 answer::<RuntimeState>(request, |_| reply);
             }
             m if m == RuntimeUpdate::METHOD => {
-                // the sources need the network: see `install` (InstallFrom::Archive)
-                let job = self.job_id();
-                bus.publish(&ultar_bus::messages::foreign::Progress {
-                    job,
-                    step: Step::Failed(Failure::Network),
-                    percent: 100,
-                    apps: Vec::new(),
-                });
-                answer::<RuntimeUpdate>(request, |_| InstallReply {
-                    outcome: InstallOutcome::Started(job),
-                });
+                // a signed component on a drive or in the areas (the Store's downloads);
+                // without one, the area's sources would need the network (see `install`)
+                let outcome = self.runtime_update(caller, bus);
+                answer::<RuntimeUpdate>(request, |_| InstallReply { outcome });
             }
             _ => {
                 let _ = request.fail(ErrorCode::UnknownMethod);

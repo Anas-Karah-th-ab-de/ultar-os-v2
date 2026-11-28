@@ -46,6 +46,8 @@ pub struct Ctx {
     pub helper: PathBuf,
     /// Where files may come from (`detect::SOURCES`).
     pub sources: Vec<PathBuf>,
+    /// The device's built-in keys a component's signature is checked against.
+    pub trusted: PathBuf,
 }
 
 /// The fields of a `.deb` and its copy in the inbox.
@@ -444,6 +446,7 @@ mod tests {
             layout: Layout::new(Path::new("/nonexistent/foreign")),
             helper: "/nonexistent/helper".into(),
             sources: vec![dir.clone()],
+            trusted: "/nonexistent/keys".into(),
         };
         assert_eq!(inspect(&ctx, "relative.deb", 1), InspectOutcome::Invalid);
         // outside the person's areas and drives: refused, not merely unreadable
