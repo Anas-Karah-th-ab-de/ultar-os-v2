@@ -353,6 +353,17 @@ pub fn dispatch(f: &mut TrapFrame) {
         0 => sys_read(a[0], a[1], a[2], None),
         1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
+        // getrusage(who, usage): the kernel keeps no per-process counters yet – zeros, as a fresh process
+        98 => Res::Val(match a[0] as i64 {
+            0 | -1 | 1 => {
+                if put(a[1], &[0u8; 144]) {
+                    0
+                } else {
+                    -EFAULT
+                }
+            }
+            _ => -EINVAL,
+        }),
         // creat(path, mode) = open(path, O_CREAT | O_WRONLY | O_TRUNC, mode) – the Wine server uses it
         85 => Res::Val(sys_open(-100, a[0], 0o1101, a[1])),
         3 => Res::Val(sys_close(a[0])),
@@ -1269,9 +1280,15 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                     Path(String),
                     Same(Fd),
                 }
+                // a file opens with the bytes its descriptor holds now (written but not yet stored ones too)
                 let again = with(|p| {
                     p.fd(n).map(|d| match &d.kind {
-                        FdKind::File { path, .. } | FdKind::Dir { path, .. } => Again::Path(path.clone()),
+                        FdKind::File { data, path, no_exec, .. } => Again::Same(Fd {
+                            kind: FdKind::File { data: data.clone(), pos: 0, path: path.clone(), append, write: acc != 0, dirty: false, no_exec: *no_exec },
+                            cloexec,
+                            flags: flags as u32,
+                        }),
+                        FdKind::Dir { path, .. } => Again::Path(path.clone()),
                         _ => Again::Same(d.dup()),
                     })
                 })

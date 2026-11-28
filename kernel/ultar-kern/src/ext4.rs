@@ -568,7 +568,13 @@ impl Ext4 {
             self.put_block(db, &dblk)?;
         }
         if n > 0 {
-            // zurückgeben, was schon belegt wurde
+            // zurückgeben, was schon belegt wurde: the superblock counts it as taken first, so that
+            // giving it back does not leave it counted free twice (statfs showed room that was not there)
+            let fb = le32(&sb, 12) | le32(&sb, 0x158) << 32;
+            let nf = fb.saturating_sub(total - n);
+            put32(&mut sb, 12, nf);
+            put32(&mut sb, 0x158, nf >> 32);
+            let _ = self.write_sb(&mut sb);
             let _ = self.free_runs(&runs);
             return Err(NO_SPACE);
         }

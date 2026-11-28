@@ -757,7 +757,7 @@ pub fn grow(path: &str, len: u64) -> bool {
 /// path that is not on a writable disk); `None` for disk files and the kernel's own trees.
 /// `statfs` of a path on an ext4: (block size, blocks, free, free for everyone, inodes, free inodes).
 pub fn ext4_space(path: &str) -> Option<(u64, u64, u64, u64, u64, u64)> {
-    let (i, _) = ext4_target(path)?;
+    let (i, _) = ext4_at(path)?;
     with_ext4(i, |x| x.space()).flatten()
 }
 
