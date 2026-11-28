@@ -261,7 +261,9 @@ pub fn foreign_event(s: &mut State, event: crate::service::ForeignEvent) -> bool
     match (event, sheet) {
         (E::Inspected(a), Some(sh)) if sh.phase == Phase::Reading => sh.inspected(a),
         (E::Started(a), Some(sh)) if sh.phase == Phase::Starting => sh.started(a),
-        (E::Progress(p), Some(sh)) if sh.progress(&p) => {}
+        (E::Progress(p), Some(sh)) if sh.job() == Some(p.job) => {
+            sh.progress(&p);
+        }
         (E::Progress(p), _) => return background_job(s, &p),
         _ => return false,
     }
