@@ -238,7 +238,22 @@ fn windows_programs(area: &Path, private: impl Fn() -> Result<(), String>) -> Re
         }
     }
     let _ = run_for(&["/usr/bin/wineserver", "-k"], 60);
-    result
+    // how far the new prefix got
+    result.map_err(|e| {
+        let made: Vec<String> = ["system.reg", "drive_c/windows/system32/kernel32.dll"]
+            .iter()
+            .filter(|p| Path::new("/tmp/wine").join(p).exists())
+            .map(|p| (*p).to_owned())
+            .collect();
+        format!(
+            "{e} [prefix: {}]",
+            if made.is_empty() {
+                "-".into()
+            } else {
+                made.join(", ")
+            }
+        )
+    })
 }
 
 /// Runs a program of the area for at most `secs`; its output (stdout and stderr) when it ends
@@ -252,7 +267,8 @@ fn run_for(program: &[&str], secs: u64) -> Result<String, String> {
         .env("HOME", "/tmp")
         .env("TMPDIR", "/tmp")
         .env("WINEPREFIX", "/tmp/wine")
-        .env("WINEDEBUG", "-all")
+        // Wine's own errors, not its notes about what it does not implement
+        .env("WINEDEBUG", "err+all,warn-all,fixme-all")
         .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

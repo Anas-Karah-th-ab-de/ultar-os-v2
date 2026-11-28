@@ -351,7 +351,10 @@ mod tests {
     #[test]
     fn ids_come_from_the_product_name_without_its_version() {
         assert_eq!(id_base("Notepad++").as_deref(), Some("notepad"));
-        assert_eq!(id_base("7-Zip 24.09 (x64 edition)").as_deref(), Some("7-zip"));
+        assert_eq!(
+            id_base("7-Zip 24.09 (x64 edition)").as_deref(),
+            Some("7-zip")
+        );
         assert_eq!(id_base("GIMP v2.10.38").as_deref(), Some("gimp"));
         assert_eq!(id_base("Paint.NET").as_deref(), Some("paint-net"));
         assert_eq!(id_base("ملف"), None);
