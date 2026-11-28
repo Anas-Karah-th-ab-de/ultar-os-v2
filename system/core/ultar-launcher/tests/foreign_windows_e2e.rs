@@ -150,6 +150,10 @@ sleep 25
 xwd -root -display :7 -silent -out "$HOME/shot.xwd" 2>/dev/null
 r drives "$(ls "$HOME/.wine/dosdevices" 2>/dev/null | tr '\n' ' ')"
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
+unset TMPDIR
+# positive controls first: a Wine that does not run must not count as "refused"
+if wine cmd /c 'dir C:\' 2>/dev/null | grep -qi 'windows'; then r c-drive ok; else r c-drive FAIL; fi
+if wine cmd /c 'type \\?\unix\etc\os-release' 2>/dev/null | grep -q 'Ubuntu'; then r unix-cell ok; else r unix-cell FAIL; fi
 if wine cmd /c 'dir Z:\' >/dev/null 2>&1; then r z FAIL; else r z refused; fi
 if wine cmd /c 'type \\?\unix{secret}' 2>/dev/null | grep -q 'host secret'; then r unix-secret FAIL; else r unix-secret hidden; fi
 r end ok
@@ -402,6 +406,9 @@ fn windows_programs_install_themselves_in_their_own_cells_and_leave_without_trac
         let program = line(&probe, "program").to_lowercase();
         assert!(program.contains(case.program), "{probe}");
         assert_eq!(line(&probe, "drives").trim(), "c:", "only C: – {probe}");
+        // Wine runs in the cell and reaches what the cell sees, so the refusals below are real
+        assert_eq!(line(&probe, "c-drive"), "ok", "{probe}");
+        assert_eq!(line(&probe, "unix-cell"), "ok", "{probe}");
         assert_eq!(line(&probe, "z"), "refused");
         assert_eq!(line(&probe, "unix-secret"), "hidden");
         let shot = world.path(&format!("appdata/{id}/shot.xwd"));
