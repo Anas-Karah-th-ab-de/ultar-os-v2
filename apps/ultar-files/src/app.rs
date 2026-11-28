@@ -223,6 +223,10 @@ impl App {
             (Some(shown), Some(scroll)) if *shown == here => self.ui.scroll_offset(scroll).ok(),
             _ => None,
         };
+        let sheet = self
+            .built
+            .sheet
+            .and_then(|n| self.ui.scroll_offset(n).ok());
         self.builds += 1;
         self.built = match self.mode {
             Mode::Window => {
@@ -232,10 +236,18 @@ impl App {
             Mode::Desk => view::desk::build(&mut self.ui, &self.state, &self.fs)?,
         };
         self.shown = Some(here);
+        // the install sheet keeps the focus on the choice just changed (keyboard)
+        let choice = matches!(
+            focus,
+            Some(Target::ForeignInternet | Target::ForeignLan | Target::ForeignFolder(_))
+        );
         if let Some(n) = focus.and_then(|t| self.built.node(&t)) {
-            if self.state.dialog.is_none() {
+            if self.state.dialog.is_none() || choice {
                 let _ = self.ui.focus(n);
             }
+        }
+        if let (Some(n), Some(offset)) = (self.built.sheet, sheet) {
+            let _ = self.ui.set_scroll_offset(n, offset);
         }
         // after the focus (focusing the tall table would show its top)
         if let (Some(scroll), Some(offset)) = (self.built.scroll, offset) {

@@ -155,3 +155,7 @@ data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pi
 * Linux hosts: without a seccomp filter a cell can create a user namespace (all app cells, not only these;
   reported by the end to end). The Ultar kernel has no user namespaces.
 * Folders (`files` areas) for foreign apps are wired through the launcher but not covered by the end to end.
+* P3: the surfaces ran in the click and picture tests only, not on the Ultar kernel (settings-e2e and
+  launcher-e2e do not cover `foreign.*`); on the phone a foreign app is removed in Settings (the grid has
+  no menu); "Install" of a file the person picks is offered by Files, not by the Store (the Store shows
+  the source of its own catalogue entries).

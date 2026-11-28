@@ -52,6 +52,9 @@ pub struct Built {
     pub dialog: Option<NodeId>,
     /// The progress bar of the running job.
     pub progress: Option<NodeId>,
+    /// The scrolling list of the install sheet (its offset is kept across rebuilds, so a
+    /// choice far down stays in view after it is clicked).
+    pub sheet: Option<NodeId>,
 }
 
 impl Built {

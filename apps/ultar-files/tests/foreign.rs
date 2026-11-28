@@ -83,6 +83,11 @@ fn a_linux_package_installs_with_nothing_granted_until_the_person_chooses() {
     tap(&mut app, &Target::ForeignLan);
     tap(&mut app, &Target::ForeignLan);
     tap(&mut app, &Target::ForeignFolder("documents".into()));
+    let list = app.built().sheet.expect("the sheet's list");
+    assert!(
+        app.ui.scroll_offset(list).unwrap() > 0.0,
+        "the list stays where it was scrolled to"
+    );
     let ok = node(&app, &Target::DialogOk);
     click(&mut app, ok);
     let installs = fake.0.borrow().installs.clone();

@@ -79,6 +79,7 @@ fn ready(
             .name(Label::key("files.foreign.details")),
         Sizing::grow(1).with_height(height),
     )?;
+    b.sheet = Some(scroll);
     let warning = InfoBar::new(Tone::Warning, Label::key("files.foreign.unchecked"))
         .message(Label::key("files.foreign.unchecked_hint"));
     ui.add(scroll, warning)?;
