@@ -1,4 +1,4 @@
-# ultar-foreign – apps from other systems (stage P2: Linux)
+# ultar-foreign – apps from other systems (stage P2: Linux, stage P4: Windows)
 
 Plan and stages: `docs/FREMD-APPS.md`. This document describes what stage P2 built: Linux programs from a
 `.deb` of the person, installed into a Linux area and run as apps of their own, each in its own cell.
@@ -106,6 +106,46 @@ pid namespaces, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`
 | `chown` by root of a cell without rights | `EPERM` | dpkg/apt cannot give files to other owners (packages with non-root files, apt's `_apt` sandbox) – needs a right scoped to the area, not `file_admin` |
 | network barrier "internet only" | – | stage P0: apps with network do not start; the installation cell cannot reach the sources (archive installs and area updates answer `Failure::Network`) |
 
+## Windows programs (stage P4)
+
+A `.exe` or `.msi` of the person becomes an app of its own that **installs itself in its own cell** on its
+first start. Nothing of the file runs anywhere else, and the cell is the same `app.foreign` cell as a Linux
+program's (the area read-only, own user and data, no network unless granted, no bus).
+
+| Part | Where | What it does |
+|---|---|---|
+| Component „Windows programs“ | `make-linux-runtime.sh` with `COMPONENTS=windows` (amd64 only) | Ubuntu's own `wine`/`wine64` 10 and `fonts-wine` (checked by apt's signatures; no WineHQ repository – one key fewer to trust). Wine 10 of Ubuntu 26.04 runs 32-bit programs in WoW64 mode (`i386-windows` libraries, no 32-bit Linux libraries) and has the Wayland driver (`winewayland`). Plus the wrapper `/usr/lib/ultar/wine/ultar-wine-app`. `/etc/ultar-runtime` says `components=windows`. |
+| Readers | `src/pe.rs`, `src/msi.rs`, `src/winread.rs` | What the file says about itself, read and never run: product, version, company (PE version resource; MSI `Property` table through the compound file and its string pool), the installer kind (NSIS mark after the image, Inno Setup in the version resource), a library is refused, the largest PNG icon. Every offset and count is checked, streams and resources are capped (32/16 MiB), chains follow at most as many steps as the file has sectors; fixed-seed fuzz tests (4000 damaged files each). |
+| Service | `src/windows.rs` | `inspect`: the file's own name, version, publisher (`verified: false`); `installable` only with the component. `install`: the administrator confirms (`foreign.source.exe`/`.msi` in the question), the file is kept as the app's **own installer** `<root>/setup/<app id>/<safe name>` (`0755`/`0644`), the PNG icon in `icons/`, the app is registered as kind `compat-exe` whose program is the wrapper with `<kind> <file> <name>`. `remove`: the launcher removes the app and its data (the Wine prefix), the service its installer and icon; nothing is purged from the Linux area. |
+| Launcher | `foreign.rs` `setup_dir`, `[paths] foreign_setup` | The directory named exactly like the foreign app (never a link) is bound **read-only** at `/.setup` in that app's cell; no manifest may start anything below `/.setup` or `/.ultar` directly. `compat-exe` gets the same cell as `compat-deb`. |
+| Wrapper | `tools/foreign/wine/ultar-wine-app` (in the area) | In the cell, as the app: the Wine prefix in `$HOME/.wine` (Wayland as display; no download of Wine's .NET/HTML engines), **only drive `C:`** (Wine's `Z:` for `/` and every other drive link removed at every start), the installer (`msiexec /i … /qb`, NSIS `/S`, Inno Setup `/SILENT`; another installer with its own window; a program without installer is copied to `C:\Program Files`), the program it brought (first start-menu shortcut that is not an uninstaller or document, one matching the product first), remembered in `$HOME/.ultar-wine/program`, then started (`wine start /wait /unix <shortcut>`; the cell ends with it). |
+
+Why the installer runs on the first start and not in the service: the service cannot enter an app's data
+(`data_root` is the launcher's, `0700`) and must not – the only place where a Windows program may write is
+its own cell. The person sees the installer's progress window through the bridge (MSI, Inno Setup) or the
+program after a silent install (NSIS).
+
+Security notes: Wine's `\\?\unix\` path reaches what the cell sees (the read-only area, its own data, its
+`/tmp`), never the host – the cell is the boundary, the missing `Z:` is tidiness. The installer copy is
+read-only in the cell (`/.setup`), and the data mount is `noexec` (Wine maps Windows programs by reading
+them). No network without the person's permission (same rules as Linux programs).
+
+### Test
+
+| Test | Command | Last line |
+|---|---|---|
+| readers, service, launcher | `cargo test -p ultar-foreign -p ultar-launcher -p ultar-bus` | `test result: ok` |
+| Windows end to end (root, real cells) | `tools/foreign/windows-e2e.sh [OUT]` | `FOREIGN-WINDOWS-E2E: ALLES OK` |
+
+The end to end builds the area with `COMPONENTS=windows` and, for the test only, `TEST_EXTRA="xvfb
+x11-apps"` (an X server inside the cell for a screenshot – the real display is the bridge), downloads
+Notepad++ 8.7.1 (NSIS) and 7-Zip 24.09 (MSI) from their official pages (SHA-256 printed and pinnable with
+`NPP_SHA256`/`SEVENZIP_SHA256`), and checks for each: described from its own data, "cancelled" installs
+nothing, confirmed: registered with its own installer, first start installs it in the cell (own uid, only
+`lo`, installer read-only, drives only `c:`, `Z:` refused, a host file unreadable through `\\?\unix\`), its
+window shows (screenshot with content, `OUT/shots/*.png`), removal through Settings leaves no data, installer
+or icon and the area's packages unchanged.
+
 ## Open points
 
 * Stage P0: the barrier (`ultar_launcher::foreign::set_net_barrier` is a placeholder returning `ENOSYS`;
@@ -117,4 +157,7 @@ pid namespaces, read-only binds, remount nosuid/nodev, tmpfs, proc, `pivot_root`
   reported by the end to end). The Ultar kernel has no user namespaces.
 * The mobile system dialog does not yet load the `foreign` texts (the desktop's does).
 * UI: Files and Settings do not call `foreign.*` yet (policy and contract are ready).
+* Windows: icons of MSI packages (their `Icon` table) are not read; a program with several start-menu
+  entries becomes one app (the main one); installers that need the network (web installers) fail without
+  the network permission; the installer copy stays as the app's own (repair/reinstall) until removal.
 * Folders (`files` areas) for foreign apps are wired through the launcher but not covered by the end to end.

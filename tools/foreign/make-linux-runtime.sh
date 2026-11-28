@@ -226,7 +226,8 @@ for pkg in systemd systemd-sysv udev openssh-server; do
 done
 
 # --- what the apps need is there -----------------------------------------------------------
-need() { [ -e "$TREE/$1" ] || fail "missing in the area: $1"; }
+# Resolved inside the area: Ubuntu's wine is a link through /etc/alternatives.
+need() { chroot "$TREE" test -e "/$1" || fail "missing in the area: $1"; }
 need usr/bin/apt-get
 need usr/bin/dpkg-deb
 need "usr/lib/$TRIPLET/libgtk-3.so.0"

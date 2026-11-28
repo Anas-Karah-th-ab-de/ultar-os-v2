@@ -57,23 +57,40 @@ impl Layout {
         r.join("usr/bin").is_dir() && r.join("var/lib/dpkg/status").is_file()
     }
 
-    /// Whether the area has the component „Windows programs“ (Wine and the app wrapper).
+    /// Whether the area has the component „Windows programs“: its build wrote `components=windows`
+    /// (after checking Wine in the area), the app wrapper is there and `wine` is a file or a link
+    /// (Ubuntu's is a link through `/etc/alternatives`, which only resolves inside the area).
     pub fn windows_installed(&self) -> bool {
         let r = self.runtime();
+        let present = |p: &str| {
+            std::fs::symlink_metadata(r.join(p.trim_start_matches('/')))
+                .is_ok_and(|m| m.is_file() || m.file_type().is_symlink())
+        };
         self.runtime_installed()
-            && r.join(crate::windows::WINE.trim_start_matches('/'))
-                .is_file()
+            && self
+                .runtime_field("components")
+                .split(',')
+                .any(|c| c.trim() == "windows")
+            && present(crate::windows::WINE)
             && r.join(crate::windows::WRAPPER.trim_start_matches('/'))
                 .is_file()
     }
 
     /// The version of the Linux area (`/etc/ultar-runtime`, written by its build).
     pub fn runtime_version(&self) -> String {
+        self.runtime_field("version")
+    }
+
+    /// One `key=value` line of `/etc/ultar-runtime` (empty when missing, long or odd).
+    fn runtime_field(&self, key: &str) -> String {
         std::fs::read_to_string(self.runtime().join("etc/ultar-runtime"))
             .ok()
             .and_then(|t| {
-                t.lines()
-                    .find_map(|l| l.strip_prefix("version=").map(str::to_owned))
+                t.lines().find_map(|l| {
+                    l.strip_prefix(key)
+                        .and_then(|v| v.strip_prefix('='))
+                        .map(str::to_owned)
+                })
             })
             .filter(|v| v.len() <= 64 && !v.chars().any(char::is_control))
             .unwrap_or_default()
@@ -132,5 +149,38 @@ mod tests {
         assert!(!l.runtime_installed());
         assert_eq!(l.runtime_version(), "");
         assert_eq!(size_of(Path::new("/nonexistent"), 10), 0);
+    }
+
+    #[test]
+    fn the_windows_component_needs_its_mark_wine_and_the_wrapper() {
+        let dir = std::env::temp_dir().join(format!("ultar-layout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let l = Layout::new(&dir);
+        let r = l.runtime();
+        for d in ["usr/bin", "var/lib/dpkg", "etc", "usr/lib/ultar/wine"] {
+            std::fs::create_dir_all(r.join(d)).unwrap();
+        }
+        std::fs::write(r.join("var/lib/dpkg/status"), "").unwrap();
+        std::fs::write(
+            r.join("etc/ultar-runtime"),
+            "version=26.04.1\ncomponents=\n",
+        )
+        .unwrap();
+        // Ubuntu's wine: a link through /etc/alternatives, dangling from outside the area.
+        std::os::unix::fs::symlink("/etc/alternatives/ultar-test-wine", r.join("usr/bin/wine"))
+            .unwrap();
+        std::fs::write(r.join("usr/lib/ultar/wine/ultar-wine-app"), "#!/bin/sh\n").unwrap();
+        assert!(l.runtime_installed());
+        assert_eq!(l.runtime_version(), "26.04.1");
+        assert!(!l.windows_installed(), "no component mark");
+        std::fs::write(
+            r.join("etc/ultar-runtime"),
+            "version=26.04.1\ncomponents=windows\n",
+        )
+        .unwrap();
+        assert!(l.windows_installed());
+        std::fs::remove_file(r.join("usr/lib/ultar/wine/ultar-wine-app")).unwrap();
+        assert!(!l.windows_installed(), "no wrapper");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

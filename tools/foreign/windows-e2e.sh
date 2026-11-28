@@ -15,8 +15,15 @@ REPO=$(cd "$HERE/../.." && pwd)
 OUT=${1:-$REPO/out/foreign-windows}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
+# a finished build leaves its image checksum, newer than the area's mark
+built() {
+  for s in "$OUT"/linux-*.ext4.sha256; do
+    [ -f "$s" ] && [ ! "$OUT/linux/etc/ultar-runtime" -nt "$s" ] && return 0
+  done
+  return 1
+}
 if ! grep -q '^components=.*windows' "$OUT/linux/etc/ultar-runtime" 2>/dev/null \
-   || [ ! -x "$OUT/linux/usr/bin/Xvfb" ]; then
+   || [ ! -x "$OUT/linux/usr/bin/Xvfb" ] || ! built; then
   COMPONENTS=windows TEST_EXTRA="xvfb x11-apps" "$HERE/make-linux-runtime.sh" "$OUT"
 fi
 # the installers (official downloads, pinned by their SHA-256)

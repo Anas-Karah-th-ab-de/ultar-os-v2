@@ -2,6 +2,12 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Windows-Programme (Stufe P4, Branch feat/fa-p4-windows)
+
+| Baustein | Stand |
+|---|---|
+| Windows-Programme | `.exe`/`.msi` über `ultar-foreign`: Angaben aus der Datei (PE-Versionsressource, MSI-Property-Tabelle, eigene begrenzte Leser mit Fuzz-Tests), Bestätigung durch den Administrator, Datei als eigener Installer der App (`setup/<id>`, im Launcher schreibgeschützt bei `/.setup`), Art `compat-exe`; die App installiert sich beim ersten Start **in ihrer eigenen Zelle** über Wine 10 aus Ubuntu (WoW64, Wayland-Treiber, nur Laufwerk `C:`), Komponente `COMPONENTS=windows` im Linux-Bereich. Prüfung `tools/foreign/windows-e2e.sh` (Notepad++ NSIS, 7-Zip MSI). Doku `docs/integration/ultar-foreign.md` § Windows |
+
 ## Apps aus anderen Systemen, Stufe P2 Linux (28.11.2026, Zweig `feat/fa-p2-linux`, nicht in main)
 
 `.deb`-Programme laufen als eigene Apps (`app.foreign`, eigene uid, Linux-Bereich Ubuntu 26.04 schreibgeschützt als Wurzel, kein Bus, kein Netz ohne Erlaubnis); Installation nur nach Administrator-Bestätigung in den Zellen von `ultar-foreign` (docs/integration/ultar-foreign.md). Geprüft: `tools/foreign/linux-e2e.sh` → `FOREIGN-LINUX-E2E: ALLES OK` (Linux, echte Zellen, feindliches Paket); Ultar-Kern in QEMU (`tools/kern-test/foreign-e2e.sh`): Ubuntu-Programme laufen, es fehlen Netz-Namensraum, Einzeldatei-Bind, `chown` ohne Rechte und die Netzsperre (P0).
