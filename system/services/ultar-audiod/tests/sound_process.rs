@@ -8,7 +8,7 @@ use std::time::Duration;
 use ultar_audio_stream::{Class, ConnectError, Direction, Hello, Status, Stream};
 use ultar_bus::messages::audio::MicState;
 use ultar_bus::messages::voice::{AudioDone, Capture, MicChunk};
-use ultar_bus::{BusError, ErrorCode};
+use ultar_bus::{BusError, Client, ErrorCode, TypedSubscription};
 use ultar_svckit::testkit::{wait_until, World, WAIT};
 
 const POLICY: &str = r#"
@@ -102,163 +102,126 @@ fn connect(
     Stream::connect(socket, Hello::new(class, direction, rate, ch))
 }
 
-#[test]
-fn a_call_the_player_and_voice_control_share_one_card_each_with_its_own_right() {
-    let world = World::new("sound", POLICY, &IDENTITIES);
-    let (sockets, card) = (world.subdir("sock"), world.subdir("card"));
-    let (play, capture) = (card.join("play.pcm"), card.join("capture.pcm"));
-    std::fs::write(&play, b"").unwrap();
-    std::fs::write(&capture, b"").unwrap();
-    let _daemon = world.spawn(
-        env!("CARGO_BIN_EXE_ultar-audiod"),
-        "system.audiod",
-        &[
-            "--state",
-            world.subdir("state").to_str().unwrap(),
-            "--root",
-            world.subdir("root").to_str().unwrap(),
-            "--play-file",
-            play.to_str().unwrap(),
-            "--capture-file",
-            capture.to_str().unwrap(),
-            "--policy",
-            world.policy_file().to_str().unwrap(),
-            "--stream-dir",
-            sockets.to_str().unwrap(),
-            "--streams",
-            "system.calld,system.mediad,app.nobody",
-        ],
-    );
-    let sock = |who: &str| sockets.join(format!("{who}.sock"));
-    for who in ["system.calld", "system.mediad", "app.nobody"] {
-        assert!(
-            wait_until(WAIT, || sock(who).exists()),
-            "no socket for {who}"
-        );
-    }
-    let shell = world.client("system.shell");
-    let states = shell.subscribe::<MicState>().unwrap();
-    let voiced = world.client("system.voiced");
-    let chunks = voiced.subscribe::<MicChunk>().unwrap();
+/// The daemon on a fake card, its stream sockets and the card's two files.
+struct Bench {
+    world: World,
+    sockets: std::path::PathBuf,
+    play: std::path::PathBuf,
+    capture: std::path::PathBuf,
+    _daemon: ultar_svckit::testkit::Daemon,
+}
 
-    // rights: nobody plays, the player does not record, only the bus policy decides
+impl Bench {
+    fn start(tag: &str) -> Bench {
+        let world = World::new(tag, POLICY, &IDENTITIES);
+        let (sockets, card) = (world.subdir("sock"), world.subdir("card"));
+        let (play, capture) = (card.join("play.pcm"), card.join("capture.pcm"));
+        std::fs::write(&play, b"").unwrap();
+        std::fs::write(&capture, b"").unwrap();
+        let args = [
+            ("--state", world.subdir("state")),
+            ("--root", world.subdir("root")),
+            ("--play-file", play.clone()),
+            ("--capture-file", capture.clone()),
+            ("--policy", world.policy_file()),
+            ("--stream-dir", sockets.clone()),
+        ];
+        let mut argv: Vec<&str> = Vec::new();
+        for (k, v) in &args {
+            argv.push(k);
+            argv.push(v.to_str().unwrap());
+        }
+        argv.extend(["--streams", "system.calld,system.mediad,app.nobody"]);
+        let daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-audiod"), "system.audiod", &argv);
+        let bench = Bench {
+            world,
+            sockets,
+            play,
+            capture,
+            _daemon: daemon,
+        };
+        for who in ["system.calld", "system.mediad", "app.nobody"] {
+            assert!(
+                wait_until(WAIT, || bench.sock(who).exists()),
+                "no socket for {who}"
+            );
+        }
+        bench
+    }
+
+    fn sock(&self, who: &str) -> std::path::PathBuf {
+        self.sockets.join(format!("{who}.sock"))
+    }
+
+    fn open(&self, who: &str, class: Class, dir: Direction, rate: u32, ch: u8) -> Stream {
+        connect(&self.sock(who), class, dir, rate, ch).unwrap()
+    }
+
+    /// One second of a 700 Hz tone, stereo, appended to the fake card's microphone.
+    fn speak_into_the_microphone(&self) {
+        let (mut phase, mut mic) = (0, Vec::new());
+        for _ in 0..50 {
+            mic.extend(tone(700.0, 0.3, 48_000, 2, &mut phase));
+        }
+        let bytes: Vec<u8> = mic.iter().flat_map(|s| s.to_le_bytes()).collect();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&self.capture)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, &bytes))
+            .unwrap();
+    }
+}
+
+#[test]
+fn only_the_bus_policy_decides_who_plays_and_who_records() {
+    let b = Bench::start("sound-rights");
     let denied =
         |r: Result<Stream, ConnectError>| matches!(r, Err(ConnectError::Refused(Status::Denied)));
+    let nobody = b.sock("app.nobody");
+    let mediad = b.sock("system.mediad");
     assert!(denied(connect(
-        &sock("app.nobody"),
+        &nobody,
         Class::Media,
         Direction::Play,
         48_000,
         2
     )));
     assert!(denied(connect(
-        &sock("app.nobody"),
+        &nobody,
         Class::Media,
         Direction::Capture,
         16_000,
         1
     )));
     assert!(denied(connect(
-        &sock("system.mediad"),
+        &mediad,
         Class::Media,
         Direction::Duplex,
         48_000,
         1
     )));
     assert!(denied(connect(
-        &sock("system.mediad"),
+        &mediad,
         Class::Call,
         Direction::Play,
         48_000,
         1
     )));
-    let nobody = world.client("app.nobody");
+    let nobody = b.world.client("app.nobody");
     assert!(matches!(
         nobody.call(&Capture { on: true }, Duration::from_secs(5)),
         Err(BusError::Remote(ErrorCode::PermissionDenied))
     ));
+}
 
-    // the player alone
-    let mut media = connect(
-        &sock("system.mediad"),
-        Class::Media,
-        Direction::Play,
-        48_000,
-        2,
-    )
-    .unwrap();
-    let mut phase = 0;
-    for _ in 0..50 {
-        media
-            .push(&tone(440.0, 0.5, 48_000, 2, &mut phase))
-            .unwrap();
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let end_alone = size(&play);
-    let alone = amplitude(
-        &left(&play, end_alone.saturating_sub(48_000 * 2), end_alone),
-        440.0,
-    );
-    assert!(alone > 0.4, "the player's tone reaches the card: {alone}");
-
-    // the call joins, voice control listens: all at the same time
-    let mut call = connect(
-        &sock("system.calld"),
-        Class::Call,
-        Direction::Duplex,
-        16_000,
-        1,
-    )
-    .unwrap();
-    let reply = voiced
-        .call(&Capture { on: true }, Duration::from_secs(5))
-        .unwrap();
-    assert_eq!(reply, AudioDone { ok: true });
-    assert!(wait_until(WAIT, || states
-        .try_recv()
-        .ok()
-        .flatten()
-        .is_some_and(|s| s.in_use)));
-    std::thread::sleep(Duration::from_millis(200));
-    // the microphone: one second of a 700 Hz tone, stereo, written into the fake card
-    let mut mic_phase = 0;
-    let mut mic = Vec::new();
-    for _ in 0..50 {
-        mic.extend(tone(700.0, 0.3, 48_000, 2, &mut mic_phase));
-    }
-    let bytes: Vec<u8> = mic.iter().flat_map(|s| s.to_le_bytes()).collect();
-    std::fs::OpenOptions::new()
-        .append(true)
-        .open(&capture)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, &bytes))
-        .unwrap();
-    let (mut call_phase, mut media_phase) = (0, phase);
-    let mut heard = Vec::new();
-    for _ in 0..75 {
-        call.push(&tone(1_000.0, 0.5, 16_000, 1, &mut call_phase))
-            .unwrap();
-        media
-            .push(&tone(440.0, 0.5, 48_000, 2, &mut media_phase))
-            .unwrap();
-        call.pull(&mut heard).unwrap();
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let end_call = size(&play);
-    let window = left(&play, end_call.saturating_sub(48_000 * 3), end_call);
-    let media_under_call = amplitude(&window, 440.0);
-    let call_level = amplitude(&window, 1_000.0);
-    let ducked_db = 20.0 * (media_under_call / alone).log10();
-    println!("media under the call: {ducked_db:.1} dB; call tone {call_level:.2}");
-    assert!(
-        call_level > 0.3,
-        "the call is heard at full level: {call_level}"
-    );
-    assert!(
-        (-19.0..=-11.0).contains(&ducked_db),
-        "media ducked by {ducked_db} dB"
-    );
-
-    // the microphone reached the call and voice control, each at its own rate
+/// The microphone reached the call and voice control, each at its own rate; then voice control
+/// stops listening: the state says so.
+fn microphone_reaches_both_and_voice_control_lets_go(
+    heard: &[i16],
+    chunks: &TypedSubscription<MicChunk>,
+    states: &TypedSubscription<MicState>,
+    voiced: &Client,
+) {
     assert!(!heard.is_empty(), "the call hears the microphone");
     assert!(
         wait_until(WAIT, || chunks
@@ -280,12 +243,8 @@ fn a_call_the_player_and_voice_control_share_one_card_each_with_its_own_right() 
     );
 
     // voice control stops listening: the state says so, the call still hears
-    assert_eq!(
-        voiced
-            .call(&Capture { on: false }, Duration::from_secs(5))
-            .unwrap(),
-        AudioDone { ok: true }
-    );
+    let off = voiced.call(&Capture { on: false }, Duration::from_secs(5));
+    assert_eq!(off.unwrap(), AudioDone { ok: true });
     assert!(wait_until(WAIT, || {
         let mut off = false;
         while let Ok(Some(s)) = states.try_recv() {
@@ -293,4 +252,65 @@ fn a_call_the_player_and_voice_control_share_one_card_each_with_its_own_right() 
         }
         off
     }));
+}
+
+#[test]
+fn a_call_the_player_and_voice_control_share_one_card_each_with_its_own_right() {
+    let b = Bench::start("sound-mix");
+    let shell = b.world.client("system.shell");
+    let states = shell.subscribe::<MicState>().unwrap();
+    let voiced = b.world.client("system.voiced");
+    let chunks = voiced.subscribe::<MicChunk>().unwrap();
+
+    // the player alone
+    let mut media = b.open("system.mediad", Class::Media, Direction::Play, 48_000, 2);
+    let mut media_phase = 0;
+    for _ in 0..50 {
+        let t = tone(440.0, 0.5, 48_000, 2, &mut media_phase);
+        media.push(&t).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let end_alone = size(&b.play);
+    let alone = amplitude(
+        &left(&b.play, end_alone.saturating_sub(96_000), end_alone),
+        440.0,
+    );
+    assert!(alone > 0.4, "the player's tone reaches the card: {alone}");
+
+    // the call joins, voice control listens: all at the same time
+    let mut call = b.open("system.calld", Class::Call, Direction::Duplex, 16_000, 1);
+    let reply = voiced.call(&Capture { on: true }, Duration::from_secs(5));
+    assert_eq!(reply.unwrap(), AudioDone { ok: true });
+    assert!(wait_until(WAIT, || states
+        .try_recv()
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.in_use)));
+    std::thread::sleep(Duration::from_millis(200));
+    b.speak_into_the_microphone();
+    let (mut call_phase, mut heard) = (0, Vec::new());
+    for _ in 0..75 {
+        call.push(&tone(1_000.0, 0.5, 16_000, 1, &mut call_phase))
+            .unwrap();
+        media
+            .push(&tone(440.0, 0.5, 48_000, 2, &mut media_phase))
+            .unwrap();
+        call.pull(&mut heard).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let end_call = size(&b.play);
+    let window = left(&b.play, end_call.saturating_sub(48_000 * 3), end_call);
+    let (under_call, call_level) = (amplitude(&window, 440.0), amplitude(&window, 1_000.0));
+    let ducked_db = 20.0 * (under_call / alone).log10();
+    println!("media under the call: {ducked_db:.1} dB; call tone {call_level:.2}");
+    assert!(
+        call_level > 0.3,
+        "the call is heard at full level: {call_level}"
+    );
+    assert!(
+        (-19.0..=-11.0).contains(&ducked_db),
+        "media ducked by {ducked_db} dB"
+    );
+
+    microphone_reaches_both_and_voice_control_lets_go(&heard, &chunks, &states, &voiced);
 }

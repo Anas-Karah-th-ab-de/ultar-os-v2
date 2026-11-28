@@ -27,7 +27,7 @@ nicht wie bei den Bus-Sockets: `audiod` besitzt die Sockets (Modus `0666`, jeder
 fragt beim `accept` die Peer-Credentials des Kernels (`SO_PEERCRED`, `ultar-service::peercred`).
 Die Benutzer-ID des Peers muss die des Sockets sein (`system.calld` = 829, `system.mediad` = 824,
 `rootfs/etc/ultar/ids.toml`), sonst wird die Verbindung ohne Antwort geschlossen
-(`Stats::wrong_peer`). Meldet der Kernel keine Credentials, wird jeder abgewiesen (fail closed).
+(`Stats::wrong_peer`). Meldet der Kernel keine Credentials (älterer Kern), wird jeder abgewiesen (fail closed).
 
 | Byte | Hello (16 Byte, vom Client) |
 |---|---|
@@ -201,9 +201,13 @@ calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher,
 
 ## Lücken des Kerns (nicht angefasst, `kernel/ultar-kern`)
 
-* `SO_PEERCRED`/Benutzer-IDs fehlen im Ultar-Kern (`sys_getsockopt` kennt nur `SO_ERROR`/`SO_TYPE`,
-  `getuid` ist immer 0): dort weist `audiod` **jeden** Strom-Client ab, bis der Kern die Credentials
-  liefert (siehe `ultar-service/src/peercred.rs`). Auf Linux gilt die Prüfung voll.
+* `SO_PEERCRED` und Benutzer-IDs gibt es im Ultar-Kern (`cred.rs`, `uds.rs`, Option 17): die
+  Prüfung von `audiod` gilt dort wie auf Linux, Anrufe, Medien und Sprachsteuerung behalten ihren
+  Ton. Nur ein Peer, den der Kern im Pid-Namensraum von `audiod` nicht sieht (Prozess-ID 0),
+  wird von `ultar_sys::peer_credentials` abgewiesen, auch mit der richtigen Benutzer-ID; Dienste
+  im selben Namensraum sind nicht betroffen. Eine Seitenzelle mit eigenem Pid-Namensraum
+  (Browser) braucht dafür noch eine Lösung (offener Punkt 3). Ein älterer Kern ohne die Option
+  (vier Nullbytes) führt dazu, dass `audiod` jeden Client abweist (fail closed).
 * `/dev/ultar/pcm` hat **keine getrennten Raten** für Aufnahme und Wiedergabe und **keine
   Füllstand-Abfrage**; `audiod` schätzt den Füllstand und geht von 48 kHz in beide Richtungen aus.
   Eine Abfrage (`FIONREAD`-artig) und ein Zähler der gespielten Frames würden die Schätzung und

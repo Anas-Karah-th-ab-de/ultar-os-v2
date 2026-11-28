@@ -106,27 +106,38 @@ pub struct Engine {
     conns: Vec<Conn>,
     mix: Mix,
     opener: Opener,
-    device: Option<Box<dyn Device>>,
-    next_open: Option<Instant>,
-    last: Option<Instant>,
-    frac: f64,
-    queued: u64,
-    /// The mono sound in the card's queue, oldest first: the far end of the echo canceller.
-    reference: VecDeque<f32>,
+    /// The card and the clock that paces it.
+    card: CardState,
+    /// What the microphone side keeps: the far end of the echo canceller, the rates for the
+    /// bus topic and who records.
+    echo: EchoState,
     /// `accessibility.mono_audio`: both channels in every speaker.
     mono: bool,
-    mic16: Resampler,
-    far16: Resampler,
-    bus_users: Vec<String>,
-    bus_acc: Vec<i16>,
-    fresh: bool,
     clips: HashMap<u64, Clip>,
     /// Streams the mixer finished while mixing, to be taken away in `finish`.
     finished: Vec<u64>,
     next_id: u64,
     events: Vec<Event>,
-    mic_now: Vec<String>,
     stats: Stats,
+}
+
+struct CardState {
+    device: Option<Box<dyn Device>>,
+    next_open: Option<Instant>,
+    last: Option<Instant>,
+    frac: f64,
+    queued: u64,
+    fresh: bool,
+}
+
+struct EchoState {
+    /// The mono sound in the card's queue, oldest first: the far end of the echo canceller.
+    reference: VecDeque<f32>,
+    mic16: Resampler,
+    far16: Resampler,
+    bus_users: Vec<String>,
+    bus_acc: Vec<i16>,
+    mic_now: Vec<String>,
 }
 
 impl Engine {
@@ -157,23 +168,27 @@ impl Engine {
             conns: Vec::new(),
             mix: Mix::new(),
             opener,
-            device: None,
-            next_open: None,
-            last: None,
-            frac: 0.0,
-            queued: 0,
-            reference: VecDeque::new(),
+            card: CardState {
+                device: None,
+                next_open: None,
+                last: None,
+                frac: 0.0,
+                queued: 0,
+                fresh: true,
+            },
+            echo: EchoState {
+                reference: VecDeque::new(),
+                mic16: Resampler::new(CARD_RATE, 16_000),
+                far16: Resampler::new(CARD_RATE, 16_000),
+                bus_users: Vec::new(),
+                bus_acc: Vec::new(),
+                mic_now: Vec::new(),
+            },
             mono: false,
-            mic16: Resampler::new(CARD_RATE, 16_000),
-            far16: Resampler::new(CARD_RATE, 16_000),
-            bus_users: Vec::new(),
-            bus_acc: Vec::new(),
-            fresh: true,
             clips: HashMap::new(),
             finished: Vec::new(),
             next_id: 1,
             events: Vec::new(),
-            mic_now: Vec::new(),
             stats: Stats::default(),
         })
     }
@@ -209,12 +224,12 @@ impl Engine {
 
     /// There is a card.
     pub fn has_card(&self) -> bool {
-        self.device.is_some()
+        self.card.device.is_some()
     }
 
     /// Nothing connected and nothing playing: the loop may sleep longer.
     pub fn idle(&self) -> bool {
-        self.conns.is_empty() && self.mix.is_empty() && self.bus_users.is_empty()
+        self.conns.is_empty() && self.mix.is_empty() && self.echo.bus_users.is_empty()
     }
 
     /// What happened since the last call.
@@ -230,15 +245,15 @@ impl Engine {
     /// Who asked for the microphone over the bus (`audio.capture`); empty: nobody.
     pub fn set_bus_capture(&mut self, users: Vec<String>) {
         if users.is_empty() {
-            self.bus_acc.clear();
+            self.echo.bus_acc.clear();
         }
-        self.bus_users = users;
+        self.echo.bus_users = users;
     }
 
     /// Plays a clip of the bus (mono, `rate`) as a prompt; `ClipDone` follows.
     pub fn play_clip(&mut self, request: u64, rate: u32, samples: &[i16]) {
         let ok_rate = (ultar_audio_stream::MIN_RATE..=ultar_audio_stream::MAX_RATE).contains(&rate);
-        if self.device.is_none() || !ok_rate || samples.is_empty() {
+        if self.card.device.is_none() || !ok_rate || samples.is_empty() {
             self.events.push(Event::ClipDone { request, ok: false });
             return;
         }
@@ -279,23 +294,23 @@ impl Engine {
     }
 
     fn advance(&mut self, now: Instant) -> u64 {
-        let Some(last) = self.last.replace(now) else {
+        let Some(last) = self.card.last.replace(now) else {
             return 0;
         };
-        let exact =
-            now.saturating_duration_since(last).as_secs_f64() * f64::from(CARD_RATE) + self.frac;
+        let exact = now.saturating_duration_since(last).as_secs_f64() * f64::from(CARD_RATE)
+            + self.card.frac;
         let frames = (exact.floor() as u64).min(MAX_STEP_FRAMES);
-        self.frac = exact - exact.floor();
+        self.card.frac = exact - exact.floor();
         frames
     }
 
     fn lose_card(&mut self, now: Instant) {
-        self.device = None;
+        self.card.device = None;
         self.stats.card_lost += 1;
-        self.queued = 0;
-        self.reference.clear();
+        self.card.queued = 0;
+        self.echo.reference.clear();
         self.events.push(Event::Card(false));
-        self.next_open = Some(now + REOPEN);
+        self.card.next_open = Some(now + REOPEN);
         // the streams cannot go on: clients see the end and run silent
         for c in self.conns.drain(..) {
             if c.voice {
@@ -312,17 +327,17 @@ impl Engine {
     }
 
     fn maintain_card(&mut self, now: Instant) {
-        if self.device.is_some() || self.next_open.is_some_and(|t| now < t) {
+        if self.card.device.is_some() || self.card.next_open.is_some_and(|t| now < t) {
             return;
         }
         match (self.opener)() {
             Ok(d) => {
-                self.device = Some(d);
-                self.fresh = true;
-                self.next_open = None;
+                self.card.device = Some(d);
+                self.card.fresh = true;
+                self.card.next_open = None;
                 self.events.push(Event::Card(true));
             }
-            Err(_) => self.next_open = Some(now + REOPEN),
+            Err(_) => self.card.next_open = Some(now + REOPEN),
         }
     }
 
@@ -354,7 +369,7 @@ impl Engine {
             .count();
         if !c.rights.allow(h) {
             Status::Denied
-        } else if self.device.is_none() {
+        } else if self.card.device.is_none() {
             Status::NoDevice
         } else if open >= MAX_STREAMS {
             Status::TooMany
@@ -428,13 +443,13 @@ impl Engine {
     /// Keeps the card's queue at [`QUEUE`]; returns the mono sound that left the queue (what
     /// the speaker played while this step's time passed).
     fn play(&mut self, frames: u64) -> Vec<f32> {
-        self.queued -= frames.min(self.queued);
+        self.card.queued -= frames.min(self.card.queued);
         let far: Vec<f32> = (0..frames)
-            .map(|_| self.reference.pop_front().unwrap_or(0.0))
+            .map(|_| self.echo.reference.pop_front().unwrap_or(0.0))
             .collect();
         let mut lost = false;
-        if let Some(dev) = self.device.as_mut() {
-            while self.queued < QUEUE && self.mix.sounding() {
+        if let Some(dev) = self.card.device.as_mut() {
+            while self.card.queued < QUEUE && self.mix.sounding() {
                 let mut buf = vec![0.0f32; PERIOD * 2];
                 let done = self.mix.mix(&mut buf);
                 self.finished.extend(done);
@@ -449,12 +464,13 @@ impl Engine {
                 match dev.write(&pcm) {
                     Ok(n) => {
                         let taken = n / 2;
-                        self.queued += taken as u64;
-                        self.reference
+                        self.card.queued += taken as u64;
+                        self.echo
+                            .reference
                             .extend(buf.chunks_exact(2).take(taken).map(|f| (f[0] + f[1]) / 2.0));
                         if n < pcm.len() {
                             // the card is full: the rest is dropped, not piled up
-                            self.queued = self.queued.max(FULL);
+                            self.card.queued = self.card.queued.max(FULL);
                             break;
                         }
                     }
@@ -466,7 +482,7 @@ impl Engine {
             }
         }
         if lost {
-            self.lose_card(self.last.unwrap_or_else(Instant::now));
+            self.lose_card(self.card.last.unwrap_or_else(Instant::now));
         }
         far
     }
@@ -476,23 +492,23 @@ impl Engine {
     }
 
     fn record(&mut self, far: Vec<f32>) {
-        let any = self.recorders().next().is_some() || !self.bus_users.is_empty();
+        let any = self.recorders().next().is_some() || !self.echo.bus_users.is_empty();
         if !any {
-            self.fresh = true;
+            self.card.fresh = true;
             return;
         }
         let mut lost = false;
         let mut mic48 = Vec::new();
-        if let Some(dev) = self.device.as_mut() {
+        if let Some(dev) = self.card.device.as_mut() {
             let mut buf = vec![0i16; 9600];
-            if self.fresh {
+            if self.card.fresh {
                 // what piled up while nobody listened is old: it is thrown away
                 for _ in 0..64 {
                     if !matches!(dev.read(&mut buf), Ok(n) if n > 0) {
                         break;
                     }
                 }
-                self.fresh = false;
+                self.card.fresh = false;
             }
             for _ in 0..4 {
                 match dev.read(&mut buf) {
@@ -506,18 +522,18 @@ impl Engine {
             }
         }
         if lost {
-            self.lose_card(self.last.unwrap_or_else(Instant::now));
+            self.lose_card(self.card.last.unwrap_or_else(Instant::now));
             return;
         }
         let echo = self.recorders().any(|c| {
             matches!(&c.phase, Phase::Open(o) if o.rec.as_ref().is_some_and(|r| r.wants_echo_path()))
         });
         let (mut m16, mut f16) = (Vec::new(), Vec::new());
-        if echo || !self.bus_users.is_empty() {
-            self.mic16.process(&mic48, &mut m16);
+        if echo || !self.echo.bus_users.is_empty() {
+            self.echo.mic16.process(&mic48, &mut m16);
         }
         if echo {
-            self.far16.process(&far, &mut f16);
+            self.echo.far16.process(&far, &mut f16);
         }
         for c in &mut self.conns {
             if let Phase::Open(o) = &mut c.phase {
@@ -526,10 +542,10 @@ impl Engine {
                 }
             }
         }
-        if !self.bus_users.is_empty() {
-            self.bus_acc.extend(to_i16(&m16));
-            while self.bus_acc.len() >= CHUNK {
-                let chunk: Vec<i16> = self.bus_acc.drain(..CHUNK).collect();
+        if !self.echo.bus_users.is_empty() {
+            self.echo.bus_acc.extend(to_i16(&m16));
+            while self.echo.bus_acc.len() >= CHUNK {
+                let chunk: Vec<i16> = self.echo.bus_acc.drain(..CHUNK).collect();
                 self.events.push(Event::Chunk(chunk));
             }
         }
@@ -556,12 +572,12 @@ impl Engine {
         let mut users: Vec<String> = self
             .recorders()
             .map(|c| c.identity.clone())
-            .chain(self.bus_users.iter().cloned())
+            .chain(self.echo.bus_users.iter().cloned())
             .collect();
         users.sort();
         users.dedup();
-        if users != self.mic_now {
-            self.mic_now.clone_from(&users);
+        if users != self.echo.mic_now {
+            self.echo.mic_now.clone_from(&users);
             self.events.push(Event::Mic(users));
         }
     }

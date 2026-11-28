@@ -91,14 +91,8 @@ impl Fft {
     }
 }
 
-/// The echo canceller of one call.
-pub struct Aec {
-    fft: Fft,
-    far_q: VecDeque<f32>,
-    near_q: VecDeque<f32>,
-    /// Far end of the last two blocks.
-    xbuf: [f32; N],
-    /// Weights, partition after partition.
+/// The filter: weights and far-end spectra, partition after partition.
+struct Filter {
     w_re: Vec<f32>,
     w_im: Vec<f32>,
     /// Spectra of the far end, newest at `head`.
@@ -106,20 +100,40 @@ pub struct Aec {
     x_im: Vec<f32>,
     head: usize,
     power: Vec<f32>,
+}
+
+/// What decides whether the filter may learn (double talk).
+struct Talk {
     far_peaks: [f32; 8],
     peak_at: usize,
     hang: u32,
-    blocks: u64,
     /// Slow averages of the microphone power and of what is left after the filter.
     pd_s: f32,
     pe_s: f32,
-    /// Times the filter was thrown away, blocks it was held, blocks it learned.
-    resets: u64,
-    frozen: u64,
-    learned: u64,
     /// Blocks in a row the filter was held, and blocks the averages stay frozen.
     held: u32,
     jump_hang: u32,
+}
+
+/// Times the filter was thrown away, blocks it was held, blocks it learned.
+#[derive(Default)]
+struct Counts {
+    resets: u64,
+    frozen: u64,
+    learned: u64,
+}
+
+/// The echo canceller of one call.
+pub struct Aec {
+    fft: Fft,
+    far_q: VecDeque<f32>,
+    near_q: VecDeque<f32>,
+    /// Far end of the last two blocks.
+    xbuf: [f32; N],
+    filt: Filter,
+    talk: Talk,
+    n: Counts,
+    blocks: u64,
 }
 
 impl Default for Aec {
@@ -136,23 +150,25 @@ impl Aec {
             far_q: VecDeque::new(),
             near_q: VecDeque::new(),
             xbuf: [0.0; N],
-            w_re: vec![0.0; PARTS * N],
-            w_im: vec![0.0; PARTS * N],
-            x_re: vec![0.0; PARTS * N],
-            x_im: vec![0.0; PARTS * N],
-            head: 0,
-            power: vec![1e-3; N],
-            far_peaks: [0.0; 8],
-            peak_at: 0,
-            hang: 0,
+            filt: Filter {
+                w_re: vec![0.0; PARTS * N],
+                w_im: vec![0.0; PARTS * N],
+                x_re: vec![0.0; PARTS * N],
+                x_im: vec![0.0; PARTS * N],
+                head: 0,
+                power: vec![1e-3; N],
+            },
+            talk: Talk {
+                far_peaks: [0.0; 8],
+                peak_at: 0,
+                hang: 0,
+                pd_s: 0.0,
+                pe_s: 0.0,
+                held: 0,
+                jump_hang: 0,
+            },
+            n: Counts::default(),
             blocks: 0,
-            pd_s: 0.0,
-            pe_s: 0.0,
-            resets: 0,
-            frozen: 0,
-            learned: 0,
-            held: 0,
-            jump_hang: 0,
         }
     }
 
@@ -163,7 +179,7 @@ impl Aec {
 
     /// How often the filter was thrown away, held (double talk) and updated.
     pub fn counts(&self) -> (u64, u64, u64) {
-        (self.resets, self.frozen, self.learned)
+        (self.n.resets, self.n.frozen, self.n.learned)
     }
 
     /// Feeds `far` (what was played) and `near` (what the microphone heard, at the same
@@ -193,35 +209,108 @@ impl Aec {
         }
     }
 
-    fn block(&mut self, x: &[f32], d: &[f32], out: &mut Vec<f32>) {
-        self.blocks += 1;
+    /// Echo estimate: sum over the partitions of weight x far spectrum, in the time domain.
+    fn echo(&mut self, x: &[f32]) -> Vec<f32> {
         self.xbuf.copy_within(BLOCK.., 0);
         self.xbuf[BLOCK..].copy_from_slice(x);
-        self.head = (self.head + PARTS - 1) % PARTS;
-        let base = self.head * N;
-        self.x_re[base..base + N].copy_from_slice(&self.xbuf);
-        self.x_im[base..base + N].fill(0.0);
-        let (re, im) = (
-            &mut self.x_re[base..base + N],
-            &mut self.x_im[base..base + N],
-        );
+        let f = &mut self.filt;
+        f.head = (f.head + PARTS - 1) % PARTS;
+        let base = f.head * N;
+        f.x_re[base..base + N].copy_from_slice(&self.xbuf);
+        f.x_im[base..base + N].fill(0.0);
+        let (re, im) = (&mut f.x_re[base..base + N], &mut f.x_im[base..base + N]);
         self.fft.run(re, im, false);
-
-        // echo estimate: sum over the partitions of weight x far spectrum
         let (mut yr, mut yi) = (vec![0.0f32; N], vec![0.0f32; N]);
-        self.power.iter_mut().for_each(|p| *p *= 0.8);
+        f.power.iter_mut().for_each(|p| *p *= 0.8);
         for p in 0..PARTS {
-            let xs = ((self.head + p) % PARTS) * N;
+            let xs = ((f.head + p) % PARTS) * N;
             let ws = p * N;
             for k in 0..N {
-                let (a, b) = (self.w_re[ws + k], self.w_im[ws + k]);
-                let (c, e) = (self.x_re[xs + k], self.x_im[xs + k]);
+                let (a, b) = (f.w_re[ws + k], f.w_im[ws + k]);
+                let (c, e) = (f.x_re[xs + k], f.x_im[xs + k]);
                 yr[k] += a * c - b * e;
                 yi[k] += a * e + b * c;
-                self.power[k] += 0.2 * (c * c + e * e);
+                f.power[k] += 0.2 * (c * c + e * e);
             }
         }
         self.fft.run(&mut yr, &mut yi, true);
+        yr
+    }
+
+    /// Looks at the far end, the microphone and what is left: returns the loudest far-end
+    /// sample of the last blocks and sets `hang` while the filter must not learn.
+    fn double_talk(&mut self, x: &[f32], d: &[f32], pd: f32, pe: f32) -> f32 {
+        let t = &mut self.talk;
+        // double talk: the microphone is louder than the far end can explain
+        let far_peak = x.iter().fold(0.0f32, |a, v| a.max(v.abs()));
+        t.far_peaks[t.peak_at] = far_peak;
+        t.peak_at = (t.peak_at + 1) % t.far_peaks.len();
+        let window = t.far_peaks.iter().fold(0.0f32, |a, v| a.max(*v));
+        let near_peak = d.iter().fold(0.0f32, |a, v| a.max(v.abs()));
+        if near_peak > window {
+            t.hang = HANGOVER;
+        }
+        // once the filter works, a sudden rise of what is left over means somebody talks
+        // on this side (or the room changed; the average catches up within a quarter second)
+        let converged = t.pd_s > 1e-8 && t.pe_s < 0.3 * t.pd_s;
+        if converged && pe > 3.0 * t.pe_s + 1e-9 {
+            t.hang = HANGOVER;
+            t.jump_hang = HANGOVER;
+        }
+        if t.jump_hang > 0 {
+            // the averages stay where they were, so a long talk keeps being recognised;
+            // after HOLD_MAX blocks it is taken as a changed room and the filter learns again
+            t.jump_hang -= 1;
+            t.held += 1;
+            if t.held > HOLD_MAX {
+                t.held = 0;
+                t.hang = 0;
+                t.jump_hang = 0;
+                t.pd_s = pd;
+                t.pe_s = pe;
+            }
+        } else {
+            t.held = 0;
+            t.pd_s = 0.98 * t.pd_s + 0.02 * pd;
+            t.pe_s = 0.98 * t.pe_s + 0.02 * pe;
+        }
+        window
+    }
+
+    /// One step of the filter towards the room, with the error `e` of this block.
+    fn learn(&mut self, e: &[f32; BLOCK]) {
+        let f = &mut self.filt;
+        let mut er = vec![0.0f32; N];
+        let mut ei = vec![0.0f32; N];
+        er[BLOCK..].copy_from_slice(e);
+        self.fft.run(&mut er, &mut ei, false);
+        let floor = 1e-4 * N as f32;
+        for p in 0..PARTS {
+            let xs = ((f.head + p) % PARTS) * N;
+            let ws = p * N;
+            for k in 0..N {
+                let g = MU / (f.power[k] + floor);
+                let (c, s) = (f.x_re[xs + k], -f.x_im[xs + k]);
+                f.w_re[ws + k] += g * (c * er[k] - s * ei[k]);
+                f.w_im[ws + k] += g * (c * ei[k] + s * er[k]);
+            }
+        }
+        // keep the weights causal and short: one partition per block
+        let j = (self.blocks as usize) % PARTS;
+        let ws = j * N;
+        let mut wr = f.w_re[ws..ws + N].to_vec();
+        let mut wi = f.w_im[ws..ws + N].to_vec();
+        self.fft.run(&mut wr, &mut wi, true);
+        wr[BLOCK..].fill(0.0);
+        wi[BLOCK..].fill(0.0);
+        self.fft.run(&mut wr, &mut wi, false);
+        f.w_re[ws..ws + N].copy_from_slice(&wr);
+        f.w_im[ws..ws + N].copy_from_slice(&wi);
+    }
+
+    fn block(&mut self, x: &[f32], d: &[f32], out: &mut Vec<f32>) {
+        self.blocks += 1;
+        let yr = self.echo(x);
         let mut e = [0.0f32; BLOCK];
         let (mut pd, mut pe) = (0.0f32, 0.0f32);
         for i in 0..BLOCK {
@@ -229,83 +318,23 @@ impl Aec {
             pd += d[i] * d[i];
             pe += e[i] * e[i];
         }
-
         // the filter did harm (changed room, double talk gone wrong): start over
         if pe > 2.0 * pd + 1e-6 {
-            self.w_re.fill(0.0);
-            self.w_im.fill(0.0);
-            self.resets += 1;
+            self.filt.w_re.fill(0.0);
+            self.filt.w_im.fill(0.0);
+            self.n.resets += 1;
             out.extend_from_slice(d);
             return;
         }
-
-        // double talk: the microphone is louder than the far end can explain
-        let far_peak = x.iter().fold(0.0f32, |a, v| a.max(v.abs()));
-        self.far_peaks[self.peak_at] = far_peak;
-        self.peak_at = (self.peak_at + 1) % self.far_peaks.len();
-        let window = self.far_peaks.iter().fold(0.0f32, |a, v| a.max(*v));
-        let near_peak = d.iter().fold(0.0f32, |a, v| a.max(v.abs()));
-        if near_peak > window {
-            self.hang = HANGOVER;
-        }
-        // once the filter works, a sudden rise of what is left over means somebody talks
-        // on this side (or the room changed; the average catches up within a quarter second)
-        let converged = self.pd_s > 1e-8 && self.pe_s < 0.3 * self.pd_s;
-        if converged && pe > 3.0 * self.pe_s + 1e-9 {
-            self.hang = HANGOVER;
-            self.jump_hang = HANGOVER;
-        }
-        if self.jump_hang > 0 {
-            // the averages stay where they were, so a long talk keeps being recognised;
-            // after HOLD_MAX blocks it is taken as a changed room and the filter learns again
-            self.jump_hang -= 1;
-            self.held += 1;
-            if self.held > HOLD_MAX {
-                self.held = 0;
-                self.hang = 0;
-                self.jump_hang = 0;
-                self.pd_s = pd;
-                self.pe_s = pe;
-            }
-        } else {
-            self.held = 0;
-            self.pd_s = 0.98 * self.pd_s + 0.02 * pd;
-            self.pe_s = 0.98 * self.pe_s + 0.02 * pe;
-        }
-        let learn = window > FAR_FLOOR && self.hang == 0;
-        self.hang = self.hang.saturating_sub(1);
-
+        let window = self.double_talk(x, d, pd, pe);
+        let learn = window > FAR_FLOOR && self.talk.hang == 0;
+        self.talk.hang = self.talk.hang.saturating_sub(1);
         if window > FAR_FLOOR && !learn {
-            self.frozen += 1;
+            self.n.frozen += 1;
         }
         if learn {
-            self.learned += 1;
-            let mut er = vec![0.0f32; N];
-            let mut ei = vec![0.0f32; N];
-            er[BLOCK..].copy_from_slice(&e);
-            self.fft.run(&mut er, &mut ei, false);
-            let floor = 1e-4 * N as f32;
-            for p in 0..PARTS {
-                let xs = ((self.head + p) % PARTS) * N;
-                let ws = p * N;
-                for k in 0..N {
-                    let g = MU / (self.power[k] + floor);
-                    let (c, s) = (self.x_re[xs + k], -self.x_im[xs + k]);
-                    self.w_re[ws + k] += g * (c * er[k] - s * ei[k]);
-                    self.w_im[ws + k] += g * (c * ei[k] + s * er[k]);
-                }
-            }
-            // keep the weights causal and short: one partition per block
-            let j = (self.blocks as usize) % PARTS;
-            let ws = j * N;
-            let mut wr = self.w_re[ws..ws + N].to_vec();
-            let mut wi = self.w_im[ws..ws + N].to_vec();
-            self.fft.run(&mut wr, &mut wi, true);
-            wr[BLOCK..].fill(0.0);
-            wi[BLOCK..].fill(0.0);
-            self.fft.run(&mut wr, &mut wi, false);
-            self.w_re[ws..ws + N].copy_from_slice(&wr);
-            self.w_im[ws..ws + N].copy_from_slice(&wi);
+            self.n.learned += 1;
+            self.learn(&e);
         }
         out.extend_from_slice(&e);
     }

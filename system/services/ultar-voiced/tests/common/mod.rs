@@ -199,21 +199,8 @@ fn programs(world: &World, install: bool) -> (PathBuf, PathBuf) {
     (dir, models)
 }
 
-/// The service with a bench around it; `install`: the speech model exists.
-pub fn bench(tag: &str, install: bool) -> Bench {
-    let world = World::new(
-        tag,
-        POLICY,
-        &[
-            "system.voiced",
-            "system.audiod",
-            "system.stand_in",
-            "system.shell",
-        ],
-    );
-    let seen = Arc::new(Seen::default());
-    stand_ins(&world, &seen);
-    // the sound server on a fake card
+/// The sound server on a fake card (two files): the daemon, the play file, the capture file.
+fn sound_server(world: &World) -> (Daemon, PathBuf, PathBuf) {
     let card = world.subdir("card");
     let (play_file, capture_file) = (card.join("play.pcm"), card.join("capture.pcm"));
     fs::write(&play_file, b"").unwrap();
@@ -232,6 +219,41 @@ pub fn bench(tag: &str, install: bool) -> Bench {
             capture_file.to_str().unwrap(),
         ],
     );
+    (audiod, play_file, capture_file)
+}
+
+/// Writes every change of "microphone in use" into `seen.capture`.
+fn watch_microphone(mic_states: TypedSubscription<MicState>, seen: Arc<Seen>) {
+    std::thread::spawn(move || {
+        let mut before = false;
+        loop {
+            match mic_states.recv_timeout(Duration::from_millis(100)) {
+                Ok(s) if s.in_use != before => {
+                    before = s.in_use;
+                    seen.capture.lock().unwrap().push(s.in_use);
+                }
+                Ok(_) | Err(BusError::Timeout) => {}
+                Err(_) => return,
+            }
+        }
+    });
+}
+
+/// The service with a bench around it; `install`: the speech model exists.
+pub fn bench(tag: &str, install: bool) -> Bench {
+    let world = World::new(
+        tag,
+        POLICY,
+        &[
+            "system.voiced",
+            "system.audiod",
+            "system.stand_in",
+            "system.shell",
+        ],
+    );
+    let seen = Arc::new(Seen::default());
+    stand_ins(&world, &seen);
+    let (audiod, play_file, capture_file) = sound_server(&world);
     let (dir, models) = programs(&world, install);
     let state = world.subdir("voice-state");
     let port = free_port().to_string();
@@ -255,20 +277,7 @@ pub fn bench(tag: &str, install: bool) -> Bench {
     let shell = world.client("system.shell");
     let states = shell.subscribe::<VoiceState>().unwrap();
     let mic_states = shell.subscribe::<MicState>().unwrap();
-    let watch = seen.clone();
-    std::thread::spawn(move || {
-        let mut before = false;
-        loop {
-            match mic_states.recv_timeout(Duration::from_millis(100)) {
-                Ok(s) if s.in_use != before => {
-                    before = s.in_use;
-                    watch.capture.lock().unwrap().push(s.in_use);
-                }
-                Ok(_) | Err(BusError::Timeout) => {}
-                Err(_) => return,
-            }
-        }
-    });
+    watch_microphone(mic_states, seen.clone());
     Bench {
         _world: world,
         _daemon: daemon,
