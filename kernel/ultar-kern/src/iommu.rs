@@ -157,7 +157,7 @@ fn enable_unit(base: u64) -> Result<(), &'static str> {
 pub fn init(rsdp: u64, ram_top: u64) {
     // SICHERHEIT: find_table liest nur die von der Firmware übergebenen ACPI-Tabellen.
     let Some(t) = (unsafe { crate::apic::find_table(rsdp, b"DMAR") }) else {
-        kprintln!("[iommu] kein DMAR – ohne DMA-Schutz (kein VT-d)");
+        crate::kprintln!("[iommu] kein DMAR – ohne DMA-Schutz (kein VT-d)");
         return;
     };
     let len = unsafe { core::ptr::read_unaligned((t + 4) as *const u32) } as u64;
@@ -189,7 +189,7 @@ pub fn init(rsdp: u64, ram_top: u64) {
         off += slen;
     }
     if n == 0 {
-        kprintln!("[iommu] DMAR ohne Einheit – kein VT-d");
+        crate::kprintln!("[iommu] DMAR ohne Einheit – kein VT-d");
         return;
     }
     // Adressbreite aus SAGAW (CAP Bit 9 = 39 Bit/3 Ebenen, Bit 10 = 48 Bit/4 Ebenen) wählen
@@ -199,15 +199,15 @@ pub fn init(rsdp: u64, ram_top: u64) {
     } else if sagaw & (1 << 2) != 0 {
         (4u32, 0b010u64)
     } else {
-        kprintln!("[iommu] keine unterstützte Adressbreite (SAGAW {sagaw:#x}) – kein VT-d");
+        crate::kprintln!("[iommu] keine unterstützte Adressbreite (SAGAW {sagaw:#x}) – kein VT-d");
         return;
     };
     let Some(slpt) = build_slpt(ram_top, levels) else {
-        kprintln!("[iommu] kein Speicher für Seitentabellen – kein VT-d");
+        crate::kprintln!("[iommu] kein Speicher für Seitentabellen – kein VT-d");
         return;
     };
     let Some(root) = build_root(slpt, aw) else {
-        kprintln!("[iommu] kein Speicher für die Wurzeltabelle – kein VT-d");
+        crate::kprintln!("[iommu] kein Speicher für die Wurzeltabelle – kein VT-d");
         return;
     };
     ROOT.store(root, Ordering::Relaxed);
@@ -215,13 +215,13 @@ pub fn init(rsdp: u64, ram_top: u64) {
     for &base in &bases[..n] {
         match enable_unit(base) {
             Ok(()) => ok += 1,
-            Err(e) => kprintln!("[iommu] Einheit {base:#x}: {e}"),
+            Err(e) => crate::kprintln!("[iommu] Einheit {base:#x}: {e}"),
         }
     }
     ON.store(ok > 0, Ordering::Relaxed);
     BASE0.store(bases[0], Ordering::Relaxed);
     let ver = rd32(bases[0], VER);
-    kprintln!(
+    crate::kprintln!(
         "[iommu] VT-d {}.{}: {ok}/{n} Einheit(en) an, DMA-Schutz für RAM bis {} MiB ({}-Ebenen-Tabelle)",
         (ver >> 4) & 0xf,
         ver & 0xf,
