@@ -1,0 +1,114 @@
+#!/bin/sh
+# ultar-wine-app – a Windows program as an app of its own (docs/integration/ultar-foreign.md,
+# "Windows"). Runs as the app in its own cell: the Linux area read-only as the root, its home
+# /data writable (Linux runs nothing from there – Wine reads Windows programs itself), its own
+# installer read-only at /.setup, and no drive but C: (the app's own data).
+#
+#   ultar-wine-app <msi|nsis|inno|setup|portable> <installer file in /.setup> <name>
+#
+# First start: the Wine prefix ($HOME/.wine), the installer (MSI, NSIS and Inno Setup without
+# questions; any other installer with its own window), the installed program is remembered
+# ($HOME/.ultar-wine/program) and started. Later starts: the program at once.
+#   ULTAR_WINE_QUIET=1     installers without any window (unattended)
+#   ULTAR_WINE_DRIVER      display driver (default wayland: the bridge ultar-wayland)
+set -u
+kind=${1:?kind} file=${2:?installer} name=${3:-}
+export WINEPREFIX="$HOME/.wine"
+export WINEDEBUG="${WINEDEBUG:--all}"
+# no download of Wine's .NET and HTML engines (the cell has no network unless the person
+# allowed it, and nothing is fetched behind the person's back)
+export WINEDLLOVERRIDES="mscoree,mshtml="
+state="$HOME/.ultar-wine"
+quiet=${ULTAR_WINE_QUIET:-0}
+mkdir -p "$state" || exit 1
+
+say() { echo "ultar-wine-app: $*" >&2; }
+
+# Only C: – no drive for the cell's root or anything else (Wine makes Z: for /).
+drives() {
+  for d in "$WINEPREFIX"/dosdevices/*; do
+    [ -e "$d" ] || [ -L "$d" ] || continue
+    case "${d##*/}" in c:) ;; *) rm -f "$d" ;; esac
+  done
+}
+
+prefix() {
+  if [ ! -f "$WINEPREFIX/system.reg" ]; then
+    wineboot -i >/dev/null 2>&1 || { say "the Windows area could not be made"; return 1; }
+    wineserver -w
+  fi
+  drives
+  wine reg add 'HKCU\Software\Wine\Drivers' /v Graphics /d "${ULTAR_WINE_DRIVER:-wayland}" /f >/dev/null 2>&1
+  wineserver -w
+  drives
+}
+
+setup() {
+  src="/.setup/$file"
+  [ -f "$src" ] || { say "no installer in /.setup"; return 1; }
+  case "$kind" in
+    msi)
+      win=$(winepath -w "$src" 2>/dev/null) || return 1
+      if [ "$quiet" = 1 ]; then ui=/qn; else ui=/qb; fi
+      wine msiexec /i "$win" "$ui" ;;
+    nsis)
+      wine "$src" /S ;;
+    inno)
+      if [ "$quiet" = 1 ]; then s=/VERYSILENT; else s=/SILENT; fi
+      wine "$src" "$s" /SUPPRESSMSGBOXES /NORESTART /SP- ;;
+    setup)
+      wine "$src" ;;
+    portable)
+      dir="$WINEPREFIX/drive_c/Program Files/$(printf %s "${name:-$file}" | tr -cd 'A-Za-z0-9 ._+-' | cut -c1-48)"
+      mkdir -p "$dir" && cp "$src" "$dir/" || return 1
+      printf '%s\n' "$dir/$file" >"$state/program"
+      return 0 ;;
+    *)
+      say "unknown kind $kind"; return 1 ;;
+  esac
+  code=$?
+  wineserver -w
+  return $code
+}
+
+# The installed program: the first start-menu (or desktop) shortcut that is not an
+# uninstaller or a document; one whose name matches the product's first.
+pick() {
+  want=$(printf %s "$name" | tr 'A-Z' 'a-z')
+  first='' best=''
+  find "$WINEPREFIX/drive_c/ProgramData/Microsoft/Windows/Start Menu" "$WINEPREFIX/drive_c/users" \
+    -name '*.lnk' -type f 2>/dev/null | LC_ALL=C sort >"$state/links"
+  while IFS= read -r l; do
+    base=$(basename "$l" .lnk | tr 'A-Z' 'a-z')
+    case "$base" in
+      *uninst*|*deinst*|*remove*|*readme*|*help*|*website*|*homepage*|*license*|*changelog*|*manual*) continue ;;
+    esac
+    [ -n "$first" ] || first=$l
+    if [ -n "$want" ]; then
+      case "$want" in *"$base"*) best=$l; break ;; esac
+      case "$base" in *"$want"*) best=$l; break ;; esac
+    fi
+  done <"$state/links"
+  chosen=${best:-$first}
+  [ -n "$chosen" ] || return 1
+  printf '%s\n' "$chosen" >"$state/program"
+}
+
+run() {
+  program=$(cat "$state/program")
+  drives
+  case "$program" in
+    *.lnk) wine start /wait /unix "$program" ;;
+    *) wine "$program" ;;
+  esac
+  code=$?
+  wineserver -w
+  return $code
+}
+
+prefix || exit 1
+if [ ! -s "$state/program" ]; then
+  setup || { say "the installer did not finish"; exit 1; }
+  [ -s "$state/program" ] || pick || { say "the installer brought no program"; exit 1; }
+fi
+run

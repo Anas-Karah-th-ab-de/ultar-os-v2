@@ -22,7 +22,10 @@ pub mod detect;
 pub mod harvest;
 pub mod jobs;
 pub mod layout;
+pub mod msi;
+pub mod pe;
 pub mod service;
 pub mod state;
+pub mod winread;
 
 pub use service::ForeignService;
