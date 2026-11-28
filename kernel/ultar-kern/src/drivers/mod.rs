@@ -15,6 +15,7 @@ pub mod virtio_rng;
 pub mod vmxnet3;
 // WERKSTATT-MODULE-BEGINN
 pub mod gen_ahci;
+pub mod gen_sdhci;
 pub mod gen_bochs_vga;
 pub mod gen_hda;
 pub mod gen_intel_eth;
@@ -37,6 +38,7 @@ pub static ALL: &[&dyn Driver] = &[
     &nvidia_display::DRV,
     // WERKSTATT-TREIBER-BEGINN
     &gen_ahci::DRV,
+    &gen_sdhci::DRV,
     &gen_bochs_vga::DRV,
     &gen_hda::DRV,
     &gen_intel_eth::DRV,
