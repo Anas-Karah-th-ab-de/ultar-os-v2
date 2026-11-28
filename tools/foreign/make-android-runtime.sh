@@ -269,7 +269,7 @@ rm -rf "$TREE"/tmp/* "$TREE"/var/lib/apt/lists/* "$TREE"/var/cache/apt/*.bin "$T
 mkdir -p "$TREE/var/lib/apt/lists/partial"
 find "$TREE" -xdev -perm /6000 -type f -exec chmod ug-s {} +
 [ -z "$(find "$TREE" -xdev -perm /6000 -type f | head -1)" ] || fail "set-id programs in the area"
-missing=$(chroot "$TREE" sh -c 'for f in /usr/bin/android-translation-layer /usr/bin/dalvikvm64 /usr/lib/x86_64-linux-gnu/libbionic_translation*.so* /usr/lib/x86_64-linux-gnu/java/dex/art/natives/*.so /usr/lib/x86_64-linux-gnu/libwolfssl.so*; do [ -e "$f" ] && LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/art ldd "$f" 2>&1 | grep "not found"; done' || true)
+missing=$(chroot "$TREE" sh -c 'for f in /usr/bin/android-translation-layer /usr/bin/dalvikvm /usr/lib/x86_64-linux-gnu/libbionic_translation*.so* /usr/lib/x86_64-linux-gnu/java/dex/art/natives/*.so /usr/lib/x86_64-linux-gnu/libwolfssl.so*; do [ -e "$f" ] && LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/art ldd "$f" 2>&1 | grep "not found"; done' || true)
 # (ART's own libraries lie in lib/…/art: the programs find them by their run path, the JNI
 # libraries in natives/ get them from the loaded ART)
 [ -z "$missing" ] || fail "libraries missing in the area: $missing"
@@ -294,7 +294,7 @@ if [ -f "$H/hello.dex" ]; then
   cp "$H/hello.dex" "$TREE/tmp/art/hello.dex"
   mount -t proc proc "$TREE/proc"
   mount --bind /dev "$TREE/dev"
-  chroot "$TREE" env ANDROID_DATA=/tmp/art /usr/bin/dalvikvm64 -cp /tmp/art/hello.dex Hello >>"$OUT/selftest.log" 2>&1 || true
+  chroot "$TREE" env ANDROID_DATA=/tmp/art /usr/bin/dalvikvm -cp /tmp/art/hello.dex Hello >>"$OUT/selftest.log" 2>&1 || true
   umount "$TREE/dev" "$TREE/proc"
   rm -rf "$TREE/tmp/art"
   if grep -q '^ultar-art-ok 42$' "$OUT/selftest.log"; then selftest=ok; else selftest="FAILED (see $OUT/selftest.log)"; fi

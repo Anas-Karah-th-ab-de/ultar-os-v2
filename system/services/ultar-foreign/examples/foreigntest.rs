@@ -209,14 +209,14 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
     let proc_mounted =
         run("/usr/bin/mount", &["-t", "proc", "proc", "/proc"]).is_ok_and(|o| o.status.success());
     let out = run(
-        "/usr/bin/dalvikvm64",
+        "/usr/bin/dalvikvm",
         &["-cp", "/tmp/ultar-art/hello.dex", "Hello"],
     );
     if proc_mounted {
         let _ = run("/usr/bin/umount", &["/proc"]);
     }
     let _ = std::fs::remove_dir_all("/tmp/ultar-art");
-    let out = out.map_err(|e| format!("dalvikvm64: {e}"))?;
+    let out = out.map_err(|e| format!("dalvikvm: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
     if text.lines().any(|l| l == "ultar-art-ok 42") {
         return Ok(());
@@ -224,7 +224,7 @@ fn art(area: &Path, dex: &Path) -> Result<(), String> {
     let err = String::from_utf8_lossy(&out.stderr);
     let last: Vec<&str> = err.lines().rev().take(4).collect();
     Err(format!(
-        "(ART runs a program: dalvikvm64 {:?}, /proc {}) {}",
+        "(ART runs a program: dalvikvm {:?}, /proc {}) {}",
         out.status.code(),
         if proc_mounted {
             "mounted"
