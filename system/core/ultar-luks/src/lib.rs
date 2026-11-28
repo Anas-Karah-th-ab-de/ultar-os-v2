@@ -16,8 +16,10 @@ mod af;
 mod header;
 mod keyslot;
 mod sectors;
+mod start;
 
 pub use sectors::Sectors;
+pub use start::{start_info, StartInfo, TOKEN_TYPE};
 
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
@@ -158,6 +160,7 @@ fn metadata_json(
     params: &Params,
     digest_salt: &[u8],
     digest: &[u8],
+    tokens: Value,
 ) -> String {
     let json_size = HDR_SIZE - 4096;
     let meta = json!({
@@ -180,7 +183,7 @@ fn metadata_json(
                 "salt": b64(&slot.salt),
             },
         }},
-        "tokens": {},
+        "tokens": tokens,
         "segments": { "0": {
             "type": "crypt",
             "offset": DATA_OFFSET.to_string(),
@@ -205,13 +208,26 @@ fn metadata_json(
 
 /// Formats a new volume: a random master key in keyslot 0, protected by `passphrase`.
 pub fn format(passphrase: &[u8], params: &Params) -> Result<Formatted, Error> {
+    format_with(passphrase, params, None)
+}
+
+/// [`format`] with the start information for the unlock screen in an `ultar-start` token.
+pub fn format_with(
+    passphrase: &[u8],
+    params: &Params,
+    start: Option<&StartInfo>,
+) -> Result<Formatted, Error> {
     let mut key: Key = Zeroizing::new([0u8; KEY_LEN]);
     random(&mut key[..])?;
     let slot = keyslot::seal(&key, passphrase, params)?;
     let mut digest_salt = [0u8; 32];
     random(&mut digest_salt)?;
     let digest = keyslot::digest(&key[..], &digest_salt, params.digest_iterations, 32);
-    let text = metadata_json(&slot, params, &digest_salt, &digest);
+    let tokens = match start {
+        Some(s) => json!({ "0": s.token() }),
+        None => json!({}),
+    };
+    let text = metadata_json(&slot, params, &digest_salt, &digest, tokens);
     let id = uuid()?;
     let mut salt = [0u8; 64];
     random(&mut salt)?;

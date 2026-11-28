@@ -85,8 +85,9 @@ Offen (größere Arbeiten):
   `firstboot`, `netzregeln`; `seat`, `net`, `llm-compat`. Echt aufzuteilen: `net` (Adressen/Routen-Helfer hinter dem
   Bus, DHCP/WLAN als Benutzer), `netzregeln`/`drivers`/`seat` (eigener Benutzer + nur ihr Kern-Recht), `ril`.
 - ✅ **LUKS2 im Installer** (28.11.2026): `ultar-luks` (nur RustCrypto), XTS im Kern (`crypt.rs`), Entsperren beim
-  Start durch ultar-init; geprüft gegen cryptsetup/dm-crypt (`luks-interop.sh`, `crypt-data.sh`). Rest: grafische
-  Abfrage, ext4 im verschlüsselten Bereich wachsen lassen, TPM (S7).
+  Start durch ultar-init; geprüft gegen cryptsetup/dm-crypt (`luks-interop.sh`, `crypt-data.sh`). Grafischer
+  Entsperr-Bildschirm (`ultar-unlock`) und Wachsen des Daten-ext4 auf die ganze Platte (`ultar-ext4grow`) erledigt.
+  Rest: TPM (S7).
 - Anruf-Bildschirm an „klingelt" von `calld` binden · BT-Tastaturen über feste Erzeuger-Kennung zulassen ·
   Einstellungen mit URI-Schema `settings://apps/<id>` · `mprotect`/`munmap` ohne Abgleich anderer Prozessorkerne
   (TLB-Shootdown).
@@ -98,7 +99,7 @@ Offen (größere Arbeiten):
 | # | Prio | Was | Stand |
 |---|---|---|---|
 | I1 | P1 | **Test in VMware Workstation** mit `UltarOS-v2-installer.zip` (Actions → „Installer image") | bereit – Test des Inhabers; bei Problemen `serial.log` |
-| I2 | P0 | Verschlüsselung | ✅ Passphrase (LUKS2); TPM offen |
+| I2 | P0 | Verschlüsselung | ✅ Passphrase (LUKS2), grafische Abfrage, Daten wachsen auf die Platte; TPM offen |
 | I3 | P2 | Netzwerk im Installer (Medium ohne Netzdienst; „Updates während der Installation" wirkt erst danach) | ⬜ |
 | I4 | P2 | Nach „Neu starten" kann VMware wieder vom Medium starten → SATA-Platte von Hand entfernen; Startreihenfolge automatisch | ⬜ |
 

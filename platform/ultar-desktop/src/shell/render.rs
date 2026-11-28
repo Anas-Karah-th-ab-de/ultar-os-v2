@@ -4,7 +4,6 @@ use super::Shell;
 use crate::model::time;
 use crate::model::Open;
 use crate::view::{self, bar::BarText, calendar::Today, Look, Target, View};
-use ultar_i18n::datefmt::ClockStyle;
 use ultar_ui::geom::Size;
 use ultar_ui::icon::IconId;
 use ultar_ui::ui::UiError;
@@ -65,7 +64,7 @@ pub fn status_icons(s: &Shell) -> Vec<IconId> {
 fn bar_text(s: &Shell) -> BarText {
     let (time, date) = s
         .local_time()
-        .map(|t| time::bar_lines(t, ClockStyle::H24, &s.tr))
+        .map(|t| time::bar_lines_with(t, s.d.prefs.clock, &s.tr))
         .unwrap_or_default();
     BarText {
         time,
@@ -158,7 +157,7 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
             let today = Today {
                 date: t.date,
                 now_ms: s.clock.now_ms(),
-                offset_s: i64::from(s.clock.offset_s()),
+                offset_s: i64::from(s.offset_s()),
             };
             let (v, p) = view::calendar::build(&s.d, today, look, screen, &s.tr)?;
             sheet(v, p)

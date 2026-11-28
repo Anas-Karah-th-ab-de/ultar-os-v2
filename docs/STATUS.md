@@ -2,6 +2,31 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
+
+Befund des Eigentümers in VMware (v2 gegen v1): das Firmenlogo fehlte an mehreren Stellen, besonders bei der
+Installation; der Ein/Aus-Knopf fehlte; Änderungen in den Einstellungen wurden nicht übernommen. Ursache des
+dritten Punkts: viele Einstellungen hatten keinen Abnehmer – u. a. wurde die bei der Installation gewählte
+Sprache nirgends angewandt, Apps bekamen weder Sprache noch Thema, Uhr und Sperrbildschirm zeigten UTC.
+
+| Baustein | Stand |
+|---|---|
+| Logo | `BrickKind::Logo` (Bitmap aus `ultar-brand`, flächengemittelt verkleinert, dunkle Platte im hellen Thema); Installer: Willkommen, Schreiben, Fertig; Einstellungen › Info; Sperrbildschirm; Desktop-Hintergrund „ultar-noir“ (Logo ruhig in der Mitte wie in v1); Kern: Startbild und Text-Installer |
+| Ein/Aus | im App-Raster (Startmenü) unten am Ende, öffnet das Ein/Aus-Menü (Ruhezustand, Neustart, Ausschalten, Abmelden, Benutzer wechseln) |
+| Sprache, Thema, Akzent, Textgröße | sofort und ohne Neustart: Leiste und Blätter, Sperrbildschirm, Systemdialoge, Bildschirmtastatur, Einstellungen-Fenster, Titelleisten des Compositors (`Request::ConfigureLook` über displayd), jede neu gestartete App (Launcher übergibt `ULTAR_LANG`/`ULTAR_THEME`/`ULTAR_ACCENT`/`ULTAR_FONT_SIZE`) |
+| Uhr | Zeitzone mit Sommerzeit (`ultar_i18n::tz`), 12/24 h, Sekunden, Wochentag, Datum, Hidschri – Leiste und Sperrbildschirm |
+| Leiste | Symbole mittig/am Anfang, Papierkorb, Laufwerke, Akku-Prozent |
+| Ehrlichkeit | Einstellungen ohne Abnehmer in acht der ersten Bereiche zeigen jetzt „In dieser Version noch nicht verfügbar“ statt nur einen Wert zu speichern (`docs/integration/settings-wiring.md` §2) |
+
+## Welle B (28.11.2026) – SSH auf den Ultar-Kern, USB-C-Netz, Doku-Abgleich
+
+| Baustein | Stand |
+|---|---|
+| **SSH auf den Ultar-Kern** | `ultar-sshd` (reines Rust) läuft auf dem eigenen Kern: Schlüssel-Anmeldung, Befehle, Exit-Code, scp/sftp, fremder Schlüssel und Kennwort abgewiesen, parallele Sitzungen – `ssh-e2e.sh` (`SSH: ALLES OK`) in `ci.sh`. Server-/Desktop-Ausgabe ohne OpenSSH aus dem Ubuntu-Bereich, ein Dienst (`entwickler`), Server standardmäßig an (nur mit Schlüssel); Web-Verwaltung schreibt Schlüssel dorthin, wo `ultar-sshd` liest. Offen: Empfangstempo ~0,3 MB/s (`docs/integration/ssh.md`) |
+| **USB-C-Netz** | RNDIS-Empfang behoben (Ursache: eigener RNDIS-`SET` mit 28 statt 32 Byte, nicht QEMU); DHCP, DNS, TCP, ping über `usb0`; Abziehen gibt Adresse und Standardroute ab, erneutes Anstecken (`usb1`) übernimmt sie – `usb-net-e2e.sh` in `ci.sh`. CDC-ECM-Treiber da, braucht einen echten Dongle |
+| Doku-Abgleich | `docs/review/ABGLEICH.md`: jeder offene Punkt gegen den Code geprüft; STATUS, OFFENE-BEFUNDE, DRIVER-TARGETS, PLAN berichtigt |
+| TLB-Abgleich | Entwurf + halbe Umsetzung auf `wip/tlb-shootdown`, nicht übernommen |
+
 ## Treiber-Welle A (28.11.2026) – Netzwerk-Fundament und DMA-Schutz
 
 | Baustein | Stand |
@@ -34,8 +59,9 @@ plus S9-Direktstart, NVMe-Schreibtest, VT-d/SD auf echter HW. `scripts/build-pc-
 | Kern: AVX | XSAVE: CR4.OSXSAVE, XCR0 = x87/SSE/AVX; YMM-Register bleiben über Planerwechsel, Signale und fork erhalten (`avxtest`). Programme (glibc, Graviola-TLS, llama.cpp) sehen AVX jetzt als nutzbar |
 
 Datenverschlüsselung (2026-11-28): Installer schreibt LUKS2 (ultar-luks, nur RustCrypto), der Kern entschlüsselt
-`ultar-data` (aes-xts-plain64), ultar-init fragt beim Start nach dem Passwort; geprüft gegen cryptsetup/dm-crypt.
-Offen bleiben: grafische Passwortabfrage beim Start, Wachsen des ext4 im verschlüsselten Bereich, TPM,
+`ultar-data` (aes-xts-plain64), grafischer Entsperr-Bildschirm beim Start (`ultar-unlock`, Konsole als Rückfall);
+geprüft gegen cryptsetup/dm-crypt. Datenpartition füllt bei „ganze Platte“ die Platte, das ext4 wächst mit
+(`ultar-ext4grow`, auch verschlüsselt). Offen bleiben: TPM,
 WLAN-Treiber, Anzeige über die Intel-Grafik (Rendern/PRIME), Bluetooth/Ton/Touchpad auf echter Hardware, Start direkt
 auf dem Beelink. Details: `docs/integration/installer-boot.md`, `docs/integration/kernel-xsave-unix-sockets.md`.
 
@@ -111,19 +137,19 @@ neue Oberfläche: Compositor, Desktop-Hülle und Apps sind nicht gebaut; nichts 
   Bildschirmübertragung im Verbund (Überlauf im Testmuster); dazu liefen Tests der Oberfläche, die gemeinsame Umgebungsvariablen ändern, gegeneinander (fiel erst auf GitHub auf) – jetzt nacheinander.
 - Die alte Geräteart-Erkennung (`ultar-edition`) ist durch `ultar-profile` + `ultar-hal-system` ersetzt.
 
-## Noch nicht gemacht (ehrlich)
+## Noch nicht gemacht (ehrlich, Stand 28.11.2026)
 
-| Phase | Offen |
+| Phase | Stand |
 |---|---|
-| P2 | Die rund 1 400 Texte der alten Oberfläche und die Werkzeug-Texte sind noch nicht auf `ultar-i18n` umgestellt; `ultar-sprache` existiert noch |
-| P2b | Installer, Startseite und Bedien-Konsole liegen noch im Kern |
-| P3 | Noch kein echtes HAL-Backend; die Oberfläche greift weiter direkt auf Hardware zu (393 Stellen) |
-| P4 | `ultar-devd` ist Logik + Tests; der Dienst selbst und die Anbindung an Kern und Bus fehlen |
-| P5/P6 | Oberfläche ist weiter ein Block (`platform/ultar-shell`); Compositor und Apps als eigene Prozesse fehlen |
-| P7 | Pakete tragen heute nur den Aktivierungs-Eintrag der im Kern eingebauten Treiber; ladbare Kern-Module fehlen |
-| P8–P11 | Installer auf Ubuntu-Niveau, dynamische Einstellungen, Barrierefreiheit, A/B-Updates, ARM-Port |
-| Treiber | Für die Testrechner fehlen: Intel-Grafik, WLAN, Bluetooth, Touchpad, Akku/Thermik (ACPI-Interpreter), Kamera, TPM und Stufe 4 |
-| Umbenennung | Deutsche Bezeichner im übernommenen Code (z. B. `ultar-zellen`, `ultar-verbund`) sind noch nicht englisch |
+| P2 | TEILWEISE: `ultar-i18n` mit Katalog (ar/en/de) ist da; `ultar-sprache` existiert noch und wird in wenigen CLI-/Legacy-Stellen aufgerufen; nicht alle alten Oberflächentexte umgestellt |
+| P2b | OFFEN: Kern enthält weiter `install.rs`, `startseite.rs`, `shell.rs` (`kernel/ultar-kern/src/main.rs`); daneben existiert `apps/ultar-installer-ui`, der Kern-Installer läuft aber weiter |
+| P3 | TEILWEISE: `ultar-hal` + Backends (gfx, linux, netlink, system) vorhanden; die alte Hülle `platform/ultar-shell` greift weiter direkt auf `/sys`/`/dev` zu |
+| P4 | ERLEDIGT: `ultar-devd` läuft als Dienst (user 804), Bus-Dienst `devices`, Treiberwahl/Gesundheitsprüfung/Rückfall/Quarantäne (`system/core/ultar-devd/daemon.rs`) |
+| P5/P6 | ERLEDIGT (Desktop): `ultar-compositor` (user 811), Hülle `ultar-desktop` (user 816, Leiste/Menüs/Schnelleinstellungen), Sperre `ultar-lock`, Systemdialoge `ultar-sysdialog`, Apps als eigene Prozesse über `ultar-launcher` |
+| P7 | TEILWEISE: signiertes Treiber-Depot + Index vorhanden; ladbare Kern-Module (`.uko`) fehlen, Treiber weiter einkompiliert |
+| P8–P11 | P8 Installation A–Z ERLEDIGT (QEMU); Verschlüsselung gesperrt; P9/P10 TEILWEISE; P11 ARM-Port OFFEN |
+| Treiber | siehe „Treiber-Welle A“ oben; fehlen u. a. WLAN (kein Treiber im Kern), ACPI-AML/Thermik, TPM, Kamera, Touch (I2C-HID), Stufe 4 |
+| Umbenennung | OFFEN: deutsche Bezeichner weiter vorhanden (`ultar-verbund`, `ultar-zellen`, …) |
 
 ## Nicht geprüft
 

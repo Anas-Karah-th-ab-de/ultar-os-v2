@@ -23,6 +23,7 @@ desk.apps.search = Apps suchen
 desk.apps.title = Alle Apps
 desk.apps.uninstall = App entfernen …
 desk.bar.apps = Alle Apps
+desk.bar.battery = {level} %
 desk.bar.clock = Kalender und Benachrichtigungen: {date} {time}
 desk.bar.date = {weekday} {day}. {month}
 desk.bar.overview = Übersicht
@@ -445,3 +446,7 @@ volumed.drive.mount = Einhängen
 desk.mesh.list.empty = Keine gekoppelten Geräte
 desk.mesh.list.here = Verbunden
 desk.mesh.list.devices = Gekoppelte Geräte
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Auf {arg0} kopiert
+mesh.clip.body = Mit Strg+V einfügen

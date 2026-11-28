@@ -251,7 +251,7 @@ fn client_header_round_trips_and_refuses_bad_values() {
     };
     assert!(R::decode(42, &[3, 0, 0, 0, 1]).is_ok_and(|x| x == r));
     assert!(R::decode(42, &[3, 0, 0, 0, 2]).is_err());
-    assert_eq!(Rights::ALL.0, 511);
+    assert_eq!(Rights::ALL.0, 1023);
 }
 
 /// Security review S-5: unlocked, a call screen never covers a system dialog (a permission

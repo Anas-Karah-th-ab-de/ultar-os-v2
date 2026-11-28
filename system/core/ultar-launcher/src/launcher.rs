@@ -36,6 +36,8 @@ pub(crate) struct Core {
     pub(crate) autostart: crate::defaults::Autostart,
     /// The downloads clean-up (`storage.clean_downloads`, `_days`) and when it last ran.
     pub(crate) clean: crate::clean::Clean,
+    /// The person's look, handed to every app it starts (`crate::look`).
+    pub(crate) look: crate::look::Look,
 }
 
 /// The app launcher.
@@ -201,6 +203,7 @@ impl Launcher {
             defaults: crate::defaults::Defaults::default(),
             autostart: crate::defaults::Autostart::default(),
             clean: crate::clean::Clean::default(),
+            look: crate::look::Look::default(),
         };
         core.write_rights_or_withdraw()?;
         let record = Record::new(Level::Info, "launcher.platform")

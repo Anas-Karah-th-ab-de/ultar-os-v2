@@ -10,6 +10,23 @@ use ultar_surface::proto::{Request, Role, SurfaceId};
 use ultar_ui::geom::Size;
 use ultar_ui::tokens::size;
 
+/// The surfaces besides the bar: the dock (top-bar shape) and the desktop background.
+#[derive(Debug, Default)]
+pub(super) struct SidePanels {
+    /// The dock.
+    pub(super) dock: Option<SurfaceId>,
+    /// The desktop background and what it was built for.
+    pub(super) background: Option<(SurfaceId, BackgroundKey)>,
+}
+
+/// What the desktop background was built for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct BackgroundKey {
+    look: crate::view::Look,
+    size: (u32, u32),
+    shape: Shape,
+}
+
 /// The window configuration of the first panel.
 pub(super) fn bar_config(shape: Shape) -> WindowConfig {
     let (edge, thickness) = bar_panel(shape);
@@ -23,7 +40,7 @@ pub(super) fn bar_config(shape: Shape) -> WindowConfig {
 impl DesktopApp {
     /// A panel besides the bar (the dock).
     pub(super) fn is_panel(&self, id: SurfaceId) -> bool {
-        self.second == Some(id)
+        self.side.dock == Some(id)
     }
 
     /// Opens the second panel of the shape.
@@ -36,7 +53,7 @@ impl DesktopApp {
                     size: thickness as u32,
                 };
                 let config = WindowConfig::with_role(role, "", translucent);
-                self.second = Some(self.host.open(&config, view, None)?);
+                self.side.dock = Some(self.host.open(&config, view, None)?);
             }
         }
         // The desktop never uses the compositor's phone mode (app windows without title
@@ -49,7 +66,7 @@ impl DesktopApp {
 
     /// Builds the second panel again.
     pub(super) fn rebuild_side_panels(&mut self, area: Size) -> Result<(), AppError> {
-        if let Some(id) = self.second {
+        if let Some(id) = self.side.dock {
             if let Some(view) = build_second(&self.shell, self.look, area.w)? {
                 self.host.replace(id, view, None);
             }
@@ -73,7 +90,7 @@ impl DesktopApp {
         let banners = self.banners.surface.take().map(|b| b.0);
         let toasts = self.mesh_toasts.surface.take().map(|b| b.0);
         self.mesh_toasts = Default::default();
-        for id in [popup, banners, toasts, self.second.take()]
+        for id in [popup, banners, toasts, self.side.dock.take()]
             .into_iter()
             .flatten()
         {
@@ -84,8 +101,34 @@ impl DesktopApp {
         let view = build_bar(&self.shell, self.look, screen(&self.host).w)?;
         self.bar = self.host.open(&bar_config(shape), view, None)?;
         self.open_side_panels()?;
+        self.sync_background()?;
         self.sync_banners()?;
         self.sync_mesh_toasts()
+    }
+
+    /// Opens the desktop background, or builds it again when what it shows changed (look,
+    /// screen, shape); a minute of the clock leaves it alone.
+    pub(super) fn sync_background(&mut self) -> Result<(), AppError> {
+        let area = screen(&self.host);
+        let key = BackgroundKey {
+            look: self.look,
+            size: (area.w.round() as u32, area.h.round() as u32),
+            shape: self.shell.shape,
+        };
+        if let Some((id, shown)) = self.side.background {
+            if shown == key {
+                return Ok(());
+            }
+            let view = crate::view::wallpaper::build(self.look, area, key.shape, &self.shell.tr)?;
+            self.host.replace(id, view, Some(area));
+            self.side.background = Some((id, key));
+            return Ok(());
+        }
+        let view = crate::view::wallpaper::build(self.look, area, key.shape, &self.shell.tr)?;
+        let config = WindowConfig::with_role(Role::Background, "", false);
+        let id = self.host.open(&config, view, Some(area))?;
+        self.side.background = Some((id, key));
+        Ok(())
     }
 
     /// How far the banners move down when the first panel is at the top: popups are

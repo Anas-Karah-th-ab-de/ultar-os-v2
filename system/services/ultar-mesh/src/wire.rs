@@ -119,6 +119,8 @@ pub enum Frame {
         /// The text.
         text: String,
     },
+    /// One piece of a picture copied on the sender (`crate::clip_image`).
+    ClipImage(crate::clip_image::Piece),
     /// Run a program (computing jobs).
     Job {
         /// Id chosen by the sender; a repeated id is answered from memory.

@@ -103,6 +103,31 @@ VPS: bundle/vps/setup.sh bundle/ultar-signd             # once (idempotent): ser
      bundle/vps/publish-release.sh <ver> beta notes.json <files>   # OS image, after the fix
 ```
 
+## 3a. System updates over the network (from 0.8.1)
+
+Every installed system (Ultar kernel, A/B layout) runs `ultar-updated` (`rootfs/etc/ultar/services/updated.toml`).
+Its `/etc/ultar/update.conf` is written by `tools/vm/make-vmware.sh`: version, rollback index
+`major·1000000 + minor·1000 + patch` (so every release has a higher one), the A/B partitions, the server
+`https://ultar.code-craft.tech`, the trust keys `rootfs/etc/ultar/update-keys/`, administrators `app.settings`
+and `system.admin`, health services `settings` and `devices`. Settings → System update: check → download →
+install → restart (power menu); a release that does not come up is given up by the loader.
+
+```text
+B2:  bash tools/release/build-release.sh   # also out/release/update-desktop/: kernel.efi, system.ext4(.xz),
+                                           #   manifest.txt (unsigned, channel stable, devices *), uupdate-sign
+PC:  scp B2:…/update-desktop/{kernel.efi,system.ext4.xz,manifest.txt,uupdate-sign,SHA256SUMS} → VPS (4-MB parts)
+VPS: bash publish-update.sh publish <dir> stable   # signs with /var/lib/ultar-sign/update/update.secret (root,
+                                                   # 0400), builds the .uup, verifies it with the public key,
+                                                   # `ultraos-server admin publish-release` → /v1/update/latest
+```
+
+* The update key is made once on the VPS (`publish-update.sh keygen <uupdate-sign>`); its public half is
+  `rootfs/etc/ultar/update-keys/km-code-craft.ed25519`. Open: move it into `ultar-signd` (own role, audit log,
+  rate limit) like the os/system/store keys.
+* Installations of 0.8.0 have no updater: they need one reinstall from 0.8.1.
+* Open: `ultar-netd` does not report metered/unmetered to the updater yet (`update.network`), so the automatic
+  run (window 02:00–05:00 UTC) waits; the Settings page downloads with the person's consent.
+
 ## 4. Tests
 
 | Crate | Tests |

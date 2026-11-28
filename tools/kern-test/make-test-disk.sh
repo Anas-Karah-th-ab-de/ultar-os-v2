@@ -10,8 +10,15 @@ R=$(mktemp -d); trap 'rm -rf $R' EXIT
 mkdir -p $R/usr/bin $R/usr/lib/x86_64-linux-gnu $R/usr/lib64 $R/etc $R/tmp $R/root $R/home
 ln -s usr/bin $R/bin; ln -s usr/lib $R/lib; ln -s usr/lib64 $R/lib64; ln -s usr/bin $R/sbin
 PROGS="ls cat echo uname date head wc sort tr grep sed seq env id basename dirname true false sleep mkdir rm cp mv touch du df bash"
+# a multi-call binary (e.g. the Rust coreutils of newer Ubuntu: one 11 MB file for every tool) is copied
+# once; the other names link to it (it picks the tool from argv[0]); a hard-linked one counts as the same file
+declare -A SEEN=()
 for p in $PROGS; do
-  f=$(PATH=/usr/bin:/bin:/usr/sbin:/sbin type -P $p) || continue; cp -L "$f" $R/usr/bin/
+  f=$(PATH=/usr/bin:/bin:/usr/sbin:/sbin type -P $p) || continue
+  real=$(stat -L -c %d:%i "$f")   # same file, also when the names are hard links
+  if [ -n "${SEEN[$real]:-}" ]; then ln -sf "${SEEN[$real]}" $R/usr/bin/$p; continue; fi
+  SEEN[$real]=$p
+  cp -L "$f" $R/usr/bin/$p
   for l in $(ldd "$f" | grep -o '/[^ ]*'); do
     d=$R$(dirname "$l"); mkdir -p "$d"; cp -L "$l" "$d/" 2>/dev/null || true
     b=$(basename "$l"); [ -e $R/usr/lib/x86_64-linux-gnu/$b ] || cp -L "$l" $R/usr/lib/x86_64-linux-gnu/

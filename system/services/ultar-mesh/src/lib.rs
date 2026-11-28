@@ -14,6 +14,10 @@
 
 mod acting;
 pub mod arrived;
+pub mod clip_bridge;
+pub mod clip_image;
+mod clip_service;
+mod clip_share;
 pub mod clipboard;
 pub mod compute;
 pub mod device;

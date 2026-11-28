@@ -270,6 +270,13 @@ fn one_device_cannot_flood_another_with_questions() {
 #[test]
 fn copied_text_reaches_paired_devices_but_never_a_password() {
     let mut w = meshed("clip", &[PHONE, PC, SPEAKER]);
+    // "Share the clipboard" is off for a newly paired device: nothing leaves, nothing arrives.
+    assert!(w.nodes[0].clipboard_set("hello", false).is_empty());
+    let (phone, pc, speaker) = (w.id(0), w.id(1), w.id(2));
+    let all = [Right::Handoff, Right::Files, Right::Clipboard];
+    assert!(w.nodes[0].set_rights(&pc, &all).0);
+    assert!(w.nodes[0].set_rights(&speaker, &all).0);
+    assert!(w.nodes[1].set_rights(&phone, &all).0);
     let effects = w.nodes[0].clipboard_set("hello", false);
     // The speaker has no clipboard: one frame only.
     assert_eq!(effects.len(), 1);
@@ -279,7 +286,6 @@ fn copied_text_reaches_paired_devices_but_never_a_password() {
     // The receiver's clipboard owner sets it – that must not bounce back.
     assert!(w.nodes[1].clipboard_set("hello", false).is_empty());
     assert!(w.nodes[0].clipboard_set("hunter2", true).is_empty());
-    let phone = w.id(0);
     w.nodes[1].set_rights(&phone, &[Right::Handoff]);
     w.take(1);
     let effects = w.nodes[0].clipboard_set("again", false);

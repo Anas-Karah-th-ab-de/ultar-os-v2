@@ -61,7 +61,23 @@ fn welcome(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         head,
         Text::new(k("installer.welcome")).spec(TextSpec::title(TypeSize::S20)),
     )?;
-    muted(cx.ui, head, k("brand.by"))?;
+    logo(cx, head)?;
+    Ok(())
+}
+
+/// Width of the company logo on the installer's pages (points).
+const LOGO_WIDTH: u16 = 240;
+
+/// The company logo (BRAND.md §4: installer welcome and the last page), centred.
+fn logo(cx: &mut Cx<'_>, parent: NodeId) -> Result<(), UiError> {
+    let logo = ultar_ui::widgets::Brick::new(
+        ultar_ui::widgets::BrickKind::Logo {
+            width: LOGO_WIDTH,
+            quiet: false,
+        },
+        k("brand.label.logo"),
+    );
+    cx.ui.add(parent, logo)?;
     Ok(())
 }
 
@@ -269,6 +285,14 @@ fn progress(cx: &mut Cx<'_>, content: NodeId, step: Step) -> Result<(), UiError>
         cx.ui.add(card, bar)?;
         return Ok(());
     }
+    // The company logo while the system is written and on the last page.
+    let head = cx.ui.add(
+        card,
+        Flex::column()
+            .cross(CrossAlign::Center)
+            .padding(Padding::symmetric(Space::S16, Space::S8)),
+    )?;
+    logo(cx, head)?;
     if step == Step::Done {
         cx.ui.add(
             card,
