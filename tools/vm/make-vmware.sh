@@ -81,7 +81,7 @@ else
   SESSION_PROGRAMS="ultar-lock ultar-sysdialog ultar-desktop"; SESSION_CRATE=ultar-desktop
   SESSION_SERVICES="compositor lock sysdialog desktop"
 fi
-PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd $SESSION_PROGRAMS"
+PROGRAMS="ultar-init uinit ultar-luks ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd $SESSION_PROGRAMS"
 # the services the shell talks to (wave 8) and the app launcher
 PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-llm-bus ultar-llm-cloud ultar-displayd ultar-accountd ultar-calld"
 # the system apps (installed as signed packages through the launcher, step 2)
@@ -96,7 +96,7 @@ UI_ARGS="\"--compositor\", \"/run/ultar/ui/compositor.sock\", \"--bus\", \"/run/
 APPS="settings:ultar-settings:$UI_ARGS|files:ultar-files:$UI_ARGS|store:ultar-store:|phone:ultar-phone:$UI_ARGS|editor:ultar-editor:$UI_ARGS|doc:ultar-doc:$UI_ARGS|terminal:ultar-terminal:$UI_ARGS|browser:ultar-web:\"--socket\", \"/run/ultar/ui/compositor.sock\", \"--lang\", \"$LANG_CODE\""
 if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
-    -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
+    -p ultar-init -p ultar-luks -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
     -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-pkg \
     -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-doc -p ultar-terminal ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \

@@ -84,8 +84,9 @@ Offen (größere Arbeiten):
   (Android-Binärdateien erwarten root): `gnss`, `fingerabdruck`, `modem`, `ril`; Einmal-Läufe: `drivers`, `compat-bind`,
   `firstboot`, `netzregeln`; `seat`, `net`, `llm-compat`. Echt aufzuteilen: `net` (Adressen/Routen-Helfer hinter dem
   Bus, DHCP/WLAN als Benutzer), `netzregeln`/`drivers`/`seat` (eigener Benutzer + nur ihr Kern-Recht), `ril`.
-- **LUKS2 im Installer** (geprüfter Schreiber + XTS im Kern, später TPM aus S7) – **Entscheidung des Inhabers nötig**
-  (Regel „keine eigene Krypto").
+- ✅ **LUKS2 im Installer** (28.11.2026): `ultar-luks` (nur RustCrypto), XTS im Kern (`crypt.rs`), Entsperren beim
+  Start durch ultar-init; geprüft gegen cryptsetup/dm-crypt (`luks-interop.sh`, `crypt-data.sh`). Rest: grafische
+  Abfrage, ext4 im verschlüsselten Bereich wachsen lassen, TPM (S7).
 - Anruf-Bildschirm an „klingelt" von `calld` binden · BT-Tastaturen über feste Erzeuger-Kennung zulassen ·
   Einstellungen mit URI-Schema `settings://apps/<id>` · `mprotect`/`munmap` ohne Abgleich anderer Prozessorkerne
   (TLB-Shootdown).
@@ -97,7 +98,7 @@ Offen (größere Arbeiten):
 | # | Prio | Was | Stand |
 |---|---|---|---|
 | I1 | P1 | **Test in VMware Workstation** mit `UltarOS-v2-installer.zip` (Actions → „Installer image") | bereit – Test des Inhabers; bei Problemen `serial.log` |
-| I2 | P0 | Verschlüsselung | gesperrt (siehe 2) |
+| I2 | P0 | Verschlüsselung | ✅ Passphrase (LUKS2); TPM offen |
 | I3 | P2 | Netzwerk im Installer (Medium ohne Netzdienst; „Updates während der Installation" wirkt erst danach) | ⬜ |
 | I4 | P2 | Nach „Neu starten" kann VMware wieder vom Medium starten → SATA-Platte von Hand entfernen; Startreihenfolge automatisch | ⬜ |
 
@@ -118,13 +119,13 @@ i18n-Umstellung, Bezeichner englisch, ARM64, arabisch gegenlesen; Stufe 4 NVIDIA
 2. **USB-C + SSH Ende zu Ende** (TCP und `ultar-sshd` sind da): RNDIS-Empfang am echten Gerät, sshd im Abbild mit
    Entwickler-Zugang, `ssh` über USB-C prüfen; CDC-ECM/NCM + Vendor (AX88179/RTL8153), falls der Dongle kein RNDIS spricht.
 3. **I1** VMware-Installationstest durch den Inhaber; Befunde beheben.
-4. Sicherheit Rest: TLB-Shootdown → R1 (`net`, `netzregeln`, `drivers`, `seat`, `ril`) → LUKS2 (nach Entscheidung).
+4. Sicherheit Rest: TLB-Shootdown → R1 (`net`, `netzregeln`, `drivers`, `seat`, `ril`); LUKS2 ✅.
 5. Welle Server B: S5 AML → S6 Energie → S8 Sensoren → S7 Wachhund + TPM.
 6. **Live-Session am Beelink (S9, mit Freigabe):** `docs/LIVE-VOLLENDUNG.md` §1→§4 abarbeiten – BT-Firmware,
    WLAN, Xe, dann VT-d/NVMe/SD/iGPU auf echter HW + E610-Durchsatz.
 7. Desktop; Verbund/Helfer; Apps; NPU; Handy.
 
-Offene Entscheidungen des Inhabers: Verschlüsselungsweg (LUKS2/XTS), S9-Freigabe, USB-Netz-Hardware, B3, C5.
+Offene Entscheidungen des Inhabers: S9-Freigabe, USB-Netz-Hardware, B3, C5.
 
 Regeln: Clean Code, kleine Schritte, gemeinsame Kern-Dateien zentral (nicht parallel), nichts an iGPU/NPU-Arbeit
 anderer Chats stören, Messungen am Beelink nur mit angehaltenen Störern, nie auf dem VPS bauen.

@@ -49,6 +49,38 @@ pub trait BlockDev: Send {
     fn flush(&mut self) -> Result<()> {
         Err("no cache flush".into())
     }
+    /// An encrypted view of a partition of another device (`crypt.rs`): its sectors are read
+    /// and written only through [`read_dev`], [`write_dev`] and [`flush_dev`].
+    fn mapping(&self) -> Option<alloc::sync::Arc<crate::crypt::Mapping>> {
+        None
+    }
+}
+
+/// Reads sectors of device `disk` (a mapped device decrypts from the device beneath).
+pub fn read_dev(bl: &mut [Box<dyn BlockDev>], disk: usize, lba: u64, buf: &mut [u8]) -> Result<()> {
+    let dev = bl.get_mut(disk).ok_or_else(|| String::from("no such device"))?;
+    match dev.mapping() {
+        None => dev.read(lba, buf),
+        Some(m) => m.read(bl, lba, buf),
+    }
+}
+
+/// Writes sectors of device `disk` (a mapped device encrypts to the device beneath).
+pub fn write_dev(bl: &mut [Box<dyn BlockDev>], disk: usize, lba: u64, data: &[u8]) -> Result<()> {
+    let dev = bl.get_mut(disk).ok_or_else(|| String::from("no such device"))?;
+    match dev.mapping() {
+        None => dev.write(lba, data),
+        Some(m) => m.write(bl, lba, data),
+    }
+}
+
+/// Flushes device `disk` (a mapped device flushes the device beneath).
+pub fn flush_dev(bl: &mut [Box<dyn BlockDev>], disk: usize) -> Result<()> {
+    let dev = bl.get_mut(disk).ok_or_else(|| String::from("no such device"))?;
+    match dev.mapping() {
+        None => dev.flush(),
+        Some(m) => m.flush(bl),
+    }
 }
 
 pub trait NetDev: Send {

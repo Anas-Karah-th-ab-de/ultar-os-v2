@@ -49,6 +49,11 @@ pub struct SeatConfig {
     /// keyboards of the system); empty by default.
     #[serde(default)]
     pub virtual_allowed: Vec<String>,
+    /// User ids whose software input devices join the seat (the Bluetooth service's keyboards
+    /// and mice). The Ultar kernel names the maker of each device (`device/ultar_creator`, set by
+    /// the kernel, not by the maker); without that file no device passes by owner.
+    #[serde(default)]
+    pub virtual_owners: Vec<u32>,
     /// Group that gets the torch's control file (`light.rs`); none: left alone.
     #[serde(default)]
     pub torch_group: Option<u32>,
@@ -100,6 +105,9 @@ impl SeatConfig {
         };
         if config.virtual_allowed.iter().any(bad) {
             return Err(ConfigError::Bound("virtual_allowed"));
+        }
+        if config.virtual_owners.len() > MAX_VIRTUAL || config.virtual_owners.contains(&0) {
+            return Err(ConfigError::Bound("virtual_owners"));
         }
         Ok(config)
     }
@@ -203,7 +211,10 @@ pub fn wanted(root: &Path, devname: &str, config: &SeatConfig) -> Option<Wanted>
     }
     let name = apply::read_small(&seat_nodes::input_name(&class), 256).unwrap_or_default();
     let name = name.trim();
-    let allowed = !name.is_empty() && config.virtual_allowed.iter().any(|n| n.trim() == name);
+    let by_owner =
+        seat_nodes::input_creator(&class).is_some_and(|uid| config.virtual_owners.contains(&uid));
+    let allowed =
+        by_owner || (!name.is_empty() && config.virtual_allowed.iter().any(|n| n.trim() == name));
     Some(if allowed {
         seat(Reason::AllowedVirtual)
     } else {

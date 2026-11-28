@@ -89,6 +89,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--allow-root" => args.allow_root = true,
             "--seat-group" => args.seat.group = Some(it.next()?.parse().ok()?),
             "--allow-virtual-input" => args.seat.virtual_allowed.push(it.next()?),
+            "--allow-virtual-owner" => args.seat.virtual_owners.push(it.next()?.parse().ok()?),
             "--seat-state" => args.seat_state = Some(PathBuf::from(it.next()?)),
             "--app-rights" => args.app_rights = Some(PathBuf::from(it.next()?)),
             "--app-uids" => args.app_uids = Some(uid_range(&it.next()?)?),
@@ -434,6 +435,7 @@ mod tests {
         let seat = SeatPolicy {
             group: Some(812),
             virtual_allowed: Vec::new(),
+            virtual_owners: Vec::new(),
         };
         assert_eq!(seat_policy(&seat, None).group, Some(812));
         assert_eq!(

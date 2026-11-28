@@ -14,15 +14,33 @@ binaries (the patch deletes the committed test binaries below).
    `ci.sh` (`INSTALLER_E2E=0` skips it) and as its own GitHub job (`installer`, about 15 minutes under TCG).
    Fixed on the way: the test's account check ran as root without a right and could not read the account file
    (mode 0600, owner authd) – it has the right `file_admin` now, like `ultar-firstboot`. The VMware machine for the installation is built now (2026-11-28): `INSTALLER_IMG=1 tools/vm/make-vmware.sh` writes `out/vmware/UltarOS-v2-installer.zip` (medium as SATA disk, empty NVMe target, README); GitHub workflow `Installer image` builds it on demand.
-2. **Encryption (task 4) not done – the installer option stays disabled** with its reason
-   (`installer.reason.encryption`: "the Ultar kernel cannot unlock an encrypted disk at start"). Nothing of a
-   LUKS2 writer or a kernel XTS layer is in this patch; no half-working encryption ships. Plan: (a) a no_std
-   crate writing/reading the LUKS2 on-disk format (binary header + JSON area, argon2id keyslot, AF splitter
-   with sha256, pbkdf2-sha256 digest) on RustCrypto `argon2`, `aes` + `xts-mode`, `sha2`, `hmac`/`pbkdf2`,
-   tested against `cryptsetup luksDump`/`open --test-passphrase` both ways (cryptsetup-bin on B2); (b) the
-   kernel opens `ultar-data` through an XTS block device after a passphrase prompt on the early console, key
-   only in kernel memory, zeroized on shutdown; (c) the installer formats the data partition and drops the
-   disabled reason.
+2. **Encryption with a passphrase: done (2026-11-28).** Rule "keine eigene Krypto": every primitive is a
+   reviewed RustCrypto crate (`aes`, `xts-mode`, `argon2`, `pbkdf2`, `sha2`); our code only lays out the
+   on-disk format.
+   - `system/core/ultar-luks`: writes and opens LUKS2 as cryptsetup does (both header copies with sha256
+     checksum, one Argon2id keyslot – 256 MiB, 4 passes, 4 lanes –, AF split with sha256, pbkdf2-sha256
+     digest, segment `aes-xts-plain64`, 512-byte sectors, data at 16 MiB). Other volumes (other ciphers,
+     4 KiB sectors, integrity, reencryption) are refused, never misread.
+   - Installer: with "passphrase" the data partition gets 16 MiB more (whole disk) or must have them
+     (beside / manual, else `installer.reason.space`); it receives the header and the medium's data
+     encrypted, every chunk read back. `installer.reason.encryption` is gone.
+   - Kernel (`kernel/ultar-kern/src/crypt.rs`): a data partition with a LUKS2 header stays locked,
+     `/sys/kernel/ultar/crypt` reads `locked`, the header is readable (never writable) as
+     `/dev/ultar/part/ultar-data`. The kernel never sees the passphrase: root with the raw-device right
+     writes `open <offset> <master key>`; the kernel maps the segment (software AES, the kernel keeps no
+     SSE state) and mounts it as `/data` only if an ext4 is behind it (wrong key: `EKEYREJECTED`).
+   - Start: ultar-init runs `/usr/bin/ultar-luks unlock` before anything writes to `/data` and before the
+     services (not on the phone, which uses `ultar-secure`/cryptsetup). It asks on the console without
+     echo and asks again after a wrong passphrase.
+   - Tests: unit tests of ultar-luks; `tools/kern-test/luks-interop.sh` (cryptsetup 2.7 and dm-crypt read
+     what ultar-luks writes and the reverse); `tools/kern-test/crypt-data.sh` (the kernel decrypts what
+     dm-crypt encrypted and the reverse, e2fsck clean, no plain text on the disk; `ultar-luks unlock` on
+     the serial console: wrong passphrase refused, right one mounts `/data`, nothing echoed); installer
+     `installs_encrypted_data_as_luks2`. Both scripts are in `tools/kern-test/ci.sh`.
+   - Open: the prompt is text on the console (no graphical prompt yet); the ext4 inside the volume is
+     not grown to the partition (grow-data only grows plain partitions), so on a whole disk /data has the
+     medium's size until that exists; the key schedule stays in kernel memory until power off; TPM still
+     shown as not available (no TPM driver).
 3. **Restart after the installation: done (2026-11-26).** Done → Restart asks the service manager over the bus
    (`init.power` with `Reboot`; the policy gives `system.installer` `init.power` and the pseudo method
    `init.shutdown`, the installer runs only in the profile `installer`). ultar-init ends every service in order,

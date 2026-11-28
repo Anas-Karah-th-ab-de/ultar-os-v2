@@ -90,6 +90,8 @@ pub(crate) struct ConnEntry {
 pub(crate) struct Retained {
     pub(crate) version: u16,
     pub(crate) payload: Vec<u8>,
+    /// Identity that set it (counts against its own limit).
+    pub(crate) owner: String,
 }
 
 /// A request that was forwarded to a service and awaits its answer.

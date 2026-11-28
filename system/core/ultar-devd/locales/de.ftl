@@ -9,7 +9,7 @@ devd.phase.failed = läuft nicht
 devd.phase.removed = entfernt
 
 devd.reason.no-package = Im Depot gibt es keinen Treiber, der zu diesem Gerät passt.
-devd.reason.kernel-only = Der Kern betreibt das Gerät mit seinem Treiber „{a}“, im Depot gibt es dafür aber kein Treiberpaket.
+devd.reason.kernel-only = Läuft mit dem eingebauten Treiber „{a}“ des Kerns; ein Treiberpaket ist nicht nötig.
 devd.reason.not-loadable = Das Treiberpaket braucht ein ladbares Kernmodul; das unterstützt dieser Kern noch nicht.
 devd.reason.not-bound = Der Kern hat seinen Treiber „{a}“ beim Start nicht an dieses Gerät gebunden; im laufenden Betrieb lässt er sich nicht aktivieren.
 devd.reason.package-missing = Die Datei des Treiberpakets ist auf diesem System nicht vorhanden.
@@ -41,6 +41,7 @@ devd.error.bad-request = Die Anfrage ist ungültig.
 devd.notice.keys-missing = Es gibt keine vertrauenswürdigen Schlüssel; kein Treiber kann geprüft werden.
 devd.notice.keys-unreadable = Die Schlüsseldatei {a} war nicht lesbar und wurde übergangen.
 devd.notice.depot-unreadable = Das Treiber-Depot ist nicht verwendbar: {a}
+devd.notice.index-older = Das Treiber-Depot ist älter als das bereits benutzte (Nummer {a}): es wird nicht verwendet.
 devd.notice.hardware-unreadable = Die Geräteliste war nicht lesbar: {a}
 devd.notice.state-recovered = Die Zustandsdatei war beschädigt ({a}); der Dienst ist mit leerem Zustand gestartet und hat die beschädigte Datei aufbewahrt.
 devd.notice.state-unavailable = Die Auswahl konnte nicht gespeichert werden ({a}); sie gilt bis zum Herunterfahren.

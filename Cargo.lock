@@ -50,6 +50,7 @@ dependencies = [
  "cfg-if",
  "cipher 0.4.4",
  "cpufeatures 0.2.17",
+ "zeroize",
 ]
 
 [[package]]
@@ -8745,8 +8746,10 @@ dependencies = [
 name = "ultar-hal-system"
 version = "0.8.0"
 dependencies = [
+ "nix 0.29.0",
  "ultar-driverpkg",
  "ultar-profile",
+ "zeroize",
 ]
 
 [[package]]
@@ -8787,6 +8790,7 @@ dependencies = [
  "ultar-bus",
  "ultar-i18n",
  "ultar-installer-ui",
+ "ultar-luks",
  "ultar-settingsd",
  "ultar-slots",
  "ultar-surface",
@@ -8865,6 +8869,24 @@ dependencies = [
  "toml 0.8.23",
  "ultar-bus",
  "ultar-service",
+]
+
+[[package]]
+name = "ultar-luks"
+version = "0.8.0"
+dependencies = [
+ "aes 0.8.4",
+ "argon2 0.5.3",
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "hmac 0.12.1",
+ "pbkdf2 0.12.2",
+ "serde_json",
+ "sha2 0.10.9",
+ "ultar-brand",
+ "ultar-hal-system",
+ "xts-mode",
+ "zeroize",
 ]
 
 [[package]]
@@ -9237,6 +9259,9 @@ version = "0.8.0"
 dependencies = [
  "arti-client",
  "getrandom 0.4.3",
+ "rustls",
+ "rustls-graviola",
+ "rustls-rustcrypto",
  "tokio",
  "tor-rtcompat",
  "ureq 3.5.2",
@@ -10072,6 +10097,16 @@ checksum = "963d6fab92d5504b971dc8bd90ca743c2575e590bc8071ea5bc571598667ae08"
 dependencies = [
  "libc",
  "rustix",
+]
+
+[[package]]
+name = "xts-mode"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cbddb7545ca0b9ffa7bdc653e8743303e1712687a6918ced25f2cdbed42520"
+dependencies = [
+ "byteorder",
+ "cipher 0.4.4",
 ]
 
 [[package]]

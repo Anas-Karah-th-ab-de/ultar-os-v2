@@ -13,14 +13,11 @@
    medium, and the QEMU test (two disks, keys through the QEMU monitor – the keyboard-only path
    is proven by `tests/access.rs`) with the marker `INSTALLER: ALLES OK` in `ci.sh`. Nothing of
    this is in the patch; the kernel text installer stays the installer of the image.
-2. **Encryption with a passphrase writes nothing yet (disabled with its reason).** The page,
-   the passphrase pair (12+ characters, constant-time comparison, wiped, shown by the button
-   beside the field) and validation are implemented; Next stays disabled with
-   `installer.reason.encryption` because (a) the Ultar kernel cannot open an encrypted data
-   partition at start and (b) no reviewed crate *writes* LUKS2 (`luks2`, `luks-core` only read;
-   `cryptsetup` is C). Composing a LUKS2 header from RustCrypto primitives would be own crypto
-   construction – not done. Needed: kernel XTS block layer + unlock prompt, then a reviewed
-   LUKS2 writer. TPM is shown as not available (no TPM driver).
+2. **Encryption with a passphrase writes a LUKS2 data partition (2026-11-28).** The page, the
+   passphrase pair (12+ characters, constant-time comparison, wiped, shown by the button beside
+   the field) and validation as before; the engine formats the data partition with `ultar-luks`
+   and writes the data encrypted, the kernel unlocks it at start (details and tests:
+   `docs/integration/installer-boot.md`, item 2). TPM is shown as not available (no TPM driver).
 3. **Remaining non-OK board elements** (ratchet `design/conformance/known-boards.txt`):
    `InstallerDrivers#7 installer.drivers.fetch` – disabled because there is no network service;
    `CompactDisplay#9 display.orientation` – "automatic" needs the sensors service (auto-rotate);
