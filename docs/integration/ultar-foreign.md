@@ -103,6 +103,8 @@ from the person's language (`ar_SY`, `en_US`, `de_DE`).
 | Linux end to end (root) | `tools/foreign/linux-e2e.sh [OUT]` | `FOREIGN-LINUX-E2E: ALLES OK` |
 | area | `TEST_PACKAGE=mousepad tools/foreign/make-linux-runtime.sh OUT` | `LINUX-RUNTIME: OK` |
 | Ultar kernel (QEMU) | `AREA=OUT tools/kern-test/foreign-e2e.sh` | `FOREIGN: ALLES OK` or `FOREIGN: FEHLENDE KERN-FUNKTIONEN: …` |
+| kernel features alone (QEMU) | `tools/kern-test/fremd-kern.sh` | `FREMD-KERN: ALLES OK` |
+| GTK window (QEMU, picture) | `AREA=OUT tools/kern-test/foreign-gtk-kern.sh` | `FOREIGN-GTK: SHOT …` |
 
 The Linux end to end uses the shipped bus policy, the real launcher (in-process, real cells) and the
 service binary: callers without a rule and files outside the areas are refused, "cancelled" installs
@@ -123,21 +125,34 @@ regular file, symbolic links and their rename on a disk by a cell holding `CELL_
 writable mounts), ext4 `unlink` that removes a link as a link, fast links never freed as block pointers,
 `ENOTEMPTY` for `rmdir` of a directory with entries.
 
-Still missing for `apt-get install` of a `.deb` on the Ultar kernel (`foreign-e2e.sh` stops at
-`package-install`):
+The kernel gaps that stopped `apt-get install` of a `.deb` are closed (`foreign-e2e.sh` → `FOREIGN: ALLES OK`
+up to `package-install`; `fremd-kern.sh` → `FREMD-KERN: ALLES OK` checks each one alone):
 
-| Missing | Seen as | Consequence |
+| Gap | Cause | Fix (kernel) |
 |---|---|---|
-| listing of a directory opened with a trailing slash (`opendir("dir/")`) | `ls dir/` lists nothing; dpkg: "package metadata contained directory '…/tmp.ci/control'" | dpkg stops after unpacking |
-| `dpkg-deb --control` (tar/zstd path) | `Illegal instruction` (exit 132) | the control area is extracted, the call fails |
-| perl (debconf's `dpkg-preconfigure` hook of apt) | page fault at its own code address, ended | the hook may fail by its configuration; maintainer scripts in perl would fail |
-| syscalls 436 (`close_range`), 277 (`sync_file_range`), 26 (`msync`), 81 (`fchdir`) | "noch nicht umgesetzt" | dpkg/apt fall back or fail |
-| `/dev/ptmx` (pseudo terminals) | apt: "Can not write log (Is /dev/pts mounted?)" | warning only |
+| dpkg: "package metadata contained directory '…/control'" (seen as an empty listing of `dir/`) | `rmdir` of a regular file succeeded, so dpkg took every file for a directory | `rmdir` of a non-directory `ENOTDIR`, `unlink` of a directory `EISDIR`, `unlinkat(AT_REMOVEDIR)`, `rmdir "."` `EINVAL` |
+| `dpkg-deb --control`: `Illegal instruction`; perl (debconf): page fault at `0x5555555687c0` | `execve` kept the caller's signal handlers: the new image jumped to the old program's handler address | `execve` resets caught handlers to the default (ignored stay ignored, flags/masks cleared) and drops `clear_child_tid` |
+| syscalls 436, 277, 26, 81 | not implemented | `close_range` (with `CLOSE_RANGE_CLOEXEC`), `sync_file_range`, `msync` (file mappings are copies: nothing to write back), `fchdir` (`fdcalls.rs`) |
+| apt: "Can not write log (Is /dev/pts mounted?)" | no pseudo-terminals | `/dev/ptmx` and `/dev/pts/N` (`pty.rs`): line discipline (canonical lines, echo, `ICRNL`, `ONLCR`, `^C`/`^\`/`^Z` to the foreground group), termios and window size (`SIGWINCH`), `TIOCGPTN`/`TIOCSPTLCK`/`TIOCGPTPEER`, controlling terminal; at most 256 |
+
+Security of the terminals: the table is global, but a slave opens only for the user that opened its master
+(or a holder of `FILE_ADMIN`); `/dev/pts/N` reports that owner and mode 0620. A cell gets terminals through
+`ultar_sys::cell::mount_ptys`: on Linux a devpts instance of its own (`newinstance`, `nosuid,noexec`), on the
+Ultar kernel binds of `/dev/ptmx` and `/dev/pts` – an app sees the numbers of other terminals but cannot open
+them (own uid). The foreign service's cells and the launcher's app cells mount them; the end to end checks that
+an app cell sees no device beyond `null zero full random urandom tty ptmx`.
 
 GTK on the Ultar kernel (`tools/kern-test/foreign-gtk-kern.sh`, mousepad with the area as its root behind
-ultar-wayland): the window process starts and talks Wayland; it ends at the first image because GTK's
-image loader glycin starts its loaders in a `bwrap` sandbox (user namespaces, capabilities: ENOSYS on the
-Ultar kernel); the screenshot stays empty.
+ultar-wayland): the window shows (`FOREIGN-GTK: SHOT … colours=453`). GTK's image loader glycin starts its
+loaders through `bwrap`, which needs user namespaces (the Ultar kernel has none, on purpose). The area ships
+`bubblewrap 99:0.11-ultar1` from `tools/foreign/bwrap-shim.c` instead (pinned like the xdg-utils
+replacement): it reads bwrap's options, keeps `--chdir`, `--setenv`/`--unsetenv`/`--clearenv`, `--argv0`,
+`--die-with-parent`, `--block-fd`, `--args` and runs the program in place. This weakens nothing: the program
+already runs in the app's cell (own uid, read-only area, no bus, no capabilities, `NoNewPrivs`), which is the
+sandbox bwrap would have built, and the shim cannot grant more than the cell has.
+
+Known approximations: file mappings with `MAP_SHARED` are copies (apt's binary cache is rebuilt each run);
+the byte count of a partial terminal write after `ONLCR` is approximate.
 
 ## Stage P3: the surfaces (branch `feat/fa-p3-ui`, not in main)
 
@@ -182,7 +197,8 @@ data, area update, pictures), unit tests in Files, desktop, mobile and Store. Pi
 
 * The installation cell has no network: archive installs (`InstallFrom::Archive`) and `runtime_update`
   answer `Failure::Network` – with stage P0 the cell can get its own namespace behind the barrier.
-* The kernel gaps of the table above (dpkg on the Ultar kernel) and glycin's sandbox (GTK images).
+* GTK under `foreign-gtk-kern.sh` runs as root of the area (foreignshow); the launcher's own start of a foreign
+  app on the Ultar kernel (own uid, `app.foreign`) is covered by the Linux end to end only.
 * A mode of the barrier for the local network (printers, NAS); until then LAN means internet only.
 * Installing the signed component on a device (verify against `/etc/ultar/trusted-keys`, unpack into
   `/data/ultar/foreign/linux`) is not implemented; the images do not ship the service yet
