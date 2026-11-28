@@ -79,7 +79,7 @@ cat >"$X/DEBIAN/control" <<CONTROL
 Package: xdg-utils
 Version: 99:1.0-ultar1
 Architecture: all
-Maintainer: KM Code Craft <os@code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Description: replacement for xdg-utils in the Ultar Linux area
  The apps of the Linux area run in their own cells without the desktop's bus: opening
  a link or a file in another app is not available there. Each command says so and fails.
@@ -105,7 +105,7 @@ cat >"$B/DEBIAN/control" <<CONTROL
 Package: bubblewrap
 Version: 99:0.11-ultar1
 Architecture: $ARCH
-Maintainer: KM Code Craft <os@code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Description: bwrap for the Ultar Linux area (no namespaces: the app's cell is the sandbox)
  Understands bwrap's command line and starts the program in the same cell with the same user;
  namespace, mount and capability requests are ignored.

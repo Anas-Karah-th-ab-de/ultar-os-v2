@@ -19,8 +19,8 @@ pub fn go(s: &mut State, loc: Loc) -> Vec<Effect> {
 
 fn enter(s: &mut State) -> Vec<Effect> {
     s.selected.clear();
-    s.query.clear();
-    s.hits = None;
+    s.search.query.clear();
+    s.search.hits = None;
     s.error = None;
     vec![Effect::Reload]
 }
@@ -49,7 +49,8 @@ pub fn forward(s: &mut State) -> Vec<Effect> {
 pub fn visible(s: &State) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..s.items.len())
         .filter(|&i| {
-            s.hits
+            s.search
+                .hits
                 .as_ref()
                 .is_none_or(|h| h.contains(&s.items[i].entry.name))
         })
@@ -160,10 +161,10 @@ fn item_or_dialog(
 /// The text of the search field changed (`files.search`).
 pub fn search(s: &mut State, text: &str) -> Vec<Effect> {
     let text: String = text.chars().take(crate::fs::search::MAX_QUERY).collect();
-    if text == s.query {
+    if text == s.search.query {
         return Vec::new();
     }
-    s.query = text;
+    s.search.query = text;
     vec![Effect::Reload]
 }
 
@@ -452,9 +453,9 @@ pub fn key(s: &mut State, key: Key, m: Modifiers) -> Vec<Effect> {
         Key::ArrowRight if m.alt => forward(s), // physical
         Key::ArrowUp if m.alt => up(s),
         Key::Backspace if !m.command() => up(s),
-        Key::Escape if !s.query.is_empty() => {
-            s.query.clear();
-            s.hits = None;
+        Key::Escape if !s.search.query.is_empty() => {
+            s.search.query.clear();
+            s.search.hits = None;
             vec![Effect::Reload, Effect::FocusItems]
         }
         Key::Escape => {

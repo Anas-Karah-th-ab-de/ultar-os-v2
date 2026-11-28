@@ -53,6 +53,8 @@ mod budget;
 mod enforce;
 mod observe;
 #[cfg(test)]
+mod policy_tests;
+#[cfg(test)]
 mod service_files_tests;
 mod tokens;
 

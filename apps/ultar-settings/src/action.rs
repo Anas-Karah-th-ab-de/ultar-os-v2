@@ -186,6 +186,11 @@ pub enum Act {
 impl Act {
     /// The CLICKS.md action id of the element (`None` for elements the boards do not show).
     pub fn id(self) -> Option<&'static str> {
+        self.system_id().or_else(|| self.service_id())
+    }
+
+    /// The id of an element of the system pages (search, display, drivers).
+    fn system_id(self) -> Option<&'static str> {
         Some(match self {
             Act::Search => "settings.search",
             Act::Area(_) => "settings.area",
@@ -213,6 +218,13 @@ impl Act {
             Act::FirmwareCheck => "drivers.fw.check",
             Act::FirmwareUsb => "drivers.fw.usb",
             Act::SelfTest => "drivers.selftest",
+            _ => return None,
+        })
+    }
+
+    /// The id of an element of the service pages (account, assistant, mesh, foreign apps).
+    fn service_id(self) -> Option<&'static str> {
+        Some(match self {
             Act::AccountBack => "account.back",
             Act::AccountUser => "account.username",
             Act::AccountPassword => "account.password",

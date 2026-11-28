@@ -24,7 +24,7 @@ pub fn build(ui: &mut Ui, b: &mut Built, main: NodeId, s: &State) -> Result<(), 
     }
     let shown = crate::update::visible(s);
     if shown.is_empty() {
-        let (icon, key) = match (s.query.is_empty(), s.in_trash()) {
+        let (icon, key) = match (s.search.query.is_empty(), s.in_trash()) {
             (false, _) => (IconId::Search, "files.empty.search"),
             (true, true) => (IconId::Bin, "files.empty.trash"),
             (true, false) => (IconId::KindFolder, "files.empty.folder"),

@@ -173,10 +173,12 @@ impl App {
         }
         let names: Vec<String> = s.items.iter().map(|i| i.entry.name.clone()).collect();
         s.selected.retain(|n| names.contains(n));
-        s.hits = (!s.query.trim().is_empty()).then(|| {
+        s.search.hits = (!s.search.query.trim().is_empty()).then(|| {
             s.items
                 .iter()
-                .filter(|i| crate::fs::search::matches(&self.fs, &s.folder, &i.entry, &s.query))
+                .filter(|i| {
+                    crate::fs::search::matches(&self.fs, &s.folder, &i.entry, &s.search.query)
+                })
                 .map(|i| i.entry.name.clone())
                 .collect()
         });
@@ -460,7 +462,7 @@ fn fingerprint(s: &State) -> String {
         s.error,
         s.job.is_some(),
         s.edit.clipboard.is_some(),
-        s.query
+        s.search.query
     )
 }
 
