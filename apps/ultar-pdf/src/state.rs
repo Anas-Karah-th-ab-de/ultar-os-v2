@@ -1,8 +1,6 @@
-//! The pure logic of the reader: zoom, page geometry, rotation, search and selection.
+//! The pure logic of the reader: zoom steps, fit scales, the user's rotation and the maths
+//! between a point of the page (PDF points, y up) and a pixel of the shown page picture.
 //! Everything here is deterministic and tested without a screen.
-
-use ultar_i18n::arabic::search_matches;
-use ultar_office::pdf::Word;
 
 /// Zoom steps offered by the tool bar, from small to large.
 pub const ZOOM_STEPS: [u16; 9] = [50, 65, 80, 100, 125, 150, 200, 300, 400];
@@ -32,17 +30,13 @@ pub fn clamp_zoom(p: i32) -> u16 {
 
 /// The next (or previous, with `dir < 0`) step of [`ZOOM_STEPS`] around `p`.
 pub fn zoom_step(p: u16, dir: i8) -> u16 {
-    let step = if dir >= 0 { 1isize } else { -1isize };
-    match ZOOM_STEPS.binary_search(&p) {
-        Ok(i) => {
-            let j = (i as isize + step).clamp(0, ZOOM_STEPS.len() as isize - 1) as usize;
-            ZOOM_STEPS[j]
-        }
-        Err(insert) => {
-            let j = if step > 0 { insert } else { insert.saturating_sub(1) };
-            ZOOM_STEPS[j.min(ZOOM_STEPS.len() - 1)]
-        }
-    }
+    let up = dir >= 0;
+    let step = if up {
+        ZOOM_STEPS.iter().copied().find(|s| *s > p)
+    } else {
+        ZOOM_STEPS.iter().rev().copied().find(|s| *s < p)
+    };
+    step.unwrap_or(if up { MAX_ZOOM } else { MIN_ZOOM })
 }
 
 /// The scale (points → device pixels) that fits the page width.
@@ -55,6 +49,17 @@ pub fn fit_page_scale(view_w: f32, view_h: f32, page_w: f32, page_h: f32) -> f32
     let sx = (view_w - 2.0 * PAGE_MARGIN) / page_w.max(1.0);
     let sy = (view_h - 2.0 * PAGE_MARGIN) / page_h.max(1.0);
     sx.min(sy).max(0.02)
+}
+
+/// The zoom percent a pinch of two fingers gives: the percent at the start times the ratio of
+/// the finger distances now and at the start, rounded to 5 % (fewer distinct renders) and
+/// clamped to the allowed range.
+pub fn pinch_percent(start_percent: u16, start_dist: f32, dist: f32) -> u16 {
+    if start_dist < 1.0 {
+        return start_percent;
+    }
+    let raw = start_percent as f32 * dist / start_dist;
+    clamp_zoom(((raw / 5.0).round() * 5.0) as i32)
 }
 
 /// The user's rotation of the page content.
@@ -70,7 +75,7 @@ pub enum Rot {
 }
 
 impl Rot {
-    /// The next rotation.
+    /// The next rotation (clockwise).
     pub fn next(self) -> Rot {
         match self {
             Rot::None => Rot::Cw,
@@ -99,168 +104,60 @@ pub fn page_display(w: f32, h: f32, rot: Rot) -> (f32, f32) {
     }
 }
 
-/// Rotates an RGBA buffer by `turns` quarter turns clockwise.
-pub fn rotate_rgba(w: u32, h: u32, rgba: &[u8], turns: u8) -> (u32, u32, Vec<u8>) {
-    let turns = turns % 4;
-    if turns == 0 {
-        return (w, h, rgba.to_vec());
+/// Where the shown picture's point `(u, v)` (0..1 across and down the rotated page) lies in
+/// the unrotated rendered picture (0..1 as well). The pages are rendered once and turned
+/// while they are drawn, so a rotation costs no new render.
+pub fn source_uv(u: f32, v: f32, rot: Rot) -> (f32, f32) {
+    match rot {
+        Rot::None => (u, v),
+        Rot::Cw => (v, 1.0 - u),
+        Rot::Half => (1.0 - u, 1.0 - v),
+        Rot::Ccw => (1.0 - v, u),
     }
-    let (nw, nh) = match turns {
-        1 | 3 => (h, w),
-        _ => (w, h),
+}
+
+/// A point of the page (PDF points, y up, page `w`×`h` unrotated) as a pixel of the shown,
+/// rotated picture at `scale` (origin top start of the picture).
+pub fn page_to_px(p: (f32, f32), size: (f32, f32), scale: f32, rot: Rot) -> (f32, f32) {
+    let (w, h) = (size.0 * scale, size.1 * scale);
+    let (ux, uy) = (p.0 * scale, (size.1 - p.1) * scale);
+    match rot {
+        Rot::None => (ux, uy),
+        Rot::Cw => (h - uy, ux),
+        Rot::Half => (w - ux, h - uy),
+        Rot::Ccw => (uy, w - ux),
+    }
+}
+
+/// The inverse of [`page_to_px`]: a pixel of the shown picture as a point of the page.
+pub fn px_to_page(px: (f32, f32), size: (f32, f32), scale: f32, rot: Rot) -> (f32, f32) {
+    let (w, h) = (size.0 * scale, size.1 * scale);
+    let (ux, uy) = match rot {
+        Rot::None => px,
+        Rot::Cw => (px.1, h - px.0),
+        Rot::Half => (w - px.0, h - px.1),
+        Rot::Ccw => (w - px.1, px.0),
     };
-    let mut out = vec![0u8; (nw as usize * nh as usize * 4) as usize];
-    let src = |x: u32, y: u32| ((y * w + x) * 4) as usize;
-    for y2 in 0..nh {
-        for x2 in 0..nw {
-            let (x, y) = match turns {
-                // 90° clockwise: new(x,y) = old(y, w-1-x).
-                1 => (y2, w - 1 - x2),
-                // 180°.
-                2 => (w - 1 - x2, h - 1 - y2),
-                // 270° clockwise.
-                _ => (h - 1 - y2, x2),
-            };
-            let s = src(x, y);
-            let d = ((y2 * nw + x2) * 4) as usize;
-            out[d..d + 4].copy_from_slice(&rgba[s..s + 4]);
-        }
-    }
-    (nw, nh, out)
+    let s = scale.max(0.0001);
+    (ux / s, size.1 - uy / s)
 }
 
-/// One page laid out in the continuous scroll (top offset and height in device pixels).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PageRow {
-    pub page: usize,
-    /// Top offset in the content, device pixels.
-    pub y: f32,
-    /// Height in device pixels.
-    pub h: f32,
-}
-
-/// Lays the pages out top-to-bottom; returns the rows and the total content height.
-pub fn layout_pages(sizes: &[(f32, f32)], scale: f32, rot: Rot) -> (Vec<PageRow>, f32) {
-    let gap = PAGE_GAP * scale;
-    let mut rows = Vec::with_capacity(sizes.len());
-    let mut y = 0.0f32;
-    for (i, &(w, h)) in sizes.iter().enumerate() {
-        let (_, dh) = page_display(w, h, rot);
-        let dh = dh * scale;
-        rows.push(PageRow {
-            page: i,
-            y,
-            h: dh,
-        });
-        y += dh + gap;
-    }
-    let total = if sizes.is_empty() {
-        0.0
-    } else {
-        y - gap
-    };
-    (rows, total)
-}
-
-/// The pages (indices) that intersect the viewport `[scroll, scroll + view_h)`.
-pub fn visible_pages(rows: &[PageRow], scroll: f32, view_h: f32) -> std::ops::Range<usize> {
-    let mut first = rows.len();
-    let mut last = 0usize;
-    for row in rows {
-        if row.y + row.h > scroll && row.y < scroll + view_h {
-            first = first.min(row.page);
-            last = last.max(row.page);
-        }
-    }
-    if first > last {
-        return 0..0;
-    }
-    first..last + 1
-}
-
-/// The page under the middle of the viewport (for the status line).
-pub fn page_at(rows: &[PageRow], scroll: f32, view_h: f32) -> Option<usize> {
-    let mid = scroll + view_h / 2.0;
-    rows.iter()
-        .find(|r| r.y <= mid && mid < r.y + r.h)
-        .map(|r| r.page)
-        .or_else(|| rows.last().map(|r| r.page))
-}
-
-/// The scroll offset that puts `page` at the top of the viewport.
-pub fn scroll_to_page(rows: &[PageRow], page: usize) -> f32 {
-    rows.get(page).map(|r| r.y).unwrap_or(0.0)
-}
-
-/// One search hit: a run of matching words on a page (inclusive indices).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Hit {
-    pub page: usize,
-    pub first: usize,
-    pub last: usize,
-}
-
-/// Finds every word matching `query` (Arabic normalisation, the same on both sides).
-/// Empty and blank queries give no hits. Consecutive matches become one hit.
-pub fn find_hits(pages: &[Vec<Word>], query: &str) -> Vec<Hit> {
-    let q = query.trim();
-    if q.is_empty() {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for (page, words) in pages.iter().enumerate() {
-        let mut i = 0;
-        while i < words.len() {
-            if search_matches(&words[i].text, q) {
-                let first = i;
-                let mut last = i;
-                while last + 1 < words.len() && search_matches(&words[last + 1].text, q) {
-                    last += 1;
-                }
-                out.push(Hit { page, first, last });
-                i = last + 1;
-            } else {
-                i += 1;
-            }
-        }
-    }
-    out
-}
-
-/// The indices of words whose center lies inside `rect` (points, y up from the bottom).
-pub fn words_in_rect(words: &[Word], rect: (f32, f32, f32, f32)) -> Vec<usize> {
-    let (rx0, ry0, rx1, ry1) = rect;
-    let (x0, y0, x1, y1) = (rx0.min(rx1), ry0.min(ry1), rx0.max(rx1), ry0.max(ry1));
-    words
-        .iter()
-        .enumerate()
-        .filter(|(_, w)| {
-            let cx = (w.x0 + w.x1) / 2.0;
-            let cy = (w.y0 + w.y1) / 2.0;
-            cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1
-        })
-        .map(|(i, _)| i)
-        .collect()
-}
-
-/// The words of a selection, joined in reading order.
-pub fn selection_text(words: &[Word], mut indices: Vec<usize>) -> String {
-    indices.sort_unstable();
-    indices.dedup();
-    indices
-        .into_iter()
-        .filter_map(|i| words.get(i).map(|w| w.text.clone()))
-        .collect::<Vec<_>>()
-        .join(" ")
+/// The box of a page rectangle (x0, y0, x1, y1 in points, y up) in picture pixels, as
+/// (left, top, right, bottom).
+pub fn rect_to_px(
+    r: (f32, f32, f32, f32),
+    size: (f32, f32),
+    scale: f32,
+    rot: Rot,
+) -> (f32, f32, f32, f32) {
+    let a = page_to_px((r.0, r.1), size, scale, rot);
+    let b = page_to_px((r.2, r.3), size, scale, rot);
+    (a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn sizes() -> Vec<(f32, f32)> {
-        vec![(595.0, 842.0), (595.0, 842.0), (300.0, 400.0)]
-    }
 
     #[test]
     fn zoom_steps_stay_inside_the_range() {
@@ -269,86 +166,69 @@ mod tests {
         assert_eq!(zoom_step(400, 1), 400);
         assert_eq!(zoom_step(50, -1), 50);
         assert_eq!(zoom_step(90, 1), 100);
+        assert_eq!(zoom_step(90, -1), 80);
+        assert_eq!(zoom_step(399, 1), 400);
+        assert_eq!(zoom_step(51, -1), 50);
         assert_eq!(clamp_zoom(800), 400);
         assert_eq!(clamp_zoom(0), 50);
     }
 
     #[test]
     fn fit_keeps_the_page_fully_visible() {
-        // 595 pt page in an 800 pt view → width fit at ~1.27.
         let sw = fit_width_scale(800.0, 595.0);
-        assert!((595.0 * sw) <= 800.0 - 2.0 * PAGE_MARGIN);
+        assert!((595.0 * sw) <= 800.0 - 2.0 * PAGE_MARGIN + 0.01);
         let sp = fit_page_scale(800.0, 500.0, 595.0, 842.0);
-        assert!(842.0 * sp <= 500.0 - 2.0 * PAGE_MARGIN);
+        assert!(842.0 * sp <= 500.0 - 2.0 * PAGE_MARGIN + 0.01);
         assert!(sp < sw);
     }
 
     #[test]
-    fn layout_and_visibility_follow_each_other() {
-        let (rows, total) = layout_pages(&sizes(), 1.0, Rot::None);
-        assert_eq!(rows.len(), 3);
-        // 842 + 842 + 400 + two gaps.
-        assert!((total - (842.0 + 842.0 + 400.0 + 2.0 * PAGE_GAP)).abs() < 0.01);
-        let visible = visible_pages(&rows, 0.0, 900.0);
-        assert_eq!(visible, 0..2);
-        let visible = visible_pages(&rows, 900.0, 900.0);
-        assert_eq!(visible, 1..3);
-        assert_eq!(page_at(&rows, 0.0, 900.0), Some(0));
-        assert_eq!(page_at(&rows, 860.0, 900.0), Some(1));
+    fn a_pinch_scales_and_clamps_the_zoom() {
+        assert_eq!(pinch_percent(100, 100.0, 200.0), 200);
+        assert_eq!(pinch_percent(100, 100.0, 50.0), 50);
+        assert_eq!(pinch_percent(100, 100.0, 1000.0), 400);
+        assert_eq!(pinch_percent(100, 100.0, 103.0), 105);
+        assert_eq!(pinch_percent(120, 0.0, 10.0), 120);
     }
 
     #[test]
-    fn rotation_swaps_the_page_size_and_rotates_pixels() {
+    fn rotation_swaps_the_page_size_and_maps_the_picture() {
         assert_eq!(page_display(595.0, 842.0, Rot::Cw), (842.0, 595.0));
         assert_eq!(page_display(595.0, 842.0, Rot::Half), (595.0, 842.0));
-        // 2×3 RGBA, one quarter turn clockwise → 3×2.
-        let rgba: Vec<u8> = vec![
-            1, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255, 5, 0, 0, 255, 6, 0, 0, 255,
-        ];
-        let (w, h, out) = rotate_rgba(3, 2, &rgba, 1);
-        assert_eq!((w, h), (2, 3));
-        // The top-left of the rotated image is the old bottom-left (value 4).
-        assert_eq!(out[0], 4);
-    }
-
-    fn words() -> Vec<Word> {
-        fn w(text: &str, x: f32, y: f32) -> Word {
-            Word {
-                text: text.into(),
-                x0: x,
-                y0: y,
-                x1: x + 20.0,
-                y1: y + 12.0,
-            }
+        assert_eq!(Rot::None.next().next().next().next(), Rot::None);
+        // The top-start corner of the shown page, per rotation, in the rendered picture:
+        // turned clockwise it is the rendered picture's bottom-start corner, and so on.
+        assert_eq!(source_uv(0.0, 0.0, Rot::None), (0.0, 0.0));
+        assert_eq!(source_uv(0.0, 0.0, Rot::Cw), (0.0, 1.0));
+        assert_eq!(source_uv(0.0, 0.0, Rot::Half), (1.0, 1.0));
+        assert_eq!(source_uv(0.0, 0.0, Rot::Ccw), (1.0, 0.0));
+        // The mapping and the point maths agree: a page point drawn at pixel p in the
+        // rotated picture is sampled from the same spot of the rendered one.
+        let (size, scale) = ((200.0, 100.0), 2.0);
+        for rot in [Rot::None, Rot::Cw, Rot::Half, Rot::Ccw] {
+            let (dw, dh) = page_display(size.0, size.1, rot);
+            let (px, py) = page_to_px((50.0, 80.0), size, scale, rot);
+            let (u, v) = source_uv(px / (dw * scale), py / (dh * scale), rot);
+            let (ux, uy) = (50.0 * scale / (size.0 * scale), (size.1 - 80.0) / size.1);
+            assert!((u - ux).abs() < 1e-4 && (v - uy).abs() < 1e-4, "{rot:?}");
         }
-        vec![
-            w("مرحبا", 50.0, 700.0),
-            w("بكم", 110.0, 700.0),
-            w("hello", 50.0, 680.0),
-        ]
     }
 
     #[test]
-    fn search_finds_with_arabic_normalisation() {
-        // Presentation forms and tashkeel fold to the same base.
-        let mut pages = vec![words()];
-        pages[0][0].text = "\u{FEE3}\u{FEAE}\u{FEA3}\u{FE92}\u{FE8E}".into();
-        let hits = find_hits(&pages, "مرحبا");
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0], Hit { page: 0, first: 0, last: 0 });
-        // Latin is case-insensitive through the same normalisation.
-        let hits = find_hits(&pages, "HELLO");
-        assert_eq!(hits.len(), 1);
-        assert_eq!(find_hits(&pages, "").len(), 0);
-        assert_eq!(find_hits(&pages, "   ").len(), 0);
-    }
-
-    #[test]
-    fn selection_collects_words_in_reading_order() {
-        let ws = words();
-        let idx = words_in_rect(&ws, (0.0, 675.0, 150.0, 720.0));
-        assert_eq!(idx, vec![0, 1, 2]);
-        assert_eq!(selection_text(&ws, idx), "مرحبا بكم hello");
-        assert_eq!(selection_text(&ws, vec![2, 0]), "مرحبا hello");
+    fn page_points_follow_the_rotation_and_come_back() {
+        let size = (200.0, 100.0);
+        // The top-start corner of the page is (0, 100) in PDF points.
+        assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::None), (0.0, 0.0));
+        // Turned clockwise the old top-start corner is at the top end of a 200×400 picture.
+        assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Cw), (200.0, 0.0));
+        assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Half), (400.0, 200.0));
+        assert_eq!(page_to_px((0.0, 100.0), size, 2.0, Rot::Ccw), (0.0, 400.0));
+        for rot in [Rot::None, Rot::Cw, Rot::Half, Rot::Ccw] {
+            let p = (37.0, 61.0);
+            let back = px_to_page(page_to_px(p, size, 1.5, rot), size, 1.5, rot);
+            assert!((back.0 - p.0).abs() < 0.01 && (back.1 - p.1).abs() < 0.01, "{rot:?}");
+        }
+        let r = rect_to_px((10.0, 10.0, 30.0, 20.0), size, 1.0, Rot::None);
+        assert_eq!(r, (10.0, 80.0, 30.0, 90.0));
     }
 }

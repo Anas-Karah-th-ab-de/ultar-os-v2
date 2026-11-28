@@ -40,6 +40,8 @@ pub enum OpenError {
     Password,
     /// Beschädigt oder kein lesbares PDF.
     Damaged,
+    /// Verschlüsselt mit einem Verfahren, das hayro nicht entschlüsseln kann.
+    Unsupported,
 }
 
 impl std::fmt::Display for OpenError {
@@ -47,15 +49,26 @@ impl std::fmt::Display for OpenError {
         f.write_str(match self {
             OpenError::Password => "password required",
             OpenError::Damaged => "damaged pdf",
+            OpenError::Unsupported => "unsupported encryption",
         })
     }
 }
 
 fn open_error(e: hayro::hayro_syntax::LoadPdfError) -> OpenError {
+    use hayro::hayro_syntax::{DecryptionError, LoadPdfError};
     match e {
-        hayro::hayro_syntax::LoadPdfError::Decryption(_) => OpenError::Password,
-        hayro::hayro_syntax::LoadPdfError::Invalid => OpenError::Damaged,
+        LoadPdfError::Decryption(DecryptionError::PasswordProtected) => OpenError::Password,
+        LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm) => OpenError::Unsupported,
+        LoadPdfError::Decryption(_) | LoadPdfError::Invalid => OpenError::Damaged,
     }
+}
+
+/// Ein Eintrag der Gliederung (Lesezeichen): Zielseite (ab 0), Titel, Tiefe (0 = oberste Ebene).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutlineItem {
+    pub page: usize,
+    pub title: String,
+    pub level: u8,
 }
 
 /// Ein Wort einer Seite mit seinem Rahmen in PDF-Punkten (Ursprung unten links, y nach oben).
@@ -107,9 +120,15 @@ impl PdfDoc {
 
     /// Seite i mit fester Skalierung `scale` (Punkte → Pixel) rendern; beide Achsen gleich.
     pub fn render_at(&self, i: usize, scale: f32) -> Option<PageImage> {
+        self.render_limited(i, scale, 40_000_000.0)
+    }
+
+    /// Wie [`Self::render_at`], aber das Bild hat höchstens `max_pixels` Pixel (der Maßstab wird
+    /// dafür verkleinert; der Aufrufer zeichnet das Bild dann auf die gewünschte Größe).
+    pub fn render_limited(&self, i: usize, scale: f32, max_pixels: f32) -> Option<PageImage> {
         let page = self.pdf.pages().get(i)?;
         let (pw, ph) = page.render_dimensions();
-        let s = scale.max(0.02).min((40_000_000.0 / (pw * ph).max(1.0)).sqrt());
+        let s = scale.max(0.02).min((max_pixels / (pw * ph).max(1.0)).sqrt());
         let cache = RenderCache::new();
         let pm = render(
             page,
@@ -160,10 +179,12 @@ impl PdfDoc {
         arrange(self.page_glyphs(i))
     }
 
-    /// Gliederung (Lesezeichen): Seitennummer und Titel, absteigend über die üblichen Blätter.
-    /// Leer, wenn das Dokument keine Gliederung hat oder sie nicht lesbar ist.
-    pub fn outline(&self) -> Vec<(usize, String)> {
+    /// Gliederung (Lesezeichen) in Lesereihenfolge: Zielseite, Titel und Tiefe; Unterpunkte
+    /// stehen hinter ihrem Elternpunkt. Leer, wenn das Dokument keine Gliederung hat oder sie
+    /// nicht lesbar ist (höchstens 2000 Einträge, Schleifen enden damit).
+    pub fn outline(&self) -> Vec<OutlineItem> {
         use hayro::hayro_syntax::object::{Dict, ObjectIdentifier};
+        const MAX_ITEMS: usize = 2000;
         let xref = self.pdf.xref();
         let Some(root) = xref.get::<Dict<'_>>(xref.root_id()) else {
             return Vec::new();
@@ -175,24 +196,36 @@ impl PdfDoc {
             return Vec::new();
         };
         let mut out = Vec::new();
-        let mut first: Option<ObjectIdentifier> = outlines.get_ref(b"First").map(Into::into);
         // Seitennummern: Objektkennung jeder Seite (für /Dest [Seite ...]).
         let page_ids: Vec<Option<ObjectIdentifier>> = (0..self.pages())
             .map(|p| self.pdf.pages().get(p).and_then(|pg| pg.raw().obj_id()))
             .collect();
-        let mut depth = 0usize;
-        while let Some(id) = first {
-            if depth > 512 {
+        // Vorrat: erst das Kind, danach der Nachbar (der Nachbar wird zuerst gelegt).
+        let mut stack: Vec<(ObjectIdentifier, u8)> = outlines
+            .get_ref(b"First")
+            .map(|r| (r.into(), 0u8))
+            .into_iter()
+            .collect();
+        while let Some((id, level)) = stack.pop() {
+            if out.len() >= MAX_ITEMS {
                 break;
             }
-            depth += 1;
             let Some(item) = xref.get::<Dict<'_>>(id) else {
-                break;
+                continue;
             };
-            if let Some(title) = item.get::<hayro::hayro_syntax::object::String<'_>>(b"Title") {
-                out.push((page_of_dest(&item, &page_ids), bytes_text(title.as_bytes())));
+            if let Some(next) = item.get_ref(b"Next") {
+                stack.push((next.into(), level));
             }
-            first = item.get_ref(b"Next").map(Into::into);
+            if let Some(child) = item.get_ref(b"First") {
+                stack.push((child.into(), level.saturating_add(1)));
+            }
+            if let Some(title) = item.get::<hayro::hayro_syntax::object::String<'_>>(b"Title") {
+                out.push(OutlineItem {
+                    page: page_of_dest(&item, &page_ids),
+                    title: bytes_text(title.as_bytes()),
+                    level,
+                });
+            }
         }
         out
     }
@@ -300,8 +333,13 @@ fn page_of_dest(
     item: &hayro::hayro_syntax::object::Dict<'_>,
     page_ids: &[Option<hayro::hayro_syntax::object::ObjectIdentifier>],
 ) -> usize {
-    use hayro::hayro_syntax::object::{Array, MaybeRef};
-    let Some(arr) = item.get::<Array<'_>>(b"Dest") else {
+    use hayro::hayro_syntax::object::{Array, Dict, MaybeRef};
+    // Ziel direkt (/Dest) oder als Sprung-Aktion (/A << /S /GoTo /D [...] >>).
+    let arr = item.get::<Array<'_>>(b"Dest").or_else(|| {
+        item.get::<Dict<'_>>(b"A")
+            .and_then(|a| a.get::<Array<'_>>(b"D"))
+    });
+    let Some(arr) = arr else {
         return 0;
     };
     let target = match arr.raw_iter().next() {

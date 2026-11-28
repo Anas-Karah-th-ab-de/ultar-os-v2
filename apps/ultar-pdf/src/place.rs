@@ -70,13 +70,61 @@ pub fn page_of(uri: &str) -> usize {
     for part in uri.split(['#', '?']).skip(1) {
         for kv in part.split('&') {
             if let Some(v) = kv.strip_prefix("page=") {
-                if let Ok(n) = v.trim().parse::<usize>() {
+                if let Ok(n) = ultar_i18n::numbers::to_western_digits(v.trim()).parse::<usize>() {
                     return n.saturating_sub(1);
                 }
             }
         }
     }
     0
+}
+
+/// The URI without its `#page=N` / `?page=N` suffix.
+pub fn without_page(uri: &str) -> &str {
+    uri.split(['#', '?']).next().unwrap_or(uri)
+}
+
+/// A percent-decoded name (the file name shown in titles and lists); undecodable text stays.
+pub fn decode_name(raw: &str) -> String {
+    let name = without_page(raw);
+    let name = name.rsplit('/').next().unwrap_or(name);
+    decode(name).unwrap_or_else(|| name.to_owned())
+}
+
+/// Percent-encodes a path part (everything but letters, digits and `-._~`).
+fn encode(part: &str) -> String {
+    let mut out = String::with_capacity(part.len());
+    for b in part.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// The `files://` URI for what the person typed in the open dialog: a URI stays as it is, a
+/// path (`documents/a.pdf`, `/areas/documents/a.pdf`, or with Arabic digits) is made one.
+/// `None` for an empty entry.
+pub fn uri_of_entry(entry: &str) -> Option<String> {
+    let entry = entry.trim();
+    if entry.starts_with("files://") {
+        return Some(entry.to_owned());
+    }
+    // a typed `#page=N` stays a page suffix
+    let (path, suffix) = match entry.find(['#', '?']) {
+        Some(i) => entry.split_at(i),
+        None => (entry, ""),
+    };
+    let path = path.strip_prefix("/areas/").unwrap_or(path);
+    let parts: Vec<String> = path
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|p| !p.is_empty())
+        .map(encode)
+        .collect();
+    (!parts.is_empty()).then(|| format!("files://{}{suffix}", parts.join("/")))
 }
 
 /// The recent files (URIs or paths), newest first.
@@ -157,6 +205,27 @@ mod tests {
         assert_eq!(page_of("files://documents/a.pdf?page=1"), 0);
         assert_eq!(page_of("files://documents/a.pdf"), 0);
         assert_eq!(page_of("files://documents/a.pdf#page=none"), 0);
+    }
+
+    #[test]
+    fn typed_paths_become_uris_and_names_are_decoded() {
+        assert_eq!(uri_of_entry("files://documents/a.pdf#page=2").as_deref(), Some("files://documents/a.pdf#page=2"));
+        assert_eq!(uri_of_entry(" documents/ملف 1.pdf ").as_deref(), Some("files://documents/%D9%85%D9%84%D9%81%201.pdf"));
+        assert_eq!(uri_of_entry("/areas/downloads/x.pdf").as_deref(), Some("files://downloads/x.pdf"));
+        assert_eq!(uri_of_entry("   "), None);
+        assert_eq!(uri_of_entry("/"), None);
+        // a typed page suffix stays one, in any digits
+        let typed = uri_of_entry("documents/a.pdf#page=٣").unwrap_or_default();
+        assert_eq!(typed, "files://documents/a.pdf#page=٣");
+        assert_eq!(page_of(&typed), 2);
+        // what comes out opens below the areas, and the traversal stays out
+        let a = Path::new("/areas");
+        let uri = uri_of_entry("documents/ملف 1.pdf").unwrap_or_default();
+        assert_eq!(path_of(&uri, a), Some(PathBuf::from("/areas/documents/ملف 1.pdf")));
+        let up = uri_of_entry("documents/../../etc/passwd").unwrap_or_default();
+        assert_eq!(path_of(&up, a), None);
+        assert_eq!(decode_name("files://documents/%D9%85%D9%84%D9%81.pdf#page=3"), "ملف.pdf");
+        assert_eq!(without_page("files://d/a.pdf?page=2"), "files://d/a.pdf");
     }
 
     #[test]

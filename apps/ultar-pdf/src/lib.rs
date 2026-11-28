@@ -8,19 +8,32 @@
 //!
 //! | Module | |
 //! |---|---|
-//! | [`state`] | the pure logic: zoom, page geometry, rotation, search, selection |
-//! | [`doc`] | the document: loading, the render worker and the picture cache |
-//! | [`keys`] | what a key does (shortcuts) |
-//! | [`place`] | where a URI lives, its page, and the recent files |
-//! | [`app`] | the window: tool bar, page view, side panel, search, dialogs |
+//! | [`state`], [`layout`] | the pure logic: zoom, fit, rotation, page geometry |
+//! | [`text`], [`search`] | the text layer of a page, search with Arabic normalisation, selection |
+//! | [`doc`], [`worker`], [`cache`] | the document, its render worker and the picture cache |
+//! | [`app`], [`build`], [`paint`], [`input`] | the window: state, tree, pictures, keys/pointer/touch |
+//! | [`keys`], [`touch`] | the shortcut map and the finger gestures |
+//! | [`action`] | what the helper may do (APP-RULES §9) |
+//! | [`place`], [`service`] | where a URI lives and the recent files; the mesh report |
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod action;
 pub mod app;
+pub mod build;
+pub mod cache;
 pub mod doc;
 pub mod i18n;
+pub mod input;
 pub mod keys;
+pub mod layout;
+pub mod paint;
 pub mod place;
+pub mod raster;
+pub mod search;
 pub mod service;
 pub mod state;
+pub mod text;
+pub mod touch;
+pub mod worker;

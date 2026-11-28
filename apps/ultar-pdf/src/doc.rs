@@ -1,58 +1,24 @@
-//! The open document: the bytes of the PDF, the render worker that owns the `PdfDoc`, and the
-//! picture cache. Rendering never blocks the window: the worker renders pages on request and
-//! sends the finished pictures back; the cache keeps the newest ones within a memory limit, so
-//! a long document stays smooth.
+//! The open document as the window sees it: its state, page sizes, outline, the caches of
+//! pictures and page texts, and the channel to the render worker (`worker.rs`). Nothing here
+//! waits for the worker: requests are sent, answers are taken with [`Doc::poll`].
 
+use crate::cache::{Cache, Key};
 use crate::place::ReadError;
-use crate::state::{find_hits, rotate_rgba, Hit, Rot};
-use std::collections::HashMap;
+use crate::search::Hit;
+use crate::text::PageText;
+use crate::worker::{self, Cmd, Evt, Failure, Source, Want};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
-use ultar_office::pdf::{Line, OpenError, PageImage, PdfDoc, PdfInfo};
+use ultar_office::pdf::{OpenError, OutlineItem, PageImage, PdfInfo};
 
-/// What the worker found out while opening.
-#[derive(Debug, Clone)]
-pub struct Opened {
-    pub info: PdfInfo,
-    pub sizes: Vec<(f32, f32)>,
-    /// Bookmark titles with their page (empty when the document has none).
-    pub outline: Vec<(usize, String)>,
-}
-
-/// A request to the worker.
-enum Cmd {
-    Render {
-        page: usize,
-        scale: f32,
-        rot: Rot,
-    },
-    Words {
-        page: usize,
-    },
-    Search {
-        query: String,
-    },
-    Shutdown,
-}
-
-/// What the worker answered.
-pub enum Evt {
-    Opened(Result<Opened, OpenError>),
-    Rendered {
-        page: usize,
-        scale: f32,
-        rot: Rot,
-        img: Arc<PageImage>,
-    },
-    Words {
-        page: usize,
-        lines: Arc<Vec<Line>>,
-    },
-    Search {
-        hits: Vec<Hit>,
-    },
-}
+/// Bytes of page pictures kept (the manifest allows 120 MB for the whole app).
+pub const PAGE_BUDGET: usize = 40 * 1024 * 1024;
+/// Bytes of thumbnails kept.
+pub const THUMB_BUDGET: usize = 8 * 1024 * 1024;
+/// Page texts kept in the window.
+const TEXT_CAP: usize = 96;
 
 /// The state of the reader, one of the designed states (APP-RULES §6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,276 +27,263 @@ pub enum DocState {
     Opening,
     Open,
     NeedsPassword,
+    /// Encrypted in a way the reader cannot open.
+    Unsupported,
     Damaged,
 }
 
-/// Pictures older than this many bytes are evicted first.
-const CACHE_BUDGET: usize = 48 * 1024 * 1024;
-/// Text pages kept for highlighting a search.
-const WORDS_CAP: usize = 64;
-
-/// The least-recently-used picture cache with a byte budget.
-struct Cache {
-    budget: usize,
-    bytes: usize,
-    map: HashMap<(usize, u32, u8), Arc<PageImage>>,
-    order: Vec<(usize, u32, u8)>,
-}
-
-impl Cache {
-    fn new(budget: usize) -> Cache {
-        Cache {
-            budget,
-            bytes: 0,
-            map: HashMap::new(),
-            order: Vec::new(),
-        }
-    }
-
-    fn key(page: usize, scale: f32, rot: Rot) -> (usize, u32, u8) {
-        (page, scale.to_bits(), rot.turns())
-    }
-
-    fn get(&self, k: &(usize, u32, u8)) -> Option<Arc<PageImage>> {
-        self.map.get(k).cloned()
-    }
-
-    fn insert(&mut self, k: (usize, u32, u8), img: Arc<PageImage>) {
-        let size = img.rgba.len();
-        self.map.insert(k, img);
-        self.order.push(k);
-        self.bytes += size;
-        while self.bytes > self.budget {
-            let Some(old) = self.order.first().copied() else {
-                break;
-            };
-            self.order.remove(0);
-            if let Some(dropped) = self.map.remove(&old) {
-                self.bytes = self.bytes.saturating_sub(dropped.rgba.len());
-            }
-        }
-    }
+/// What `poll` took from the worker.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// The state changed (opened, failed, needs a password).
+    State,
+    /// A page picture arrived (or a page failed).
+    Picture,
+    /// A thumbnail arrived.
+    Thumb,
+    /// The text layer of a page arrived.
+    Text(usize),
+    /// The hits on one page for search `id`.
+    Found { id: u32, hits: Vec<Hit> },
 }
 
 /// An open document (or one that is not yet / could not be opened).
 pub struct Doc {
-    /// The state for the view.
     pub state: DocState,
-    /// The document's info after a successful open.
+    /// Why a file could not be read, when that was the reason.
+    pub read_error: Option<ReadError>,
     pub info: Option<PdfInfo>,
     /// Page sizes in points (unrotated), one per page.
     pub sizes: Vec<(f32, f32)>,
-    /// Bookmark titles with their page (empty when the document has none).
-    pub outline: Vec<(usize, String)>,
-    /// The URI it was opened with (for meshing and the title).
+    pub outline: Vec<OutlineItem>,
+    /// The URI it was opened with (for the title and the mesh).
     pub uri: Option<String>,
-    cache: Cache,
-    words: HashMap<usize, Arc<Vec<Line>>>,
+    source: Option<Source>,
+    pages: Cache,
+    thumbs: Cache,
+    texts: HashMap<usize, Arc<PageText>>,
+    text_order: VecDeque<usize>,
+    failed: HashSet<usize>,
+    asked: Want,
     tx: Option<Sender<Cmd>>,
     rx: Option<Receiver<Evt>>,
-    worker: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Doc {
-    /// No document (the initial state).
-    pub fn none() -> Doc {
-        Doc {
-            state: DocState::NoFile,
-            info: None,
-            sizes: Vec::new(),
-            outline: Vec::new(),
-            uri: None,
-            cache: Cache::new(CACHE_BUDGET),
-            words: HashMap::new(),
-            tx: None,
-            rx: None,
-            worker: None,
-        }
-    }
-
-    /// Opens `path` (a `files://` URI, so the mesh can hand the page over).
-    pub fn open(
-        path: &Path,
+    fn new(
+        state: DocState,
         uri: Option<String>,
-        areas: &Path,
-        password: Option<&str>,
-    ) -> Result<Doc, ReadError> {
-        let bytes = std::fs::read(path).map_err(|e| ReadError::of(&e))?;
-        let _ = areas;
-        Ok(Doc::from_bytes(bytes, uri, password))
-    }
-
-    /// Opens from memory (tests, fixtures).
-    pub fn from_bytes(bytes: Vec<u8>, uri: Option<String>, password: Option<&str>) -> Doc {
-        let (cmd_tx, cmd_rx) = mpsc::channel();
-        let (evt_tx, evt_rx) = mpsc::channel();
-        let password = password.map(str::to_owned);
-        let bytes = Arc::new(bytes);
-        let worker_bytes = bytes.clone();
-        let worker = std::thread::spawn(move || worker(worker_bytes, password, cmd_rx, evt_tx));
+        source: Option<Source>,
+        channels: Option<(Sender<Cmd>, Receiver<Evt>)>,
+    ) -> Doc {
+        let (tx, rx) = match channels {
+            Some((tx, rx)) => (Some(tx), Some(rx)),
+            None => (None, None),
+        };
         Doc {
-            state: DocState::Opening,
+            state,
+            read_error: None,
             info: None,
             sizes: Vec::new(),
             outline: Vec::new(),
             uri,
-            cache: Cache::new(CACHE_BUDGET),
-            words: HashMap::new(),
-            tx: Some(cmd_tx),
-            rx: Some(evt_rx),
-            worker: Some(worker),
+            source,
+            pages: Cache::new(PAGE_BUDGET),
+            thumbs: Cache::new(THUMB_BUDGET),
+            texts: HashMap::new(),
+            text_order: VecDeque::new(),
+            failed: HashSet::new(),
+            asked: Want::default(),
+            tx,
+            rx,
         }
     }
 
-    /// Takes the events the worker sent since the last call (the open result first).
-    pub fn poll(&mut self) -> Vec<Evt> {
-        let mut out = Vec::new();
+    /// No document (the initial state).
+    pub fn none() -> Doc {
+        Doc::new(DocState::NoFile, None, None, None)
+    }
+
+    /// A document that could not be reached (the file is missing, the URI is wrong).
+    pub fn unreadable(uri: Option<String>, why: ReadError) -> Doc {
+        let mut doc = Doc::new(DocState::NoFile, uri, None, None);
+        doc.read_error = Some(why);
+        doc
+    }
+
+    /// Opens the file at `path`; the worker reads and parses it, the window does not wait.
+    pub fn open_path(path: &Path, uri: Option<String>, password: Option<&str>) -> Doc {
+        Doc::start(Source::Path(path.to_owned()), uri, password)
+    }
+
+    /// Opens from memory (tests, fixtures).
+    pub fn from_bytes(bytes: Vec<u8>, uri: Option<String>, password: Option<&str>) -> Doc {
+        Doc::start(Source::Bytes(Arc::new(bytes)), uri, password)
+    }
+
+    fn start(source: Source, uri: Option<String>, password: Option<&str>) -> Doc {
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (evt_tx, evt_rx) = mpsc::channel();
+        let password = password.map(str::to_owned);
+        let for_worker = source.clone();
+        std::thread::spawn(move || worker::run(for_worker, password, cmd_rx, evt_tx));
+        Doc::new(DocState::Opening, uri, Some(source), Some((cmd_tx, evt_rx)))
+    }
+
+    /// The same file again with a password (the password dialog).
+    pub fn with_password(&self, password: &str) -> Doc {
+        match &self.source {
+            Some(s) => Doc::start(s.clone(), self.uri.clone(), Some(password)),
+            None => Doc::none(),
+        }
+    }
+
+    fn send(&self, cmd: Cmd) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(cmd);
+        }
+    }
+
+    /// Takes what the worker sent since the last call and applies it.
+    pub fn poll(&mut self) -> Vec<Change> {
+        let mut events = Vec::new();
         if let Some(rx) = &self.rx {
             while let Ok(evt) = rx.try_recv() {
-                out.push(evt);
+                events.push(evt);
             }
         }
-        out
+        events.into_iter().filter_map(|e| self.apply(e)).collect()
     }
 
-    /// Asks the worker to render `page`.
-    pub fn request_render(&mut self, page: usize, scale: f32, rot: Rot) {
-        let _ = self
-            .tx
-            .as_ref()
-            .map(|tx| tx.send(Cmd::Render { page, scale, rot }));
-    }
-
-    /// Asks the worker for the words (lines) of `page` (search highlight, selection).
-    pub fn request_words(&mut self, page: usize) {
-        let _ = self.tx.as_ref().map(|tx| tx.send(Cmd::Words { page }));
-    }
-
-    /// Asks the worker to search the whole document.
-    pub fn request_search(&mut self, query: &str) {
-        let _ = self
-            .tx
-            .as_ref()
-            .map(|tx| tx.send(Cmd::Search { query: query.to_owned() }));
-    }
-
-    /// Applies one worker event to the document's state and caches (the app handles
-    /// `Evt::Search` itself first, everything else is internal).
-    pub fn accept(&mut self, evt: Evt) {
+    fn apply(&mut self, evt: Evt) -> Option<Change> {
         match evt {
-            Evt::Opened(res) => match res {
-                Ok(Opened { info, sizes, outline }) => {
-                    self.info = Some(info);
-                    self.sizes = sizes;
-                    self.outline = outline;
-                    self.state = DocState::Open;
-                }
-                Err(OpenError::Password) => self.state = DocState::NeedsPassword,
-                Err(OpenError::Damaged) => self.state = DocState::Damaged,
-            },
-            Evt::Rendered {
-                page,
-                scale,
-                rot,
-                img,
-            } => {
-                let key = Cache::key(page, scale, rot);
-                self.cache.insert(key, img);
+            Evt::Opened(Ok(o)) => {
+                self.sizes = o.sizes;
+                self.outline = o.outline;
+                self.info = Some(o.info);
+                self.state = DocState::Open;
+                Some(Change::State)
             }
-            Evt::Words { page, lines } => {
-                if self.words.len() < WORDS_CAP {
-                    self.words.insert(page, lines);
-                }
+            Evt::Opened(Err(Failure::Pdf(OpenError::Password))) => self.fail(DocState::NeedsPassword),
+            Evt::Opened(Err(Failure::Pdf(OpenError::Unsupported))) => self.fail(DocState::Unsupported),
+            Evt::Opened(Err(Failure::Pdf(OpenError::Damaged))) => self.fail(DocState::Damaged),
+            Evt::Opened(Err(Failure::Read(e))) => {
+                self.read_error = Some(e);
+                self.fail(DocState::NoFile)
             }
-            Evt::Search { .. } => {}
+            Evt::Rendered { page, scale, img } => {
+                self.pages.insert(Key::new(page, scale), img);
+                Some(Change::Picture)
+            }
+            Evt::Thumb { page, scale, img } => {
+                self.thumbs.insert(Key::new(page, scale), img);
+                Some(Change::Thumb)
+            }
+            Evt::Failed { page } => {
+                self.failed.insert(page);
+                Some(Change::Picture)
+            }
+            Evt::Text { page, text } => {
+                self.keep_text(page, text);
+                Some(Change::Text(page))
+            }
+            Evt::Found { id, hits, .. } => Some(Change::Found { id, hits }),
         }
     }
 
-    /// A rendered page from the cache, if present.
-    pub fn image(&self, page: usize, scale: f32, rot: Rot) -> Option<Arc<PageImage>> {
-        self.cache.get(&Cache::key(page, scale, rot))
+    fn fail(&mut self, state: DocState) -> Option<Change> {
+        self.state = state;
+        Some(Change::State)
     }
 
-    /// The cached lines of a page, if the worker has delivered them.
-    pub fn lines(&self, page: usize) -> Option<&Arc<Vec<Line>>> {
-        self.words.get(&page)
+    fn keep_text(&mut self, page: usize, text: Arc<PageText>) {
+        if self.texts.insert(page, text).is_none() {
+            self.text_order.push_back(page);
+        }
+        while self.text_order.len() > TEXT_CAP {
+            if let Some(old) = self.text_order.pop_front() {
+                self.texts.remove(&old);
+            }
+        }
     }
-}
 
-/// The worker: opens the PDF once and answers render/word/search requests.
-fn worker(
-    bytes: Arc<Vec<u8>>,
-    password: Option<String>,
-    rx: Receiver<Cmd>,
-    tx: Sender<Evt>,
-) {
-    let doc = match password {
-        Some(pw) if !pw.is_empty() => PdfDoc::open_with_password_kind((*bytes).clone(), &pw),
-        _ => PdfDoc::open_kind((*bytes).clone()),
-    };
-    let doc = match doc {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = tx.send(Evt::Opened(Err(e)));
-            return;
+    /// Tells the worker what is wanted now, most important first; what is cached (or
+    /// failed) is left out, and an unchanged wish is not sent again.
+    pub fn want(&mut self, renders: Vec<(usize, f32)>, texts: Vec<usize>, thumbs: Vec<(usize, f32)>) {
+        let want = Want {
+            renders: renders
+                .into_iter()
+                .filter(|&(p, s)| !self.pages.has(Key::new(p, s)) && !self.failed.contains(&p))
+                .collect(),
+            texts: texts
+                .into_iter()
+                .filter(|p| !self.texts.contains_key(p))
+                .collect(),
+            thumbs: thumbs
+                .into_iter()
+                .filter(|&(p, s)| !self.thumbs.has(Key::new(p, s)) && !self.failed.contains(&p))
+                .collect(),
+        };
+        if want != self.asked {
+            self.asked = want.clone();
+            self.send(Cmd::Want(want));
         }
-    };
-    let info = doc.info();
-    let sizes = (0..info.pages).map(|i| doc.page_size(i)).collect();
-    let outline = doc.outline();
-    if tx
-        .send(Evt::Opened(Ok(Opened {
-            info,
-            sizes,
-            outline,
-        })))
-        .is_err()
-    {
-        return;
     }
-    let page_count = doc.pages();
-    while let Ok(cmd) = rx.recv() {
-        match cmd {
-            Cmd::Shutdown => break,
-            Cmd::Render { page, scale, rot } => {
-                if let Some(img) = doc.render_at(page, scale) {
-                    let img = if rot.turns() == 0 {
-                        img
-                    } else {
-                        let (w, h, rgba) = rotate_rgba(img.w, img.h, &img.rgba, rot.turns());
-                        PageImage { w, h, rgba }
-                    };
-                    let _ = tx.send(Evt::Rendered {
-                        page,
-                        scale,
-                        rot,
-                        img: Arc::new(img),
-                    });
-                }
-            }
-            Cmd::Words { page } => {
-                let lines = Arc::new(doc.page_lines(page));
-                let _ = tx.send(Evt::Words { page, lines });
-            }
-            Cmd::Search { query } => {
-                let mut pages = Vec::with_capacity(page_count.min(4096));
-                for i in 0..page_count {
-                    pages.push(doc.page_words(i));
-                }
-                let hits = find_hits(&pages, &query);
-                let _ = tx.send(Evt::Search { hits });
-            }
+
+    /// Starts search `id` for `tokens`, beginning at page `start`.
+    pub fn search(&self, id: u32, tokens: Vec<String>, start: usize) {
+        self.send(Cmd::Search { id, tokens, start });
+    }
+
+    /// Something asked for has not arrived yet (the window polls faster meanwhile).
+    pub fn pending(&self) -> bool {
+        if self.state == DocState::Opening {
+            return true;
         }
+        let a = &self.asked;
+        a.renders
+            .iter()
+            .any(|&(p, s)| !self.pages.has(Key::new(p, s)) && !self.failed.contains(&p))
+            || a.texts.iter().any(|p| !self.texts.contains_key(p))
+            || a.thumbs
+                .iter()
+                .any(|&(p, s)| !self.thumbs.has(Key::new(p, s)) && !self.failed.contains(&p))
+    }
+
+    /// The picture of `page` at exactly `scale`.
+    pub fn image(&mut self, page: usize, scale: f32) -> Option<Arc<PageImage>> {
+        self.pages.get(Key::new(page, scale))
+    }
+
+    /// The newest picture of `page` at any scale (drawn stretched until the right one arrives).
+    pub fn stale_image(&self, page: usize) -> Option<Arc<PageImage>> {
+        self.pages.newest_of(page)
+    }
+
+    /// The newest thumbnail of `page`.
+    pub fn thumb(&self, page: usize) -> Option<Arc<PageImage>> {
+        self.thumbs.newest_of(page)
+    }
+
+    /// The page's text layer, once the worker delivered it.
+    pub fn text(&self, page: usize) -> Option<Arc<PageText>> {
+        self.texts.get(&page).cloned()
+    }
+
+    /// The page could not be drawn.
+    pub fn page_failed(&self, page: usize) -> bool {
+        self.failed.contains(&page)
+    }
+
+    /// Bytes held by page pictures and thumbnails.
+    pub fn cache_bytes(&self) -> usize {
+        self.pages.bytes() + self.thumbs.bytes()
     }
 }
 
 impl Drop for Doc {
     fn drop(&mut self) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Cmd::Shutdown);
-        }
-        if let Some(w) = self.worker.take() {
-            let _ = w.join();
-        }
+        // The worker ends by itself; the window never waits for a render in progress.
+        self.send(Cmd::Shutdown);
     }
 }
