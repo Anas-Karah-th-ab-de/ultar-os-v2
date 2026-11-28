@@ -144,6 +144,20 @@ pub fn default_options(
     options
 }
 
+/// What a generic slider writes after its value: `%` for the percentages, nothing for other
+/// numbers (the row's description names their unit).
+pub fn slider_unit(key: &str) -> &'static str {
+    let percent = key.contains("percent")
+        || key.ends_with(".font_size")
+        || key.ends_with(".brightness")
+        || key.ends_with(".volume");
+    if percent {
+        "%"
+    } else {
+        ""
+    }
+}
+
 /// The control at the end of a generic row (`None`: a value shown as text).
 fn control(
     cx: &mut Cx<'_>,
@@ -177,7 +191,10 @@ fn control(
             cx.act(row, Select::new(name, options).selected(selected), act)?
         }
         Control::Slider(min, max, step, value) => {
-            let slider = Slider::new(name, min, max, step).value(value);
+            // the stored value itself (100% text size, 30 minutes), not the share of the range
+            let slider = Slider::new(name, min, max, step)
+                .value(value)
+                .unit(Label::data(slider_unit(&item.key)));
             cx.act_sized(row, slider, wide, act)?
         }
         Control::Edit(text) => {
