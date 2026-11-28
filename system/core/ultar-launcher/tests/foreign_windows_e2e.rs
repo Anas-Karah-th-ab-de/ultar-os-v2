@@ -187,17 +187,17 @@ fn wait_file(path: &Path, text: &str, limit: Duration) -> String {
     }
 }
 
-/// Distinct pixel values in an XWD screenshot (Z pixmap, 32 bits per pixel); a window
-/// with content has many, an empty screen one.
+/// Distinct pixel values in an XWD screenshot (Z pixmap, 24 or 32 bits per pixel – Xvfb
+/// versions differ at depth 24); a window with content has many, an empty screen one.
 fn colours(xwd: &Path) -> usize {
     let b = std::fs::read(xwd).unwrap();
     let be = |at: usize| u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]) as usize;
     let (header, bpp, line, height, ncolors) = (be(0), be(44), be(48), be(20), be(76));
-    assert_eq!(bpp, 32, "Xvfb at depth 24 writes 32 bits per pixel");
+    assert!(bpp == 24 || bpp == 32, "XWD with {bpp} bits per pixel");
     let pixels = &b[header + ncolors * 12..];
     let mut seen = std::collections::BTreeSet::new();
     for row in pixels.chunks(line).take(height).step_by(4) {
-        for px in row.chunks_exact(4).step_by(3) {
+        for px in row.chunks_exact(bpp / 8).step_by(3) {
             seen.insert([px[0], px[1], px[2]]);
         }
     }

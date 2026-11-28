@@ -58,16 +58,17 @@ ULTAR_WINDOWS_SHOTS="$SHOTS" \
   || { tail -80 "$LOG"; fail "test failed"; }
 grep '^FOREIGN' "$LOG" | grep -v '^FOREIGN-WINDOWS-E2E'
 
-# the screenshots as PNG (XWD, 32 bits per pixel, Z pixmap) for people to look at
+# the screenshots as PNG (XWD, Z pixmap, 24 or 32 bits per pixel) for people to look at
 for x in "$SHOTS"/*.xwd; do
   [ -f "$x" ] || continue
   python3 - "$x" "${x%.xwd}.png" <<'PY'
 import struct, sys, zlib
 d = open(sys.argv[1], 'rb').read()
 f = struct.unpack('>25I', d[:100])
-header, width, height, line, ncolors = f[0], f[4], f[5], f[12], f[19]
+header, width, height, bpp, line, ncolors = f[0], f[4], f[5], f[11], f[12], f[19]
+n = bpp // 8
 px = d[header + ncolors * 12:]
-rows = b''.join(b'\0' + bytes(c for i in range(width) for c in (px[y*line+4*i+2], px[y*line+4*i+1], px[y*line+4*i])) for y in range(height))
+rows = b''.join(b'\0' + bytes(c for i in range(width) for c in (px[y*line+n*i+2], px[y*line+n*i+1], px[y*line+n*i])) for y in range(height))
 def chunk(t, b): return struct.pack('>I', len(b)) + t + b + struct.pack('>I', zlib.crc32(t + b))
 open(sys.argv[2], 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows, 6)) + chunk(b'IEND', b''))
 PY
