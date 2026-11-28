@@ -35,7 +35,6 @@
 set -eu
 
 fail() { echo "make-android-runtime: $*" >&2; exit 1; }
-HERE=$(cd "$(dirname "$0")" && pwd)
 [ "$(id -u)" = 0 ] || fail "run as root"
 [ "$(uname -s)" = Linux ] || fail "Linux only"
 case " $(hostname -I 2>/dev/null) " in *" 194.62.29.64 "*) fail "not on the VPS" ;; esac
@@ -282,9 +281,10 @@ if ! grep -q '^app20000:' "$TREE/etc/passwd"; then
   seq 20000 49999 | awk '{ printf "app%d:x:%d:%d:Ultar app:/data:/usr/sbin/nologin\n", $1, $1, $1 }' >>"$TREE/etc/passwd"
 fi
 
-# ATL decodes pictures with GTK (gdk-pixbuf → glycin), whose loaders start through bwrap: in the
-# app's cell that needs no namespaces of its own (tools/foreign/install-bwrap-cell.sh).
-"$HERE/install-bwrap-cell.sh" "$TREE" >/dev/null || fail "bwrap stand-in"
+# ATL decodes pictures with GTK (gdk-pixbuf → glycin), whose loaders start through bwrap: the Linux
+# area's own stand-in (package bubblewrap from tools/foreign/bwrap-shim.c) runs them in the app's cell.
+grep -qs 'bwrap (Ultar cell)' "$TREE/usr/bin/bwrap" \
+  || fail "the Linux area has no bwrap stand-in (build it with tools/foreign/make-linux-runtime.sh)"
 
 # --- self-test: ART runs a program of its own in the area (also used on the Ultar kernel) ----
 H="$BUILD/hello"

@@ -150,7 +150,11 @@ ultar-wayland): the window shows (`FOREIGN-GTK: SHOT … colours=453`). GTK's im
 loaders through `bwrap`, which needs user namespaces (the Ultar kernel has none, on purpose). The area ships
 `bubblewrap 99:0.11-ultar1` from `tools/foreign/bwrap-shim.c` instead (pinned like the xdg-utils
 replacement): it reads bwrap's options, keeps `--chdir`, `--setenv`/`--unsetenv`/`--clearenv`, `--argv0`,
-`--die-with-parent`, `--block-fd`, `--args` and runs the program in place. This weakens nothing: the program
+`--die-with-parent`, `--new-session`, `--block-fd`, `--args` and the seccomp filters it is handed
+(`--seccomp`, `--add-seccomp-fd`: put on the program right before it starts, as bwrap does – on Linux
+glycin's own syscall filter still holds; a kernel without seccomp, the Ultar kernel, skips them), closes the
+descriptors meant for the sandbox (`--file`, `--bind-data`, `--info-fd` …) and runs the program in place.
+This weakens nothing: the program
 already runs in the app's cell (own uid, read-only area, no bus, no capabilities, `NoNewPrivs`), which is the
 sandbox bwrap would have built, and the shim cannot grant more than the cell has.
 
@@ -330,19 +334,10 @@ data.
 `$HOME/android` – writable, never executable; native code is never extracted there
 (`ATL_SKIP_NATIVES_EXTRACTION=1`): its `lib` is a link to the read-only copy in the area.
 
-**Pictures (`bwrap-cell`).** ATL decodes every Android `Bitmap` with GTK; gdk-pixbuf 2.44 of the area loads
-images through glycin, which starts its loaders with `bwrap` – that needs user namespaces the app's cell does
-not give, so without help every picture stayed empty and the test app stopped with a `NullPointerException`.
-`tools/foreign/bwrap-cell.c` (installed by `tools/foreign/install-bwrap-cell.sh`, called by
-`make-android-runtime.sh`; Ubuntu's bwrap is diverted to `/usr/bin/bwrap.ubuntu`) accepts bubblewrap's options
-and runs the helper directly **in the same cell**: it keeps what needs no rights (`--clearenv/--setenv/
---unsetenv`, `--chdir`, `--die-with-parent`, `--new-session`, `--argv0`, the seccomp filters it is handed –
-applied where the kernel has seccomp, so glycin's own syscall filter still holds on Linux), ignores namespace,
-mount, capability and id options and never gives the helper more than the app has; it is static and never
-set-id. Stage P2 (`main` since `a885a16d`) gives the Linux area the same stand-in as its own package
-`bubblewrap` (`tools/foreign/bwrap-shim.c`); `install-bwrap-cell.sh` then leaves that one in place. Once both
-are merged bwrap-cell can go – after its handling of the seccomp filters moved into bwrap-shim (which skips
-them).
+**Pictures.** ATL decodes every Android `Bitmap` with GTK; gdk-pixbuf 2.44 of the area loads images through
+glycin, which starts its loaders with `bwrap` – without the area's bwrap stand-in (above, `bwrap-shim.c`)
+every picture stayed empty in the app's cell and the test app stopped with a `NullPointerException`.
+`make-android-runtime.sh` refuses a Linux area without it.
 
 **Checked** (`tools/foreign/android-e2e.sh`, 28.11.2026, Linux server, real cells, headless Weston as the
 display): Gravity Defied (`org.happysanta.gd_29.apk` of ATL's test set, SHA-256 `0786257c…d675`, Java, APK
