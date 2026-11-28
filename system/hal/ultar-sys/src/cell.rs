@@ -6,7 +6,8 @@
 //! numbers (`docs/integration/kernel-isolation.md`) with these differences,
 //! which callers detect by the answer, never by assuming:
 //!
-//! * no network, IPC or UTS namespaces: `unshare` answers `EINVAL`;
+//! * network namespaces have only their own loopback (no device at all);
+//!   no IPC or UTS namespaces: `unshare` answers `EINVAL`;
 //! * bind mounts of directories only (a file answers `ENOTDIR`);
 //! * one `mount` with `MS_BIND | MS_RDONLY` is already read-only (Linux
 //!   needs the remount, which the Ultar kernel accepts as well);

@@ -73,6 +73,20 @@ static int tcp_to(const char *ip, int port, int *out) {
     return r;
 }
 
+// connect within `ms`: 0, the errno, or ETIMEDOUT (a dropped SYN – the address is closed, but silently)
+static int tcp_within(const char *ip, int port, int ms) {
+    int s = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    struct sockaddr_in a = in4(ip, port);
+    int r = connect(s, (void *)&a, sizeof a) == 0 ? 0 : errno;
+    if (r == EINPROGRESS) {
+        struct pollfd p = {.fd = s, .events = POLLOUT};
+        socklen_t len = sizeof r;
+        r = poll(&p, 1, ms) > 0 && getsockopt(s, SOL_SOCKET, SO_ERROR, &r, &len) == 0 ? r : ETIMEDOUT;
+    }
+    close(s);
+    return r;
+}
+
 // one UDP datagram: 0, or the errno
 static int udp_to(const char *ip, int port) {
     int s = socket(AF_INET, SOCK_DGRAM, 0);
@@ -265,17 +279,21 @@ static void cell_service_hidden(void) {
     pid_t c = fork();
     if (c == 0) {
         alarm(30);
-        int ok = unshare(CLONE_NEWNET) == 0 && prctl(PR_ULTAR_NET_GUARD, 0, 0, 0, 0) == 0 && serve(SOCK_STREAM, "0.0.0.0", CELL_TCP) >= 0;
+        // the service really listens: the cell itself reaches it
+        int ok = unshare(CLONE_NEWNET) == 0 && prctl(PR_ULTAR_NET_GUARD, 0, 0, 0, 0) == 0 && serve(SOCK_STREAM, "0.0.0.0", CELL_TCP) >= 0 &&
+                 tcp_to("127.0.0.1", CELL_TCP, NULL) == 0;
         char b = ok ? 'R' : 'F';
         if (write(up[1], &b, 1) != 1 || read(go[0], &b, 1) < 0) _exit(1);
         _exit(0);
     }
     char b = 0;
-    CHECK(read(up[0], &b, 1) == 1 && b == 'R', "a cell serves on 0.0.0.0:%d in its own namespace", CELL_TCP);
+    CHECK(read(up[0], &b, 1) == 1 && b == 'R', "a cell serves on 0.0.0.0:%d in its own namespace (and reaches it itself)", CELL_TCP);
     int r = tcp_to("127.0.0.1", CELL_TCP, NULL);
     CHECK(r == ECONNREFUSED, "the cell's service is not on the host's loopback (%s)", err(r));
-    r = tcp_to(own_ip, CELL_TCP, NULL);
-    CHECK(r == ECONNREFUSED, "nor on the device's address %s (%s)", own_ip, err(r));
+    // the host answers its own closed address silently (no reset for a non-loopback source): either way the
+    // cell's listener is not reached
+    r = tcp_within(own_ip, CELL_TCP, 3000);
+    CHECK(r == ECONNREFUSED || r == ETIMEDOUT, "nor on the device's address %s (%s)", own_ip, err(r));
     if (write(go[1], "x", 1) != 1) fails++;
     waitpid(c, NULL, 0);
     close(up[0]), close(up[1]), close(go[0]), close(go[1]);

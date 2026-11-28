@@ -151,6 +151,37 @@ fn publish_dir(
     datadir::ensure_publish_dir(root, id.as_str(), owner).ok()
 }
 
+/// The network of a start: `(own network namespace, "internet only" barrier)`.
+///
+/// * Without the `network` permission: a namespace of its own – only its own loopback.
+/// * With it, in the system profile (KM Code Craft's own apps, e.g. the browser that must open a router's
+///   page): the host's network as before.
+/// * With it, in any other profile: a namespace of its own with the barrier – the internet, but no host
+///   loopback, no address of the device, no LAN, broadcast or multicast (`docs/integration/zell-netz.md`).
+///   A kernel without the barrier stops the start unless the operator accepted `net-guard`.
+fn network(
+    platform: &crate::platform::Platform,
+    accepted: &[Feature],
+    entry: &Entry,
+) -> Result<(bool, bool), LaunchError> {
+    if !entry.granted.has(Permission::Network) {
+        let own = platform
+            .require(Feature::Net, accepted)
+            .map_err(LaunchError::Platform)?;
+        return Ok((own, false));
+    }
+    if entry.profile == crate::profile::ProfileName::System {
+        return Ok((false, false));
+    }
+    let own = platform
+        .require(Feature::Net, accepted)
+        .map_err(LaunchError::Platform)?;
+    let guard = platform
+        .require(Feature::NetGuard, accepted)
+        .map_err(LaunchError::Platform)?;
+    Ok((own && guard, own && guard))
+}
+
 /// The plan for `role` of the installed app `id`.
 pub(crate) fn prepare(
     core: &Core,
@@ -174,13 +205,7 @@ pub(crate) fn prepare(
     let cell = platform
         .require(Feature::Cell, accepted)
         .map_err(LaunchError::Platform)?;
-    let isolate_net = if entry.granted.has(Permission::Network) {
-        false
-    } else {
-        platform
-            .require(Feature::Net, accepted)
-            .map_err(LaunchError::Platform)?
-    };
+    let (isolate_net, net_guard) = network(platform, accepted, &entry)?;
     let profile = entry.profile.profile();
     let limits = profile
         .limits(&manifest.limits)
@@ -231,6 +256,7 @@ pub(crate) fn prepare(
             net: isolate_net,
             ipc: cell && platform.ipc,
         },
+        net_guard,
         root,
         data: data.clone(),
         view: core.config.system_view.clone(),

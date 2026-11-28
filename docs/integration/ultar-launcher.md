@@ -239,17 +239,17 @@ them; stage 2 relays to the app (section 2a). 6 gate rounds since without a fail
   `userfiles` (833), the directories below `areas_root` are `0770` launcher:userfiles. Open: store apps (need
   the user's choice per area), `removable` (volume service), files of one app are `0600` (umask 077) for the
   others.
-* **Ultar kernel gaps** (stop the start unless accepted): no network namespace (an app reaches the network and
-  the host's loopback – `launchtest` accepts `net` explicitly there), no single-file bind (whole `devtmpfs`;
+* **Ultar kernel gaps** (stop the start unless accepted): ~~no network namespace~~ – done (`zell-netz.md`:
+  own loopback per namespace, and the "internet only" barrier for network apps outside the system profile),
+  no single-file bind (whole `devtmpfs`;
   `/dev/console` and `/dev/tty` are `0666` there – kernel default to tighten), no CPU limit, no
   `SCM_CREDENTIALS`, no seccomp-like call filter on either kernel.
 * Linux without a cgroup2 memory controller (this machine): memory limit not testable here (refused unless
   `groups` accepted); `RLIMIT_NPROC` bounds processes per app uid there. The memory attack runs in QEMU only.
 * `noexec` is not implemented by the Ultar kernel (mount flag ignored): there an app can run what it wrote to
   `/data` or `/tmp`. Kernel change needed (exec check against the mount's flag); tested on Linux only.
-* `PR_SET_PDEATHSIG` is accepted without effect by the Ultar kernel: a cell whose launcher died keeps running
-  until the launcher's next start empties its memory group (needs groups; without a group tree – `accept_missing
-  groups`, development only – such a cell is not found).
+* ~~`PR_SET_PDEATHSIG` is accepted without effect by the Ultar kernel~~ – done (`zell-netz.md`): stage 1 ends
+  with the launcher process.
 * Without a pid namespace (`accept_missing cell`, development only) ending a cell kills the app but not processes
   the app started.
 * Key rotation: an app id stays bound to its first signer for ever (also after uninstall); a new key of the same

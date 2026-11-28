@@ -14,6 +14,8 @@ use common::{root, wait_state, Collector, World};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use ultar_bus::messages::launcher::{Exit, InstanceState as S, Role};
+use ultar_launcher::error::LaunchError;
+use ultar_launcher::platform::Feature;
 
 /// What the malicious app goes for: another app with a secret in its data,
 /// privileged sockets (one root-only in the shared directory the cell sees,
@@ -134,7 +136,12 @@ fn the_network_needs_the_users_permission() {
     }
     let mut world = World::new("net");
     let collector = Collector::listen(&world.path("out.sock"));
-    let launcher = world.open_default();
+    // Linux has no "internet only" barrier: a granted store app gets the host's network only where the
+    // operator accepts that (`a_granted_store_app_needs_the_barrier`); the Ultar kernel sets the barrier
+    // (tools/kern-test/zell-netz-e2e.sh)
+    let tree = world.fake_group_tree();
+    let text = world.config_text(&["net-guard"], Some(&tree));
+    let launcher = world.open(&text);
     let tcp = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = tcp.local_addr().unwrap().port().to_string();
     launcher
@@ -160,4 +167,33 @@ fn the_network_needs_the_users_permission() {
         .wait_for("app-store_net", "ATTACK network ESCAPED")
         .is_some());
     assert_eq!(ended.last_exit, Some(Exit::Code(3)));
+}
+
+#[test]
+fn a_granted_store_app_needs_the_barrier() {
+    if !root() {
+        eprintln!("network test skipped: network namespaces need root");
+        return;
+    }
+    let mut world = World::new("netguard");
+    let launcher = world.open_default();
+    if launcher.platform().net_guard {
+        eprintln!("barrier present (Ultar kernel): covered by tools/kern-test/zell-netz-e2e.sh");
+        return;
+    }
+    launcher
+        .install(&world.package_args(
+            "store.net",
+            &["attack", "--port", "1"],
+            "[permissions]\nnetwork = \"ask\"\n",
+            false,
+        ))
+        .unwrap();
+    launcher
+        .set_permission("store.net", "network", true)
+        .unwrap();
+    assert!(matches!(
+        launcher.start("store.net", Role::Ui, None),
+        Err(LaunchError::Platform(Feature::NetGuard))
+    ));
 }

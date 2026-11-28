@@ -139,6 +139,7 @@ mod tests {
             identity: Some((20001, 20001)),
             group_dir: None,
             namespaces: Namespaces::default(),
+            net_guard: false,
             root: "/c".into(),
             data: "/d".into(),
             view: Vec::new(),

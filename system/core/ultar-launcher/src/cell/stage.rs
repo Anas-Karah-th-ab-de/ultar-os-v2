@@ -17,7 +17,9 @@
 //! with its parent where the kernel offers that (`PR_SET_PDEATHSIG`).
 
 use super::{view, CellFailure, CellPlan, StatusLine, CELL_INIT_ARG, STATUS_ENV};
-use crate::platform::{PROBE_BASE, PROBE_CELL, PROBE_FILE_BIND, PROBE_IPC, PROBE_NET};
+use crate::platform::{
+    PROBE_BASE, PROBE_CELL, PROBE_FILE_BIND, PROBE_IPC, PROBE_NET, PROBE_NET_GUARD,
+};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -113,7 +115,17 @@ fn enter(plan: &CellPlan) -> Result<(), CellFailure> {
     if plan.namespaces.mount && sys_cell::make_mounts_private().is_err() {
         return Err(CellFailure::Mounts);
     }
+    // the "internet only" barrier: set in stage 1, so stage 2 and the app inherit it and cannot drop it
+    if plan.net_guard && !matches!(set_net_guard(), Ok(true)) {
+        return Err(CellFailure::Namespaces);
+    }
     Ok(())
+}
+
+/// Sets the barrier and reads it back.
+fn set_net_guard() -> Result<bool, Errno> {
+    ultar_sys::ultar_net_guard()?;
+    ultar_sys::ultar_net_guarded()
 }
 
 /// Stage 1: group, namespaces, stage 2, then pass signals on until stage 2
@@ -302,6 +314,10 @@ pub fn probe(scratch: &Path) -> i32 {
     .is_ok()
     {
         bits |= PROBE_NET;
+        // the probe is a throwaway process: setting the one-way barrier here costs nothing
+        if matches!(set_net_guard(), Ok(true)) {
+            bits |= PROBE_NET_GUARD;
+        }
     }
     if sys_cell::unshare(Namespaces {
         ipc: true,

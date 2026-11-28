@@ -15,6 +15,16 @@ Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 
 Offen: Dateien und Ordner des Schreibtisch-Ordners selbst (Files `--desktop` hat dafür eine eigene Hintergrundfläche, die noch nicht gestartet wird) und Verknüpfungen per Ziehen aus dem App-Raster.
 
+## Netz-Abschottung der Zellen (28.11.2026) – Stufe P0 von `docs/FREMD-APPS.md`
+
+| Baustein | Stand |
+|---|---|
+| **Netz-Namensraum** im Ultar-Kern | `CLONE_NEWNET` (unshare/clone, Recht `MOUNT`): eigenes Loopback (eigene Ports, eigene abstrakte Unix-Namen), kein Host-Loopback, kein Weg nach außen, Lauscher von außen unerreichbar |
+| **Schranke „nur Internet“** | `prctl(PR_ULTAR_NET_GUARD)`, vererbt, über `execve` erhalten, nie rücknehmbar: kein Host-Loopback, keine eigene Adresse, kein LAN/Broadcast/Multicast; DNS nur zu den Servern der Netzkonfiguration auf Port 53; im Host-Namensraum zusätzlich kein `listen`/fester Port. Sockets behalten Namensraum und Schranke ihres Erzeugers |
+| `PR_SET_PDEATHSIG` | wirkt jetzt (Waise endet mit dem Elternprozess) |
+| Launcher | ohne Netz-Recht eigener Namensraum (wie bisher gefordert, jetzt auch auf dem Ultar-Kern); mit Netz-Recht außerhalb des System-Profils eigener Namensraum **mit Schranke** (Fähigkeit `net-guard`, sonst Start verweigert) |
+| Prüfung | `zell-netz-e2e.sh` (`ZELL-NETZ: ALLES OK`, in `ci.sh`) – Doku `docs/integration/zell-netz.md` |
+
 ## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
 
 Befund des Eigentümers in VMware (v2 gegen v1): das Firmenlogo fehlte an mehreren Stellen, besonders bei der

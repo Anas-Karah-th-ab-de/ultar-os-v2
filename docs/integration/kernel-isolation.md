@@ -214,10 +214,12 @@ six cells at once (20 rounds each of files, links and forks) see only themselves
 
 ## Not done / not tested (honest list)
 
-* Out of scope by design (stage 2+): net/uts/ipc/user/dev namespaces, system-call filter, uid/gid, profiles.
+* Out of scope by design (stage 2+): uts/ipc/user/dev namespaces, system-call filter, uid/gid, profiles.
+  (Network namespaces and the "internet only" barrier came later – `zell-netz.md`.)
   (The group tree with memory and process limits came with stage 2 – `kernel-memory-groups.md`; a cell can
   no longer exhaust RAM. CPU limits are still missing.)
-  A cell can still reach host services on 127.0.0.1.
+  A cell can still reach host services on 127.0.0.1 unless it is in a network namespace of its own
+  (`zell-netz.md`).
 * `mount`/`umount2` in the **initial** namespace are still the old no-op that returns 0 (kept on purpose so
   existing init programs and the kernel's own host-path users do not change; see design §2.2).
 * No re-parenting of orphans to a namespace's pid 1 (the kernel has no re-parenting; orphans are reaped by
