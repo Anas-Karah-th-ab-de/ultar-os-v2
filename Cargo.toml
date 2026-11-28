@@ -96,6 +96,7 @@ members = [
     "system/services/ultar-zellen",
     "system/services/ultar-auth",
     "platform/ultar-desktop",
+    "platform/ultar-wayland",
 ]
 # own workspaces: kernel (no std), server (x86 only), legacy window manager
 # external/servo-host: the browser's Servo engine host, its own workspace and lock file (Servo
