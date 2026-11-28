@@ -91,7 +91,10 @@ fn apps(dir: &Path) -> Vec<App> {
         app("qt6", &[python, &qt], vec![], false, true),
         app(
             "sdl3",
-            &["/usr/libexec/installed-tests/SDL3/testsprite"],
+            &[
+                "/usr/libexec/installed-tests/SDL3/testsprite",
+                "--resizable",
+            ],
             vec![],
             false,
             true,
@@ -253,9 +256,22 @@ fn terminal_checks(h: &mut Harness, dir: &Path, out: &mut Outcome) {
         return;
     }
     let pasted = dir.join("pasted");
-    type_text(h, "printf ULTAR-CLIP-OK | wl-copy\n");
+    type_text(
+        h,
+        &format!(
+            "printf ULTAR-CLIP-OK | wl-copy 2> {}\n",
+            dir.join("copy.log").display()
+        ),
+    );
     h.pump(2500);
-    type_text(h, &format!("wl-paste -n > {}\n", pasted.display()));
+    type_text(
+        h,
+        &format!(
+            "wl-paste -n > {} 2> {}\n",
+            pasted.display(),
+            dir.join("paste.log").display()
+        ),
+    );
     h.pump(2500);
     out.clipboard = Some(std::fs::read_to_string(&pasted).is_ok_and(|t| t == "ULTAR-CLIP-OK"));
 }
@@ -277,7 +293,9 @@ fn run_app(app: &App, base: &Path) -> Outcome {
     }
     h.click(f64::from(b.0 + b.2) / 2.0, f64::from(b.1 + b.3) / 2.0);
     h.pump(800);
-    out.click = app.logs.then(|| log_has(&log, &["wl_pointer", ".button("]));
+    // Apps without a pointer (weston-simple-shm) are not asked.
+    let pointer = log_has(&log, &["wl_seat", ".get_pointer("]);
+    out.click = (app.logs && pointer).then(|| log_has(&log, &["wl_pointer", ".button("]));
     if app.terminal {
         terminal_checks(&mut h, &dir, &mut out);
     } else {

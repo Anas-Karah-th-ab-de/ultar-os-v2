@@ -155,9 +155,7 @@ impl Dispatch<WlDataDevice, ()> for State {
         _: &mut DataInit<'_, State>,
     ) {
         match request {
-            wl_data_device::Request::SetSelection { source, serial } => {
-                set_selection(state, source, serial)
-            }
+            wl_data_device::Request::SetSelection { source, .. } => set_selection(state, source),
             // Drag and drop is not offered: the drag ends at once.
             wl_data_device::Request::StartDrag {
                 source: Some(s), ..
@@ -167,7 +165,7 @@ impl Dispatch<WlDataDevice, ()> for State {
     }
 }
 
-fn set_selection(state: &mut State, source: Option<WlDataSource>, serial: u32) {
+fn set_selection(state: &mut State, source: Option<WlDataSource>) {
     let Some(source) = source else {
         return;
     };
@@ -183,11 +181,11 @@ fn set_selection(state: &mut State, source: Option<WlDataSource>, serial: u32) {
     // The compositor wants the focus and a fresh user action (else it would
     // end the connection): without them the copy is refused here. Apps
     // name the serial of any recent event, so the newest press is used.
-    let user = state.serials.fresh_user();
-    let (Some(native), true, true) = (
-        user,
+    // Apps name the serial of any recent event (wl-copy: keyboard enter),
+    // so the client's serial is not checked; the newest press is used.
+    let (Some(native), true) = (
+        state.serials.fresh_user(),
         state.seat.window_focus.is_some(),
-        state.serials.native(serial) != 0 || serial == 0,
     ) else {
         source.cancelled();
         return;
