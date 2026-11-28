@@ -1,6 +1,7 @@
 //! First start of an installed system: the installer's answers record (`UIAN` in
-//! `ULTAR-BOOTCTL`, [`crate::engine::answers`]) becomes the first account, then the record is
-//! wiped so it is applied exactly once.
+//! `ULTAR-BOOTCTL`, [`crate::engine::answers`]) becomes the first account and, with
+//! [`Extras`], the settings and the selection record ([`crate::firstboot_settings`]); then the
+//! record is wiped so it is applied exactly once.
 //!
 //! The account goes into the account file of the authentication service (`ultar-authd`,
 //! directory `/data/ultar/auth`, file `users`): first line `#ultar-auth crc32=<8 hex>` over
@@ -13,10 +14,11 @@
 //! directory fsync) before the record is wiped.
 
 use crate::engine::answers::{Answers, AnswersError, MAX_BYTES, OFFSET};
+use crate::firstboot_settings::{apply_selection, apply_settings, SettingsReport};
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ultar_slots::crc32;
 
 /// Header word of the account file (`ultar-authd`).
@@ -143,6 +145,17 @@ fn write_atomic(dir: &Path, content: &str, owner: Option<u32>) -> Result<(), Fir
         .map_err(io("fsync dir"))
 }
 
+/// Where the choices beside the account go (part 2, [`crate::firstboot_settings`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extras {
+    /// Store directory of the settings service.
+    pub settings_dir: PathBuf,
+    /// User whose settings file gets the per-user choices (`user-<user>.toml`).
+    pub settings_user: String,
+    /// Directory of the selection record.
+    pub install_dir: PathBuf,
+}
+
 /// Applies the record on `bootctl` (a file or the raw partition node): the account goes to
 /// `auth_dir`, then the record is wiped.
 pub fn apply(
@@ -150,6 +163,17 @@ pub fn apply(
     auth_dir: &Path,
     owner: Option<u32>,
 ) -> Result<Outcome, FirstBootError> {
+    apply_all(bootctl, auth_dir, owner, None).map(|(outcome, _)| outcome)
+}
+
+/// [`apply`] plus part 2: with `extras` the other choices become settings and the selection
+/// record before the record is wiped. Part 2 never fails the start (see its report).
+pub fn apply_all(
+    bootctl: &Path,
+    auth_dir: &Path,
+    owner: Option<u32>,
+    extras: Option<&Extras>,
+) -> Result<(Outcome, SettingsReport), FirstBootError> {
     let mut dev = OpenOptions::new()
         .read(true)
         .write(true)
@@ -161,7 +185,7 @@ pub fn apply(
     dev.read_exact(&mut raw).map_err(io("read"))?;
     let answers = match Answers::decode(&raw) {
         Ok(a) => a,
-        Err(AnswersError::Magic) => return Ok(Outcome::Nothing),
+        Err(AnswersError::Magic) => return Ok((Outcome::Nothing, SettingsReport::default())),
         Err(e) => return Err(FirstBootError::Record(e)),
     };
     let outcome = if auth_dir.join(FILE).exists() {
@@ -172,11 +196,16 @@ pub fn apply(
         write_atomic(auth_dir, &account_file(&line), owner)?;
         Outcome::Created(user)
     };
+    let mut report = SettingsReport::default();
+    if let Some(x) = extras {
+        apply_settings(&answers, &x.settings_dir, &x.settings_user, &mut report);
+        apply_selection(&answers, &x.install_dir, &mut report);
+    }
     dev.seek(SeekFrom::Start(OFFSET as u64))
         .map_err(io("seek"))?;
     dev.write_all(&vec![0u8; MAX_BYTES]).map_err(io("wipe"))?;
     dev.sync_all().map_err(io("fsync"))?;
-    Ok(outcome)
+    Ok((outcome, report))
 }
 
 /// The user names of the account file in `auth_dir` (header and checksum checked).
@@ -262,6 +291,40 @@ mod tests {
             "record wiped"
         );
         assert_eq!(apply(&ctl, &auth, None).unwrap(), Outcome::Nothing);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn extras_store_the_choices_before_the_record_is_wiped() {
+        let d = scratch("extras");
+        let ctl = d.join("bootctl");
+        fs::write(
+            &ctl,
+            record(&[
+                ("user", "anas"),
+                ("password_hash", HASH),
+                ("lang", "ar"),
+                ("timezone", "Asia/Damascus"),
+                ("components", "office,mesh"),
+            ]),
+        )
+        .unwrap();
+        let extras = Extras {
+            settings_dir: d.join("settings"),
+            settings_user: "default".into(),
+            install_dir: d.join("install"),
+        };
+        let (outcome, report) = apply_all(&ctl, &d.join("auth"), None, Some(&extras)).unwrap();
+        assert_eq!(outcome, Outcome::Created("anas".into()));
+        assert!(report.selection && report.damaged.is_empty(), "{report:?}");
+        assert!(report.stored.contains(&"region.language".to_owned()));
+        let user = fs::read_to_string(d.join("settings/user-default.toml")).unwrap();
+        assert!(user.starts_with("#ultar-settings crc32=") && user.contains("\"ar\""));
+        let selection = fs::read_to_string(d.join("install/selection.toml")).unwrap();
+        assert!(selection.contains("components = [\"office\", \"mesh\"]"));
+        assert!(fs::read(&ctl).unwrap()[OFFSET..].iter().all(|b| *b == 0));
+        // No password hash and no account line leaks into the other files.
+        assert!(!user.contains("argon2") && !selection.contains("argon2"));
         fs::remove_dir_all(d).unwrap();
     }
 

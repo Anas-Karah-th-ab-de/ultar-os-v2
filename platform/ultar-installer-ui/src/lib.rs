@@ -15,6 +15,7 @@ pub mod app;
 pub mod components;
 pub mod engine;
 pub mod firstboot;
+pub mod firstboot_settings;
 pub mod i18n;
 pub mod model;
 pub mod ports;

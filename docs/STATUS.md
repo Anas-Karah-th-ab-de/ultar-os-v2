@@ -8,10 +8,11 @@ Stand 26.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 |---|---|
 | Grafische Installation A–Z | `installer-e2e.sh` grün in QEMU: alle 16 Schritte per Tastatur (inkl. Konto), Schreiben, **Neustart** aus dem letzten Schritt, Erststart der installierten Platte allein mit Konto. Läuft in `ci.sh` und als eigener GitHub-Job `installer` |
 | Neustart nach der Installation | „Neu starten“ ruft `init.power` (Reboot); ultar-init beendet alle Dienste geordnet und startet die Maschine neu |
+| Erststart übernimmt alle Antworten (28.11.2026) | `ultar-firstboot` legt neben dem Konto Sprache, Tastatur, Zeitzone, Barrierefreiheit und Gerätenamen im Speicher des Einstellungsdienstes an (geprüft gegen das Schema, nach Geltungsbereich in `system.toml`/`user-default.toml`, Vorhandenes bleibt) und schreibt Ausgabe + Komponenten nach `/data/ultar/install/selection.toml` für den Store; settingsd startet im Installationsabbild nach dem Erststart; `installer-e2e` prüft es |
 | Kern: Unix-Sockel | Verbindungen in der Warteschlange eines verschwundenen Lauschers lesen Dateiende (vorher ewiges Warten); `SO_RCVTIMEO` gilt für read/recvfrom/recvmsg – beides hielt ultar-init beim Herunterfahren fest |
 | Kern: AVX | XSAVE: CR4.OSXSAVE, XCR0 = x87/SSE/AVX; YMM-Register bleiben über Planerwechsel, Signale und fork erhalten (`avxtest`). Programme (glibc, Graviola-TLS, llama.cpp) sehen AVX jetzt als nutzbar |
 
-Offen bleiben: Verschlüsselung im Installer (Regel „keine eigene Krypto“: braucht geprüften LUKS2-Schreiber + XTS im Kern),
+Offen bleiben: Store liest `selection.toml` noch nicht (gewählte Komponenten online nachinstallieren), Verschlüsselung im Installer (Regel „keine eigene Krypto“: braucht geprüften LUKS2-Schreiber + XTS im Kern),
 WLAN-Treiber, Anzeige über die Intel-Grafik (Rendern/PRIME), Bluetooth/Ton/Touchpad auf echter Hardware, Start direkt
 auf dem Beelink. Details: `docs/integration/installer-boot.md`, `docs/integration/kernel-xsave-unix-sockets.md`.
 
