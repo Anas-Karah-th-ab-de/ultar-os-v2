@@ -88,6 +88,7 @@ struct RawPaths {
     publish_root: Option<String>,
     foreign_runtime: Option<String>,
     foreign_bridge: Option<String>,
+    foreign_setup: Option<String>,
 }
 
 impl RawPaths {
@@ -109,6 +110,7 @@ impl RawPaths {
             publish_root: optional("publish_root", self.publish_root)?,
             foreign_runtime: optional("foreign_runtime", self.foreign_runtime)?,
             foreign_bridge: optional("foreign_bridge", self.foreign_bridge)?,
+            foreign_setup: optional("foreign_setup", self.foreign_setup)?,
         })
     }
 }
@@ -153,6 +155,10 @@ pub struct Paths {
     /// Directory holding the Wayland bridge (`ultar-wayland`, static), bound read-only at
     /// `/.ultar` in their cells. `None`: they start without a window.
     pub foreign_bridge: Option<PathBuf>,
+    /// Root of the installers of Windows programs (`ultar-foreign --root`/setup): the
+    /// directory named like a foreign app is bound read-only at `/.setup` in its cell, so
+    /// that the program installs itself in its own cell on its first start. `None`: none.
+    pub foreign_setup: Option<PathBuf>,
 }
 
 /// The configuration.
@@ -267,6 +273,10 @@ mod tests {
         assert!(foreign.contains(&format!("\"--root\", \"{root}\"")));
         assert_eq!(runtime.file_name().unwrap(), "linux");
         assert!(config.paths.foreign_bridge.unwrap().is_absolute());
+        assert_eq!(
+            config.paths.foreign_setup.unwrap(),
+            Path::new(&root).join("setup")
+        );
     }
 
     #[test]

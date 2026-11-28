@@ -32,6 +32,7 @@ fn plan() -> CellPlan {
         nproc: Some(64),
         runtime: Some("/data/ultar/foreign/linux".into()),
         bridge: Some("/usr/lib/ultar/foreign".into()),
+        setup: Some("/data/ultar/foreign/setup/foreign.exe-x".into()),
         net_barrier: Some(true),
         program: Program {
             exec: "/usr/bin/camera".into(),
@@ -58,6 +59,7 @@ fn a_plan_survives_its_command_line() {
         nproc: None,
         runtime: None,
         bridge: None,
+        setup: None,
         net_barrier: None,
         ..p
     };
