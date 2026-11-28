@@ -17,6 +17,7 @@ use ultar_launcher::service::{self, Admins};
 use ultar_launcher::Launcher;
 use ultar_service::log::Logger;
 use ultar_service::{Lifecycle, StopCause};
+use ultar_sys::cell::PROC;
 
 /// The app id `ultar-foreign` gives mousepad.
 pub const APP: &str = "foreign.deb-mousepad";
@@ -227,60 +228,14 @@ impl World {
         std::fs::copy(&args.deb, &deb).map_err(|e| format!("deb {e}"))?;
         let broker = broker()?;
         let launcher = open_launcher(&args.bin, args.groups)?;
-        let life = Lifecycle::new();
-        let admins = Arc::new(Mutex::new(Admins::load(Some(Path::new(&format!(
-            "{WORK}/policy.toml"
-        ))))));
-        {
-            let (launcher, life) = (Arc::clone(&launcher), life.clone());
-            std::thread::spawn(move || {
-                service::serve(socket("system.launcher"), launcher, admins, life)
-            });
-        }
+        let life = serve_launcher(&launcher);
         let (stop_dialog, asked) = (
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicUsize::new(0)),
         );
         dialog(Arc::clone(&stop_dialog), Arc::clone(&asked))?;
-        let rights = format!("{WORK}/share/compositor-apps.toml");
-        let socket_path = format!("{UI_DIR}/compositor.sock");
-        let compositor = spawn(
-            &args.bin.join("ultar-compositor"),
-            &[
-                "--socket",
-                &socket_path,
-                "--allow-root",
-                "--lang",
-                "ar",
-                "--no-cursor",
-                "--app-rights",
-                &rights,
-                "--app-uids",
-                "20000-20009",
-                "--app-rights-owner",
-                "0",
-            ],
-        )
-        .map_err(|e| format!("compositor {e}"))?;
-        if !poll(Duration::from_secs(120), || {
-            Path::new(&socket_path).exists()
-        }) {
-            return Err("the compositor has no socket".into());
-        }
-        let bus = socket("system.foreign").display().to_string();
-        let service = spawn(
-            &args.bin.join("ultar-foreign"),
-            &[
-                "--bus",
-                &bus,
-                "--root",
-                FOREIGN_ROOT,
-                "--sources",
-                SOURCES,
-                "--allow-root",
-            ],
-        )
-        .map_err(|e| format!("ultar-foreign {e}"))?;
+        let compositor = start_compositor(&args.bin)?;
+        let service = start_service(&args.bin)?;
         Ok(Self {
             deb,
             launcher,
@@ -292,13 +247,77 @@ impl World {
             children: Mutex::new(vec![compositor, service]),
         })
     }
+}
 
+/// The launcher's service on the bus, until the returned lifecycle stops.
+fn serve_launcher(launcher: &Arc<Launcher>) -> Lifecycle {
+    let life = Lifecycle::new();
+    let admins = Arc::new(Mutex::new(Admins::load(Some(Path::new(&format!(
+        "{WORK}/policy.toml"
+    ))))));
+    let (launcher, stop) = (Arc::clone(launcher), life.clone());
+    std::thread::spawn(move || service::serve(socket("system.launcher"), launcher, admins, stop));
+    life
+}
+
+/// The compositor on the screen, once its socket is there.
+fn start_compositor(bin: &Path) -> Result<Child, String> {
+    let rights = format!("{WORK}/share/compositor-apps.toml");
+    let socket_path = format!("{UI_DIR}/compositor.sock");
+    let compositor = spawn(
+        &bin.join("ultar-compositor"),
+        &[
+            "--socket",
+            &socket_path,
+            "--allow-root",
+            "--lang",
+            "ar",
+            "--no-cursor",
+            "--app-rights",
+            &rights,
+            "--app-uids",
+            "20000-20009",
+            "--app-rights-owner",
+            "0",
+        ],
+    )
+    .map_err(|e| format!("compositor {e}"))?;
+    if !poll(Duration::from_secs(120), || {
+        Path::new(&socket_path).exists()
+    }) {
+        return Err("the compositor has no socket".into());
+    }
+    Ok(compositor)
+}
+
+/// The real service `ultar-foreign`.
+fn start_service(bin: &Path) -> Result<Child, String> {
+    let bus = socket("system.foreign").display().to_string();
+    spawn(
+        &bin.join("ultar-foreign"),
+        &[
+            "--bus",
+            &bus,
+            "--root",
+            FOREIGN_ROOT,
+            "--sources",
+            SOURCES,
+            "--allow-root",
+        ],
+    )
+    .map_err(|e| format!("ultar-foreign {e}"))
+}
+
+impl World {
     pub fn client(&self, identity: &str) -> Client {
-        Client::connect(&socket(identity), ClientOptions::named(identity)).unwrap()
+        Client::connect(&socket(identity), ClientOptions::named(identity))
+            .unwrap_or_else(|e| crate::fail(&format!("connect {identity}: {e:?}")))
     }
 
     pub fn call<C: Call>(&self, client: &Client, message: &C) -> C::Reply {
-        client.call(message, CALL).unwrap()
+        client
+            .call(message, CALL)
+            .unwrap_or_else(|e| crate::fail(&format!("call: {e:?}")))
     }
 
     pub fn asked(&self) -> usize {
@@ -377,7 +396,11 @@ impl World {
     pub fn stop(&self) {
         self.stop_dialog.store(true, Ordering::SeqCst);
         self.life.request_stop(StopCause::Request);
-        for child in self.children.lock().unwrap().iter_mut() {
+        let mut children = self
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for child in children.iter_mut() {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -385,14 +408,14 @@ impl World {
 }
 
 fn comm(pid: u32) -> String {
-    std::fs::read_to_string(format!("/proc/{pid}/comm"))
+    std::fs::read_to_string(Path::new(PROC).join(pid.to_string()).join("comm"))
         .unwrap_or_default()
         .trim()
         .to_owned()
 }
 
 fn named(names: &[&str]) -> Vec<u32> {
-    std::fs::read_dir("/proc")
+    std::fs::read_dir(PROC)
         .map(|d| {
             d.flatten()
                 .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
