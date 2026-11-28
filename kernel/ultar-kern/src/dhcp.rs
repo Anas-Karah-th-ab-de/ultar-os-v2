@@ -397,18 +397,7 @@ pub fn tick() {
             None => continue,
         };
         if detached {
-            // unplugged: its address goes with it, so the default route moves to an interface that is still there
-            if with_if(n, |s| s.cfg.is_some()) {
-                with_if(n, |s| {
-                    s.cfg = None;
-                    s.lease = None;
-                    s.offer = None;
-                    s.link = Some(false);
-                    s.phase = Phase::NoLink;
-                });
-                settle_active();
-                NET_GEN.fetch_add(1, Ordering::Relaxed);
-            }
+            release_detached(n);
             continue;
         }
         let (was, phase, fixed) = with_if(n, |s| (s.link, s.phase, s.fixed));
@@ -449,6 +438,23 @@ pub fn tick() {
         }
         dhcp_timers(n, now);
     }
+}
+
+/// Interface `n` was unplugged: its address goes with it, so the default route moves to an interface
+/// that is still there.
+fn release_detached(n: usize) {
+    if !with_if(n, |s| s.cfg.is_some()) {
+        return;
+    }
+    with_if(n, |s| {
+        s.cfg = None;
+        s.lease = None;
+        s.offer = None;
+        s.link = Some(false);
+        s.phase = Phase::NoLink;
+    });
+    settle_active();
+    NET_GEN.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Adresse per DHCP holen (Discover → Offer → Request → Ack), wartend (Start, Kommando `dhcp`)

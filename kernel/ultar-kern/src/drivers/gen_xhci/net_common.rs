@@ -14,15 +14,19 @@ pub(super) const TD: u32 = 4096;
 pub(super) const RX_MAX: usize = 256;
 
 pub(super) fn rd8(p: u64, off: usize) -> u8 {
+    // SAFETY: callers pass a buffer (a DMA page or a local array) holding at least `off + 1` bytes; unaligned access.
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u8) }
 }
 pub(super) fn rd16(p: u64, off: usize) -> u16 {
+    // SAFETY: callers pass a buffer (a DMA page or a local array) holding at least `off + 2` bytes; unaligned access.
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u16) }
 }
 pub(super) fn rd32(p: u64, off: usize) -> u32 {
+    // SAFETY: callers pass a buffer (a DMA page or a local array) holding at least `off + 4` bytes; unaligned access.
     unsafe { core::ptr::read_unaligned((p + off as u64) as *const u32) }
 }
 pub(super) fn wr32(p: u64, off: usize, v: u32) {
+    // SAFETY: callers pass a buffer (a DMA page or a local array) holding at least `off + 4` bytes; unaligned access.
     unsafe { core::ptr::write_unaligned((p + off as u64) as *mut u32, v) }
 }
 

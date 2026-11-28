@@ -32,7 +32,8 @@ ssh-keygen -q -t ed25519 -N "" -C fremd -f "$FREMD"
 
 # 3. test disk with only that one key (ENTWICKLER_SCHLUESSEL overrides the developer's own ~/.ssh keys)
 DISK=$OUT/ultar-kern-ssh-e2e.img
-ENTWICKLER=1 ENTWICKLER_SCHLUESSEL="$KEY.pub" DISK="$DISK" tools/kern-test/make-test-disk.sh >/dev/null
+# the disk carries the host tools and their libraries; 256 MiB leave room on hosts with larger binaries
+ROOT_MB="${ROOT_MB:-256}" ENTWICKLER=1 ENTWICKLER_SCHLUESSEL="$KEY.pub" DISK="$DISK" tools/kern-test/make-test-disk.sh >/dev/null
 
 # 4. free host port for the forward
 PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')

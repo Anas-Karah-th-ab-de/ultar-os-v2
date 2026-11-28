@@ -73,7 +73,7 @@ impl NetDev for EcmHandle {
     }
     fn send(&mut self, frame: &[u8]) -> Result<()> {
         let n = frame.len().min(TX);
-        // SICHERHEIT: tx ist eine entspeicherte, identisch abgebildete DMA-Seite ≥ TX Byte.
+        // SAFETY: tx ist eine identisch abgebildete DMA-Seite ≥ TX Byte.
         unsafe { core::ptr::copy_nonoverlapping(frame.as_ptr(), self.tx as *mut u8, n) };
         let mut hcs = super::HC.lock();
         let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB-Controller weg")?;
@@ -131,7 +131,7 @@ pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, 
             let base = nic.in_ep.base(part);
             let mut f: Vec<u8> = Vec::new();
             if !crate::heap::kernel(|| f.try_reserve_exact(got).is_err()) {
-                // SICHERHEIT: Quelle liegt im Teil `part` der DMA-Seite innerhalb `got`.
+                // SAFETY: Quelle liegt im Teil `part` der DMA-Seite innerhalb `got`.
                 unsafe { f.extend_from_slice(core::slice::from_raw_parts(base as *const u8, got)) };
                 nic.rx.push_back(f);
             }
@@ -185,18 +185,7 @@ pub(super) fn attach(
     // Daten-Alternative einschalten
     hc.control(slot, 0x01, 0x0b, data_alt, data_iface, 0, 0).ok_or("ECM: SET_INTERFACE fehlgeschlagen")?;
 
-    // MAC aus der iMACAddress-Zeichenkette
-    let mut mac = [0u8; 6];
-    if let Some(idx) = mac_string_index(cd) {
-        if let Some(s) = read_string(hc, slot, idx, buf) {
-            if let Some(m) = parse_mac(&s) {
-                mac = m;
-            }
-        }
-    }
-    if mac == [0; 6] {
-        mac = [0x02, 0x55, 0x53, 0x42, 0x00, slot as u8];
-    }
+    let mac = ecm_mac(hc, slot, cd, buf);
 
     let in_ep = InEp::new(in_dci).ok_or("kein Speicher")?;
     let tx = alloc_pages(1).ok_or("kein Speicher")?;
@@ -204,29 +193,34 @@ pub(super) fn attach(
 
     let mut nl = NET.lock();
     let name = format!("usb{}", nl.len());
-    crate::kprintln!(
-        "[usb-net] {name}: CDC-ECM (slot {slot}) MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac[0],
-        mac[1],
-        mac[2],
-        mac[3],
-        mac[4],
-        mac[5]
-    );
+    let m = mac;
+    crate::kprintln!("[usb-net] {name}: CDC-ECM (slot {slot}) MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5]);
     nl.push(Box::new(EcmHandle { name: name.clone(), hc_index: hc.index, slot, in_dci, out_dci, mac, tx }));
     drop(nl);
-    {
-        let mut list = NICS.lock();
-        let mut nic = Nic { hc_index: hc.index, slot, name: name.clone(), in_ep, tx, intr_dci, intr_buf, intr_mp, link: true, speed: 0, rx: VecDeque::new() };
-        nic.in_ep.arm_all(hc, slot);
-        if intr_dci != 0 {
-            let ring = hc.ring(slot, intr_dci);
-            ring.push(nic.intr_buf, nic.intr_mp.max(8), (TRB_NORMAL << 10) | (1 << 5) | (1 << 2));
-            w32(hc.db + slot as u64 * 4, intr_dci);
-        }
-        list.push(nic);
-    }
+    arm_and_register(hc, Nic { hc_index: hc.index, slot, name: name.clone(), in_ep, tx, intr_dci, intr_buf, intr_mp, link: true, speed: 0, rx: VecDeque::new() });
     Ok(Some(name))
+}
+
+/// MAC from the iMACAddress string of the Ethernet functional descriptor; a locally administered one
+/// from the slot when the device does not give one.
+fn ecm_mac(hc: &mut Hc, slot: u32, cd: &[u8], buf: u64) -> [u8; 6] {
+    let mac = mac_string_index(cd).and_then(|idx| read_string(hc, slot, idx, buf)).and_then(|s| parse_mac(&s));
+    match mac {
+        Some(m) if m != [0; 6] => m,
+        _ => [0x02, 0x55, 0x53, 0x42, 0x00, slot as u8],
+    }
+}
+
+/// Arm the receive transfers (and the notification endpoint) and put the card into the list.
+fn arm_and_register(hc: &mut Hc, mut nic: Nic) {
+    let slot = nic.slot;
+    nic.in_ep.arm_all(hc, slot);
+    if nic.intr_dci != 0 {
+        let ring = hc.ring(slot, nic.intr_dci);
+        ring.push(nic.intr_buf, nic.intr_mp.max(8), (TRB_NORMAL << 10) | (1 << 5) | (1 << 2));
+        w32(hc.db + slot as u64 * 4, nic.intr_dci);
+    }
+    NICS.lock().push(nic);
 }
 
 /// Das Gerät in `slot` wurde abgezogen: Netzkarte aus `NET` nehmen, DMA-Seiten freigeben.

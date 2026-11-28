@@ -84,7 +84,7 @@ impl NetDev for RndisHandle {
         for off in (16..44).step_by(4) {
             wr32(self.tx, off, 0);
         }
-        // SICHERHEIT: tx ist eine ≥ TX Byte große, identisch abgebildete Seite.
+        // SAFETY: tx ist eine ≥ TX Byte große, identisch abgebildete Seite.
         unsafe { core::ptr::copy_nonoverlapping(frame.as_ptr(), (self.tx + 44) as *mut u8, n) };
         let mut hcs = super::HC.lock();
         let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB-Controller weg")?;
@@ -111,6 +111,7 @@ impl NetDev for RndisHandle {
 
 /// Steuerbefehl einkapseln (SEND_ENCAPSULATED_COMMAND, Klassen-Anfrage auf EP0).
 fn send_cmd(hc: &mut Hc, slot: u32, iface: u16, buf: u64, msg: &[u8]) -> bool {
+    // SAFETY: `buf` is a DMA page (4096 bytes) and every control message is shorter than a page.
     unsafe { core::ptr::copy_nonoverlapping(msg.as_ptr(), buf as *mut u8, msg.len()) };
     hc.control(slot, 0x21, 0x00, 0, iface, msg.len() as u16, buf).is_some()
 }
