@@ -7,6 +7,7 @@ members = [
     "system/core/ultar-i18n",
     "system/core/ultar-update",
     "system/core/ultar-slots",
+    "system/core/ultar-luks",
     "system/core/ultar-service",
     "system/hal/ultar-sys",
     "system/core/ultar-busd",
