@@ -106,6 +106,12 @@ pub fn kernel_pml4() -> u64 {
 
 /// 1:1-Abbildung für [start, end) mit 2-MB-Seiten in der Kern-Tabelle anlegen (Geräte: ohne Zwischenspeicher)
 pub fn map_identity(start: u64, end: u64, device: bool) {
+    // device or firmware memory the kernel reaches in the second low window: the window closes – a
+    // process' own pages there would otherwise stand where the kernel expects the device
+    if start < WIN_END && end > WIN_LOW && win_window() {
+        set_win_window(false);
+        crate::kprintln!("[speicher] {start:#x}-{end:#x} liegt im Fenster 0x7c000000-0x80000000: Fenster zu");
+    }
     let pml4 = kernel_pml4();
     let mut a = start & !0x1f_ffff;
     let flags = P | W | HUGE | if device { PCD | PWT } else { 0 };

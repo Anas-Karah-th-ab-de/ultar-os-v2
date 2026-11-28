@@ -55,6 +55,11 @@ unsafe fn usable_regions(boot: &Boot, out: &mut [(u64, u64); MAXR]) -> usize {
     let low = crate::paging::USER_LOW_END;
     let mut n = 0;
     let (w0, w1) = (crate::paging::WIN_LOW, crate::paging::WIN_END);
+    let stack_in_window = s0 < w1 && s1 > w0;
+    let open = !stack_in_window && window_free(boot);
+    crate::paging::set_win_window(open);
+    // a closed window stays the kernel's memory
+    let (w0, w1) = if open { (w0, w1) } else { (w1, w1) };
     let mut add = |start: u64, end: u64| {
         let (start, end) = ((start + PAGE - 1) & !(PAGE - 1), end & !(PAGE - 1));
         // the second low window (paging.rs) holds no kernel memory: the region is split around it
@@ -65,8 +70,6 @@ unsafe fn usable_regions(boot: &Boot, out: &mut [(u64, u64); MAXR]) -> usize {
             }
         }
     };
-    let stack_in_window = s0 < w1 && s1 > w0;
-    crate::paging::set_win_window(!stack_in_window && window_free(boot));
     for d in boot.regions() {
         if !crate::efi::usable(d.typ) {
             continue;

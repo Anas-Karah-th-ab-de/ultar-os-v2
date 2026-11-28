@@ -626,6 +626,11 @@ pub fn info() {
     let (on, all) = crate::apic::cpu_count();
     kprintln!("Prozessorkerne: {on} von {all} aktiv");
     kprintln!("Laufzeit: {} ms", arch::uptime_ms());
+    if crate::paging::win_window() {
+        kprintln!("[speicher] Fenster 0x7c000000-0x80000000 für feste Adressen (Wine, Windows-Programme): frei");
+    } else {
+        kprintln!("[speicher] Fenster 0x7c000000-0x80000000: Firmware oder Bildspeicher liegt dort – Programme mit festen Adressen dort (Wine) starten nicht");
+    }
 }
 
 pub fn dhcp() {
