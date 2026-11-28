@@ -32,6 +32,7 @@ mod grafik;
 mod groups;
 mod heap;
 mod install;
+mod iommu;
 mod isolation;
 mod power;
 mod sprache;
@@ -167,6 +168,8 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     }
     let devs = pci::scan();
     kprintln!("[pci] {} Gerät(e) gefunden", devs.len());
+    // DMA-Schutz (VT-d) einschalten, bevor die Treiber mit DMA beginnen
+    iommu::init(boot.rsdp, mem::top(&boot));
     driver::bind_all(devs);
     startseite::startbild(60, "p_net");
     if !driver::NET.lock().is_empty() {
@@ -215,8 +218,9 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
 /// Angriffsfläche auf einen Blick (/proc/ultar/sicherheit, Konsole `sicherheit`)
 pub fn sicherheit_text() -> alloc::string::String {
     alloc::format!(
-        "prozessor {}\nnx an\nnetz von aussen: {}\nping-antwort {}\nverbund {}\nverworfen {}\ntcp-folgenummern zufaellig (rdrand)\nports zufaellig\ngrenzen: sockets 4096, halboffen 64/port, empfangspuffer 256k, arp 256\n",
+        "prozessor {}\nnx an\ndma-schutz (vt-d) {}\nnetz von aussen: {}\nping-antwort {}\nverbund {}\nverworfen {}\ntcp-folgenummern zufaellig (rdrand)\nports zufaellig\ngrenzen: sockets 4096, halboffen 64/port, empfangspuffer 256k, arp 256\n",
         *arch::SCHUTZ.lock(),
+        { if iommu::active() { let f = iommu::fault_status(); if f & 2 != 0 { "an (DMA-Fehler gemeldet)" } else { "an" } } else { "aus" } },
         { let t = firewall::text(); if t.contains("offen ") { "nur geoeffnete ports" } else { "alles zu" } },
         if firewall::PING.load(core::sync::atomic::Ordering::Relaxed) { "an" } else { "aus" },
         if verbund::aktiv() { "an (47800/47801)" } else { "aus" },
