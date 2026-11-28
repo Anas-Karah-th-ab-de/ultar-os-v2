@@ -172,7 +172,8 @@ fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
     let entry = |name: &str, dir: bool| DirEnt { name: String::from(name), dir, size: 0 };
     match rest {
         [] => Some(Node::Dir(alloc::vec![entry("dev", false), entry("device", true), entry("uevent", false)])),
-        ["device"] => Some(Node::Dir(alloc::vec![entry("name", false), entry("uevent", false)])),
+        ["device"] => Some(Node::Dir(alloc::vec![entry("id", true), entry("name", false), entry("uevent", false)])),
+        ["device", "id"] => Some(Node::Dir(alloc::vec![entry("bustype", false), entry("product", false), entry("vendor", false), entry("version", false)])),
         _ => file(crate::input::sys_file(index, rest)?),
     }
 }

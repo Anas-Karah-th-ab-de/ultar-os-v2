@@ -27,11 +27,12 @@ struct Set {
 ///
 /// `ultar-devd` gives the event nodes of the seat's devices to one group
 /// (mode `0660`); with `group` set, a node of another group is not opened.
-/// Devices made by software (`uinput`: below `/devices/virtual/` in sysfs)
-/// could type anything, the secure attention keys included, so they are
-/// refused unless their name is in `virtual_allowed` (on-screen keyboards
-/// of the system, test rigs). Where sysfs does not exist (the Ultar
-/// kernel: it has no `uinput`) every node counts as hardware.
+/// Devices made by software (`uinput`: below `/devices/virtual/` in sysfs,
+/// or reporting `BUS_VIRTUAL`, which the Ultar kernel sets for every
+/// `uinput` device whatever its maker declared – review S-4) could type
+/// anything, the secure attention keys included, so they are refused unless
+/// their name is in `virtual_allowed` (on-screen keyboards of the system,
+/// test rigs).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SeatPolicy {
     /// Group the seat's event nodes must belong to (`None`: any).
@@ -43,6 +44,8 @@ pub struct SeatPolicy {
 
 /// Where sysfs lists input class devices (to tell software devices apart).
 const SYS_INPUT: &str = "/sys/class/input";
+/// `BUS_VIRTUAL` of `struct input_id`.
+const BUS_VIRTUAL: u16 = 6;
 
 impl SeatPolicy {
     /// May the opened node at `path` be read as a seat device?
@@ -58,7 +61,8 @@ impl SeatPolicy {
         };
         let class = Path::new(SYS_INPUT).join(name);
         let software = std::fs::read_link(&class)
-            .is_ok_and(|target| target.to_string_lossy().contains("/devices/virtual/"));
+            .is_ok_and(|target| target.to_string_lossy().contains("/devices/virtual/"))
+            || bus_of(file) == Some(BUS_VIRTUAL);
         if !software {
             return true;
         }
@@ -102,6 +106,12 @@ macro_rules! read_ioctl {
         }
         .is_ok()
     };
+}
+
+/// The bus of the opened event node (`EVIOCGID`), `None` if it does not say.
+fn bus_of(file: &File) -> Option<u16> {
+    let mut id = [0u8; 8];
+    read_ioctl!(file, 0x02, 8, &mut id).then(|| u16::from_le_bytes([id[0], id[1]]))
 }
 
 fn bits(file: &File, event_type: u16, out: &mut [u8; 96]) -> bool {

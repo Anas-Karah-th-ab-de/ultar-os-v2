@@ -1,8 +1,9 @@
 //! Where the seat's device nodes live, for `ultar-devd-seat`: the node files
 //! below `/dev` (input event nodes, DRM cards, framebuffers, `uinput`) and the
 //! sysfs entry of an input node (`/sys/class/input/<event>`), which tells
-//! hardware from software devices (`/devices/virtual/`). Linux and the Ultar
-//! kernel use the same layout. Every path is relative to a root (`/`; a
+//! hardware from software devices (`/devices/virtual/` on Linux, the
+//! virtual bus in `device/id/bustype` on both). Linux and the Ultar kernel
+//! use the same file layout. Every path is relative to a root (`/`; a
 //! prepared tree in tests).
 
 use std::path::{Path, PathBuf};
@@ -42,6 +43,22 @@ pub fn input_uevent(root: &Path, event: &str) -> PathBuf {
 /// software (`uinput` and the like).
 pub fn is_virtual_device(resolved: &Path) -> bool {
     resolved.to_string_lossy().contains("/devices/virtual/")
+}
+
+/// `BUS_VIRTUAL` of `struct input_id`, as sysfs writes it (`device/id/bustype`).
+pub const BUS_VIRTUAL: &str = "0006";
+
+/// The bus file of an input node's sysfs entry (`input_class`).
+pub fn input_bustype(class: &Path) -> PathBuf {
+    class.join("device/id/bustype")
+}
+
+/// True if the input node's sysfs entry says it sits on the virtual bus. The
+/// Ultar kernel serves `/sys/class/input/<event>` as a directory (no link to
+/// follow) and sets this bus for every `uinput` device, whatever its maker
+/// declared (review S-4).
+pub fn declares_virtual_bus(class: &Path) -> bool {
+    std::fs::read_to_string(input_bustype(class)).is_ok_and(|bus| bus.trim() == BUS_VIRTUAL)
 }
 
 /// `DEVNAME` of a device event, relative to `/dev` (Linux sends it relative;
@@ -89,6 +106,10 @@ mod tests {
         assert!(!is_virtual_device(Path::new(
             "/sys/devices/pci0000:00/usb1/input/input3/event2"
         )));
+        assert_eq!(
+            input_bustype(Path::new("/sys/class/input/event5")),
+            PathBuf::from("/sys/class/input/event5/device/id/bustype")
+        );
         assert_eq!(relative_devname("/dev/fb0"), "fb0");
         assert_eq!(relative_devname("input/event2"), "input/event2");
     }
