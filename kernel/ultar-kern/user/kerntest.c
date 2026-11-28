@@ -72,8 +72,8 @@ int main(void) {
     printf("UDP 127.0.0.1:7778: %s %s\n", ub, !strcmp(ub, "udp-hallo") ? "OK" : "FEHLER");
     ok &= !strcmp(ub, "udp-hallo");
     // Terminal: TCGETS and TCGETS2 (`struct termios2`, asked by glibc 2.42+) read the same flags,
-    // TCSETS2 switches the echo off (a password prompt) and back on
-    unsigned char t1[36] = {0}, t2[44] = {0}, t3[36] = {0};
+    // TCSETS2 switches the echo off (a password prompt), and what was read restores it (echo, line mode)
+    unsigned char t1[36] = {0}, t2[44] = {0}, t3[36] = {0}, t4[36] = {0};
     int g1 = ioctl(0, 0x5401, t1), g2 = ioctl(0, 0x802c542a, t2);
     unsigned lf1 = 0, lf2 = 0, lf3 = 0, quiet[11];
     memcpy(&lf1, t1 + 12, 4);
@@ -84,8 +84,13 @@ int main(void) {
     ioctl(0, 0x5401, t3);
     memcpy(&lf3, t3 + 12, 4);
     ioctl(0, 0x402c542b, t2);
-    int tty_ok = g1 == 0 && g2 == 0 && lf1 == lf2 && (lf1 & 8) && s2 == 0 && !(lf3 & 8);
-    printf("Terminal: TCGETS2/TCSETS2, Echo aus und wieder an %s\n", tty_ok ? "OK" : "FEHLER");
+    unsigned lf4 = 0;
+    ioctl(0, 0x5401, t4);
+    memcpy(&lf4, t4 + 12, 4);
+    int tty_ok = g1 == 0 && g2 == 0 && lf1 == lf2 && (lf1 & 10) == 10 && s2 == 0 && !(lf3 & 8) && lf4 == lf1;
+    printf("Terminal: TCGETS2/TCSETS2, Echo aus und wieder an %s", tty_ok ? "OK" : "FEHLER");
+    if (!tty_ok) printf(" (get %d/%d, lflag %x/%x, set %d, aus %x, wieder %x)", g1, g2, lf1, lf2, s2, lf3, lf4);
+    printf("\n");
     ok &= tty_ok;
     printf("Ergebnis: %s\n", ok ? "ALLES OK" : "FEHLER");
     return !ok;

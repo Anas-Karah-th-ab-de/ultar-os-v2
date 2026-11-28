@@ -1999,7 +1999,10 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             b[0..4].copy_from_slice(&0x500u32.to_le_bytes()); // ICRNL|IXON
             b[4..8].copy_from_slice(&0x5u32.to_le_bytes()); // OPOST|ONLCR
             b[8..12].copy_from_slice(&0xbfu32.to_le_bytes()); // B38400|CS8|CREAD
-            let lflag = 0x8a31u32 & !(if t.icanon { 0 } else { 2 }) & !(if t.echo { 0 } else { 8 }); // ISIG|ICANON|ECHO…
+            // ISIG|ICANON|ECHO|ECHOE|ECHOK|ECHOCTL|ECHOKE|IEXTEN as on Linux; ICANON and ECHO as set.
+            // (The value had lacked ICANON and ECHO, so a program restoring what it had read left the
+            // terminal raw and without echo.)
+            let lflag = 0x8a3bu32 & !(if t.icanon { 0 } else { 2 }) & !(if t.echo { 0 } else { 8 });
             b[12..16].copy_from_slice(&lflag.to_le_bytes());
             let cc = [3u8, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22];
             b[17..17 + cc.len()].copy_from_slice(&cc);
