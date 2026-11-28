@@ -91,7 +91,7 @@ done
 
 # --- the build tree (its own Ubuntu, the same release as the area) ---------------------------
 BUILD="$OUT/build"
-BUILD_DEPS="build-essential,meson,ninja-build,pkg-config,git,ca-certificates,autoconf,automake,libtool,python3,python-is-python3,default-jdk-headless,zip,unzip,file,libasm-java,libgetopt-java,libegl-dev,libgl-dev,libbsd-dev,libunwind-dev,libelf-dev,valgrind,libicu-dev,libssl-dev,libexpat1-dev,liblz4-dev,liblzma-dev,libcap-dev,zlib1g-dev,libasound2-dev,libavcodec-dev,libswscale-dev,libdrm-dev,libglib2.0-dev,libgtk-4-dev,libgudev-1.0-dev,libopenxr-dev,libportal-dev,libsqlite3-dev,libwebkitgtk-6.0-dev,libsecret-1-dev,libspeechd-dev,libvulkan-dev,libwayland-dev,wayland-protocols,libfontconfig-dev,binutils"
+BUILD_DEPS="build-essential,meson,ninja-build,pkg-config,git,ca-certificates,autoconf,automake,libtool,python3,python-is-python3,default-jdk-headless,zip,unzip,file,libasm-java,libgetopt-java,libegl-dev,libgl-dev,libbsd-dev,libunwind-dev,libelf-dev,valgrind,libicu-dev,libssl-dev,libexpat1-dev,liblz4-dev,liblzma-dev,libcap-dev,zlib1g-dev,libasound2-dev,libavcodec-dev,libswscale-dev,libdrm-dev,libglib2.0-dev,libgtk-4-dev,libgudev-1.0-dev,libopenxr-dev,libportal-dev,libsqlite3-dev,libwebkitgtk-6.0-dev,libsecret-1-dev,libspeechd-dev,libvulkan-dev,libwayland-dev,wayland-protocols,libfontconfig-dev,libsdl2-dev,libsndfile1-dev,binutils"
 if [ ! -f "$BUILD/.ready" ]; then
   rm -rf "$BUILD"
   mmdebstrap --mode=root --variant=minbase --arch=amd64 --components=main,universe \
@@ -100,6 +100,21 @@ if [ ! -f "$BUILD/.ready" ]; then
     || fail "build tree"
   touch "$BUILD/.ready"
 fi
+# a build tree of an earlier version of this list gets what is missing
+cp -L /etc/resolv.conf "$BUILD/etc/resolv.conf" 2>/dev/null || true
+mount -t proc proc "$BUILD/proc"
+mount --bind /dev "$BUILD/dev"
+set +e
+(
+  set -e
+  chroot "$BUILD" apt-get update -q
+  # shellcheck disable=SC2046 # one word per package
+  chroot "$BUILD" apt-get install -y -q --no-install-recommends $(echo "$BUILD_DEPS" | tr , ' ')
+) >"$OUT/deps.log" 2>&1
+deps=$?
+set -e
+umount "$BUILD/dev" "$BUILD/proc"
+[ "$deps" = 0 ] || { tail -20 "$OUT/deps.log"; fail "build dependencies (log: $OUT/deps.log)"; }
 if [ "$(cat "$BUILD/.built" 2>/dev/null)" = "$PIN" ] && [ -x "$BUILD/stage/usr/bin/android-translation-layer" ]; then
   echo "make-android-runtime: the same sources were built already ($BUILD/stage)"
 else
