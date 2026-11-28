@@ -10,7 +10,7 @@ use common::wl::Arg;
 use common::{Harness, Rng};
 use std::os::fd::AsFd;
 use std::time::Duration;
-use wayland_server::backend::protocol::{ArgumentType, Interface};
+use wayland_server::backend::protocol::{ArgumentType, Interface, MessageDesc};
 use wayland_server::Resource;
 
 const SEED: u64 = 0x0057_4C46_5A5A_2026;
@@ -62,13 +62,69 @@ fn word(rng: &mut Rng) -> u32 {
     }
 }
 
-/// One random request on a random known object.
-fn request(
+type Objects = Vec<(u32, &'static Interface)>;
+
+/// A value of one argument.
+enum Val {
+    W(u32),
+    S(String),
+    A(Vec<u8>),
+}
+
+/// Mostly an object of the wanted kind (that goes deeper), now and then any.
+fn object(rng: &mut Rng, objects: &Objects, wanted: Option<&&'static Interface>) -> u32 {
+    let name = wanted.map_or("", |i| i.name);
+    let fitting: Vec<u32> = objects
+        .iter()
+        .filter(|(_, i)| i.name == name)
+        .map(|(id, _)| *id)
+        .collect();
+    match (fitting.len(), objects.len(), rng.below(16)) {
+        (n, _, 1..) if n > 0 => fitting[rng.below(n as u64) as usize],
+        (_, n, 0) if n > 0 => objects[rng.below(n as u64) as usize].0,
+        _ => 0,
+    }
+}
+
+fn text(rng: &mut Rng) -> String {
+    match rng.below(10) {
+        0 => "x".repeat(rng.below(5000) as usize),
+        _ => TEXTS[rng.below(TEXTS.len() as u64) as usize].to_owned(),
+    }
+}
+
+/// Random values for a request (`None` in place of the descriptor).
+fn values(
     app: &mut App,
     rng: &mut Rng,
-    objects: &mut Vec<(u32, &'static Interface)>,
-    pool: &std::os::fd::OwnedFd,
-) {
+    objects: &mut Objects,
+    desc: &MessageDesc,
+) -> Vec<Option<Val>> {
+    let mut wanted = desc.arg_interfaces.iter();
+    let mut out = Vec::new();
+    for t in desc.signature {
+        out.push(match t {
+            ArgumentType::Int | ArgumentType::Uint | ArgumentType::Fixed => Some(Val::W(word(rng))),
+            ArgumentType::Object(_) => Some(Val::W(object(rng, objects, wanted.next()))),
+            ArgumentType::NewId => {
+                let id = app.wl.new_id();
+                if let Some(child) = desc.child_interface {
+                    objects.push((id, child));
+                }
+                Some(Val::W(id))
+            }
+            ArgumentType::Str(_) => Some(Val::S(text(rng))),
+            ArgumentType::Array => Some(Val::A(
+                (0..rng.below(40)).map(|_| rng.next() as u8).collect(),
+            )),
+            ArgumentType::Fd => None,
+        });
+    }
+    out
+}
+
+/// One random request on a random known object.
+fn request(app: &mut App, rng: &mut Rng, objects: &mut Objects, pool: &std::os::fd::OwnedFd) {
     let (obj, iface) = objects[rng.below(objects.len() as u64) as usize];
     if iface.requests.is_empty() {
         return;
@@ -80,77 +136,17 @@ fn request(
     if desc.is_destructor && (obj <= GLOBALS_UP_TO || rng.below(3) != 0) {
         return;
     }
-    let mut words: Vec<u32> = Vec::new();
-    let mut texts: Vec<String> = Vec::new();
-    let mut arrays: Vec<Vec<u8>> = Vec::new();
-    let mut kinds = Vec::new();
-    let mut fd = false;
-    let mut wanted = desc.arg_interfaces.iter();
-    for t in desc.signature {
-        match t {
-            ArgumentType::Int | ArgumentType::Uint | ArgumentType::Fixed => {
-                words.push(word(rng));
-                kinds.push(0);
-            }
-            ArgumentType::Object(_) => {
-                // Mostly an object of the right kind (deeper), now and then any.
-                let name = wanted.next().map_or("", |i| i.name);
-                let fitting: Vec<u32> = objects
-                    .iter()
-                    .filter(|(_, i)| i.name == name)
-                    .map(|(id, _)| *id)
-                    .collect();
-                let pick = match (fitting.len(), objects.len(), rng.below(16)) {
-                    (n, _, 1..) if n > 0 => fitting[rng.below(n as u64) as usize],
-                    (_, n, 0) if n > 0 => objects[rng.below(n as u64) as usize].0,
-                    _ => 0,
-                };
-                words.push(pick);
-                kinds.push(0);
-            }
-            ArgumentType::NewId => {
-                let id = app.wl.new_id();
-                if let Some(child) = desc.child_interface {
-                    objects.push((id, child));
-                }
-                words.push(id);
-                kinds.push(0);
-            }
-            ArgumentType::Str(_) => {
-                let t = if rng.below(10) == 0 {
-                    "x".repeat(rng.below(5000) as usize)
-                } else {
-                    TEXTS[rng.below(TEXTS.len() as u64) as usize].to_owned()
-                };
-                texts.push(t);
-                kinds.push(1);
-            }
-            ArgumentType::Array => {
-                arrays.push((0..rng.below(40)).map(|_| rng.next() as u8).collect());
-                kinds.push(2);
-            }
-            ArgumentType::Fd => fd = true,
-        }
-    }
-    let (mut w, mut t, mut a) = (words.iter(), texts.iter(), arrays.iter());
-    let args: Vec<Arg<'_>> = kinds
+    let vals = values(app, rng, objects, desc);
+    let fd = vals.iter().any(Option::is_none).then(|| pool.as_fd());
+    let args: Vec<Arg<'_>> = vals
         .iter()
-        .filter_map(|k| match k {
-            0 => w.next().map(|v| Arg::U(*v)),
-            1 => t.next().map(|s| Arg::S(s.as_str())),
-            _ => a.next().map(|v| Arg::A(v.as_slice())),
+        .flatten()
+        .map(|v| match v {
+            Val::W(w) => Arg::U(*w),
+            Val::S(s) => Arg::S(s.as_str()),
+            Val::A(a) => Arg::A(a.as_slice()),
         })
         .collect();
-    let fd = fd.then(|| pool.as_fd());
-    if std::env::var_os("FUZZ_WHY").is_some() {
-        println!(
-            "  {}@{obj}.{} {:?} {:?}",
-            iface.name,
-            desc.name,
-            words,
-            texts.iter().map(|t| t.len()).collect::<Vec<_>>()
-        );
-    }
     app.wl.send_fd(obj, op as u16, &args, fd);
     if desc.is_destructor && rng.below(16) != 0 {
         objects.retain(|(id, _)| *id != obj);
@@ -171,57 +167,69 @@ fn garbage(app: &mut App, rng: &mut Rng) {
     app.wl.raw(&bytes, None);
 }
 
+/// A shown window and the input objects join the targets (commit,
+/// configure, input and the compositor side get their share).
+fn with_window(h: &mut Harness, app: &mut App, objects: &mut Objects) {
+    use wayland_protocols::xdg::shell::server::{
+        xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel,
+    };
+    use wayland_server::protocol::{
+        wl_data_device::WlDataDevice, wl_keyboard::WlKeyboard, wl_pointer::WlPointer,
+        wl_surface::WlSurface,
+    };
+    let win = app.window(h, "fuzz", (64, 64), 0xFF10_2030);
+    objects.extend([
+        (win.surface, WlSurface::interface()),
+        (win.xdg, XdgSurface::interface()),
+        (win.top, XdgToplevel::interface()),
+        (app.pointer, WlPointer::interface()),
+        (app.keyboard, WlKeyboard::interface()),
+        (app.device, WlDataDevice::interface()),
+    ]);
+}
+
+/// One connection's random requests; whether the bridge ended it.
+fn round(
+    h: &mut Harness,
+    rng: &mut Rng,
+    n: usize,
+    pool: &std::os::fd::OwnedFd,
+    sent: &mut usize,
+) -> bool {
+    let mut app = App::connect(h);
+    app.input();
+    let mut objects = interfaces(&app);
+    if n % 2 == 1 {
+        with_window(h, &mut app, &mut objects);
+    }
+    for step in 0..STEPS {
+        if n % 6 == 5 && step == STEPS / 2 {
+            garbage(&mut app, rng);
+        } else {
+            request(&mut app, rng, &mut objects, pool);
+        }
+        *sent += 1;
+        if step % 16 == 0 {
+            app.wl.read();
+            h.pump(1);
+        }
+        if app.wl.dead || app.wl.error().is_some() || objects.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
 #[test]
 fn random_requests_never_end_the_bridge() {
     let mut h = Harness::start("fuzz", &["sleep", "120"]);
     let mut rng = Rng(SEED);
     let pool = common::app::filled(64, 64, 0xFF10_2030);
     let (mut sent, mut ended) = (0usize, 0usize);
-    for round in 0..ROUNDS {
-        let mut app = App::connect(&mut h);
-        app.input();
-        let mut objects = interfaces(&app);
-        if round % 2 == 1 {
-            // Half the rounds start from a shown window (commit, configure,
-            // input and the compositor side get their share).
-            use wayland_protocols::xdg::shell::server::{
-                xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel,
-            };
-            use wayland_server::protocol::{
-                wl_data_device::WlDataDevice, wl_keyboard::WlKeyboard, wl_pointer::WlPointer,
-                wl_surface::WlSurface,
-            };
-            let win = app.window(&mut h, "fuzz", (64, 64), 0xFF10_2030);
-            objects.extend([
-                (win.surface, WlSurface::interface()),
-                (win.xdg, XdgSurface::interface()),
-                (win.top, XdgToplevel::interface()),
-                (app.pointer, WlPointer::interface()),
-                (app.keyboard, WlKeyboard::interface()),
-                (app.device, WlDataDevice::interface()),
-            ]);
-        }
-        for step in 0..STEPS {
-            if round % 6 == 5 && step == STEPS / 2 {
-                garbage(&mut app, &mut rng);
-            } else {
-                request(&mut app, &mut rng, &mut objects, &pool);
-            }
-            sent += 1;
-            if step % 16 == 0 {
-                app.wl.read();
-                h.pump(1);
-            }
-            if app.wl.dead || app.wl.error().is_some() || objects.is_empty() {
-                if std::env::var_os("FUZZ_WHY").is_some() {
-                    println!("round {round} step {step}: {:?}", app.wl.error());
-                }
-                ended += 1;
-                break;
-            }
-        }
+    for n in 0..ROUNDS {
+        ended += usize::from(round(&mut h, &mut rng, n, &pool, &mut sent));
         h.pump(5);
-        assert!(h.alive(), "the bridge survived round {round}");
+        assert!(h.alive(), "the bridge survived round {n}");
     }
     let mut app = App::connect(&mut h);
     let _win = app.window(&mut h, "after fuzz", (160, 100), 0xFF44_8899);

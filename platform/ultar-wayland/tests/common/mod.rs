@@ -251,3 +251,28 @@ impl Rng {
         self.next() % n.max(1)
     }
 }
+
+/// Waits until a window of `color` shows with at least `at_least` pixels;
+/// its bounding box.
+pub fn mapped(
+    h: &mut Harness,
+    app: &mut app::App,
+    color: u32,
+    at_least: usize,
+) -> (u32, u32, u32, u32) {
+    assert!(app.roundtrip(h), "the bridge answers");
+    let found = h.pump_until(Duration::from_secs(5), |h| h.find(color).0 >= at_least);
+    assert!(
+        found,
+        "window with colour {color:08x} on screen ({} pixels)",
+        h.find(color).0
+    );
+    h.find(color).1.unwrap()
+}
+
+/// Alt+Tab: the compositor focuses the other window.
+pub fn alt_tab(h: &mut Harness) {
+    h.key(56, true);
+    h.tap(15);
+    h.key(56, false);
+}

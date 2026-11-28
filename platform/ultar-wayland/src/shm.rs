@@ -61,6 +61,76 @@ impl Dispatch<WlShm, ()> for State {
     }
 }
 
+/// A buffer as the client asked for it.
+struct Asked {
+    offset: i32,
+    width: i32,
+    height: i32,
+    stride: i32,
+    format: WEnum<wl_shm::Format>,
+}
+
+impl Asked {
+    /// Whether it lies inside a pool of `pool_size` bytes.
+    fn fits(&self, pool_size: u64) -> bool {
+        let (w, h) = (self.width, self.height);
+        let end = i64::from(self.offset) + i64::from(self.stride) * i64::from(h);
+        (1..=MAX_SIDE).contains(&w)
+            && (1..=MAX_SIDE).contains(&h)
+            && self.offset >= 0
+            && i64::from(self.stride) >= i64::from(w) * 4
+            && end <= pool_size as i64
+    }
+}
+
+fn create_buffer(
+    state: &mut State,
+    client: &Client,
+    pool: &WlShmPool,
+    id: New<WlBuffer>,
+    a: &Asked,
+    data_init: &mut DataInit<'_, State>,
+) {
+    let Some((fd, pool_size)) = state
+        .objects
+        .pools
+        .get(&pool.id())
+        .map(|p| (p.fd.clone(), p.size))
+    else {
+        refuse(&state.dh, client, IMPLEMENTATION, "unknown pool");
+        return;
+    };
+    let alpha = match a.format {
+        WEnum::Value(wl_shm::Format::Argb8888) => true,
+        WEnum::Value(wl_shm::Format::Xrgb8888) => false,
+        _ => {
+            pool.post_error(wl_shm::Error::InvalidFormat, "only ARGB8888 and XRGB8888");
+            return;
+        }
+    };
+    if !a.fits(pool_size) {
+        pool.post_error(wl_shm::Error::InvalidStride, "buffer outside the pool");
+        return;
+    }
+    if state.counts(&client.id()).buffers >= MAX_BUFFERS {
+        refuse(&state.dh, client, NO_MEMORY, "too many buffers");
+        return;
+    }
+    let layout = Layout {
+        offset: a.offset as u64,
+        width: a.width as u32,
+        height: a.height as u32,
+        stride: a.stride as u32,
+        alpha,
+    };
+    let buffer = data_init.init(id, ());
+    state.counts(&client.id()).buffers += 1;
+    state
+        .objects
+        .buffers
+        .insert(buffer.id(), Buffer { fd, layout });
+}
+
 impl Dispatch<WlShmPool, ()> for State {
     fn request(
         state: &mut State,
@@ -80,53 +150,14 @@ impl Dispatch<WlShmPool, ()> for State {
                 stride,
                 format,
             } => {
-                let Some((pool_fd, pool_size)) = state
-                    .objects
-                    .pools
-                    .get(&pool.id())
-                    .map(|p| (p.fd.clone(), p.size))
-                else {
-                    refuse(&state.dh, client, IMPLEMENTATION, "unknown pool");
-                    return;
+                let asked = Asked {
+                    offset,
+                    width,
+                    height,
+                    stride,
+                    format,
                 };
-                let alpha = match format {
-                    WEnum::Value(wl_shm::Format::Argb8888) => true,
-                    WEnum::Value(wl_shm::Format::Xrgb8888) => false,
-                    _ => {
-                        pool.post_error(wl_shm::Error::InvalidFormat, "only ARGB8888 and XRGB8888");
-                        return;
-                    }
-                };
-                let fits = width > 0
-                    && height > 0
-                    && width <= MAX_SIDE
-                    && height <= MAX_SIDE
-                    && offset >= 0
-                    && i64::from(stride) >= i64::from(width) * 4
-                    && i64::from(offset) + i64::from(stride) * i64::from(height)
-                        <= pool_size as i64;
-                if !fits {
-                    pool.post_error(wl_shm::Error::InvalidStride, "buffer outside the pool");
-                    return;
-                }
-                if state.counts(&client.id()).buffers >= MAX_BUFFERS {
-                    refuse(&state.dh, client, NO_MEMORY, "too many buffers");
-                    return;
-                }
-                let layout = Layout {
-                    offset: offset as u64,
-                    width: width as u32,
-                    height: height as u32,
-                    stride: stride as u32,
-                    alpha,
-                };
-                let fd = pool_fd;
-                let buffer = data_init.init(id, ());
-                state.counts(&client.id()).buffers += 1;
-                state
-                    .objects
-                    .buffers
-                    .insert(buffer.id(), Buffer { fd, layout });
+                create_buffer(state, client, pool, id, &asked, data_init);
             }
             wl_shm_pool::Request::Resize { size } => {
                 let Some(p) = state.objects.pools.get_mut(&pool.id()) else {

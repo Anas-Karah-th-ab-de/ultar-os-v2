@@ -6,26 +6,13 @@ mod common;
 
 use common::app::{op, App};
 use common::wl::{Arg, Args, Wl};
-use common::Harness;
+use common::{mapped, Harness};
 use std::io::Read;
 use std::os::fd::AsFd;
 use std::time::Duration;
-use ultar_surface::proto::{Event, Request, CLIP_TEXT_MIME};
 
 const BLUE: u32 = 0xFF33_66CC;
-const GREEN: u32 = 0xFF22_AA44;
 const T: Duration = Duration::from_secs(5);
-
-fn mapped(h: &mut Harness, app: &mut App, color: u32, at_least: usize) -> (u32, u32, u32, u32) {
-    assert!(app.roundtrip(h), "the bridge answers");
-    let found = h.pump_until(T, |h| h.find(color).0 >= at_least);
-    assert!(
-        found,
-        "window with colour {color:08x} on screen ({} pixels)",
-        h.find(color).0
-    );
-    h.find(color).1.unwrap()
-}
 
 #[test]
 fn window_appears_with_its_pixels() {
@@ -88,13 +75,6 @@ fn keyboard_and_pointer_reach_the_app() {
     assert!(app.wl.error().is_none());
 }
 
-/// Alt+Tab: the compositor focuses the other window.
-fn alt_tab(h: &mut Harness) {
-    h.key(56, true);
-    h.tap(15);
-    h.key(56, false);
-}
-
 /// A toplevel configure of `top` that lists `state`.
 fn has_state(w: &Wl, top: u32, state: u32) -> bool {
     w.events
@@ -143,131 +123,6 @@ fn maximize_resizes_the_window() {
     let n = (win.size.0 * win.size.1) as usize;
     mapped(&mut h, &mut app, BLUE, n * 9 / 10);
     h.shot("maximized");
-}
-
-#[test]
-fn clipboard_both_ways() {
-    let mut h = Harness::start("clip", &["sleep", "30"]);
-    let mut app = App::connect(&mut h);
-    app.input();
-    let _win = app.window(&mut h, "Clip", (500, 360), BLUE);
-    mapped(&mut h, &mut app, BLUE, 500 * 360 * 9 / 10);
-    let mut peer = common::native::Peer::connect(&mut h.comp);
-    peer.pump(&mut h.comp);
-    peer.window(&mut h.comp, (120, 80), GREEN);
-    mapped(&mut h, &mut app, GREEN, 120 * 80 / 2);
-    // The windows overlap and a click raises: click the app where it shows,
-    // switch to the other window with Alt+Tab and press a key (a user action).
-    let app_spot = h.spot(BLUE).expect("part of the app window is visible");
-
-    // App → compositor → peer.
-    h.click(app_spot.0, app_spot.1);
-    let ptr = app.pointer;
-    assert!(app.until(&mut h, T, |w| w.has(ptr, 3)));
-    let serial = Args::of(app.wl.take(ptr, 3).last().unwrap()).u();
-    let source = app.wl.new_id();
-    app.wl.fd_events.push((source, 1));
-    app.wl.send(app.ddm, op::CREATE_SOURCE, &[Arg::U(source)]);
-    app.wl.send(
-        source,
-        op::SOURCE_OFFER,
-        &[Arg::S("text/plain;charset=utf-8")],
-    );
-    app.wl.send(
-        app.device,
-        op::SET_SELECTION,
-        &[Arg::U(source), Arg::U(serial)],
-    );
-    app.roundtrip(&mut h);
-    h.pump(50);
-    alt_tab(&mut h);
-    h.tap(30);
-    peer.pump(&mut h.comp);
-    let s = peer.last_serial();
-    peer.send(&Request::ReadSelection {
-        serial: s,
-        mime: CLIP_TEXT_MIME.into(),
-    });
-    peer.pump(&mut h.comp);
-    assert!(
-        app.until(&mut h, T, |w| w.has(source, 1)),
-        "the app is asked for its text"
-    );
-    let send = app.wl.take(source, 1);
-    rustix::io::write(
-        send[0].fd.as_ref().unwrap(),
-        "مرحبا from wayland".as_bytes(),
-    )
-    .unwrap();
-    drop(send);
-    let mut got = Vec::new();
-    for _ in 0..200 {
-        peer.pump(&mut h.comp);
-        h.pump(5);
-        for e in peer.events.drain(..) {
-            if let Event::Data { data, .. } = e {
-                got.extend_from_slice(&data);
-            }
-        }
-        if !got.is_empty() {
-            break;
-        }
-    }
-    assert_eq!(String::from_utf8_lossy(&got), "مرحبا from wayland");
-
-    // Peer → compositor → app.
-    // The key press from before is still a fresh user action of the peer.
-    peer.send(&Request::SetSelection {
-        serial: s,
-        mimes: vec![CLIP_TEXT_MIME.into()],
-    });
-    peer.pump(&mut h.comp);
-    alt_tab(&mut h);
-    h.tap(30);
-    let device = app.device;
-    assert!(
-        app.until(&mut h, T, |w| w.has(device, 5)),
-        "selection offered to the app"
-    );
-    let offer = Args::of(app.wl.take(device, 5).last().unwrap()).u();
-    assert_ne!(offer, 0);
-    let (r, w) = rustix::pipe::pipe().unwrap();
-    app.wl.send_fd(
-        offer,
-        op::OFFER_RECEIVE,
-        &[Arg::S("text/plain;charset=utf-8")],
-        Some(w.as_fd()),
-    );
-    drop(w);
-    app.roundtrip(&mut h);
-    let mut sent = false;
-    let mut text = Vec::new();
-    rustix::fs::fcntl_setfl(&r, rustix::fs::OFlags::NONBLOCK).unwrap();
-    for _ in 0..400 {
-        peer.pump(&mut h.comp);
-        h.pump(5);
-        let events: Vec<Event> = peer.events.drain(..).collect();
-        for e in events {
-            if let Event::SendRequest { transfer, .. } = e {
-                if !sent {
-                    peer.send(&Request::SendData {
-                        transfer,
-                        data: "سلام from ultar".as_bytes().to_vec(),
-                        last: true,
-                    });
-                    sent = true;
-                }
-            }
-        }
-        let mut buf = [0u8; 256];
-        match rustix::io::read(&r, &mut buf) {
-            Ok(0) if !text.is_empty() => break,
-            Ok(n) => text.extend_from_slice(&buf[..n]),
-            Err(_) => {}
-        }
-    }
-    assert_eq!(String::from_utf8_lossy(&text), "سلام from ultar");
-    assert!(app.wl.error().is_none());
 }
 
 #[test]

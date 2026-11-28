@@ -32,13 +32,13 @@ impl Positioner {
     pub fn place(&self) -> Rect {
         let r = &self.anchor_rect;
         let (w, h) = (self.size.0.max(1), self.size.1.max(1));
-        let (left, right) = (r.x, r.x + r.width as i32);
+        let (left, right) = (r.x, r.x + r.width as i32); // physical: xdg anchors are
         let (top, bottom) = (r.y, r.y + r.height as i32);
-        let (cx, cy) = ((left + right) / 2, (top + bottom) / 2);
-        // anchor: 1 top, 2 bottom, 3 left, 4 right, 5 tl, 6 bl, 7 tr, 8 br
+        let (cx, cy) = ((left + right) / 2, (top + bottom) / 2); // physical
+                                                                 // anchor: 1 top, 2 bottom, 3 left, 4 right, 5 tl, 6 bl, 7 tr, 8 br
         let ax = match self.anchor {
-            3 | 5 | 6 => left,
-            4 | 7 | 8 => right,
+            3 | 5 | 6 => left,  // physical
+            4 | 7 | 8 => right, // physical
             _ => cx,
         };
         let ay = match self.anchor {

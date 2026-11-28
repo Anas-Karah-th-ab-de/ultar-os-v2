@@ -158,12 +158,10 @@ impl Dispatch<WlDataDevice, ()> for State {
             wl_data_device::Request::SetSelection { source, serial } => {
                 set_selection(state, source, serial)
             }
-            wl_data_device::Request::StartDrag { source, .. } => {
-                // Drag and drop is not offered: the drag ends at once.
-                if let Some(s) = source {
-                    s.cancelled();
-                }
-            }
+            // Drag and drop is not offered: the drag ends at once.
+            wl_data_device::Request::StartDrag {
+                source: Some(s), ..
+            } => s.cancelled(),
             _ => {}
         }
     }

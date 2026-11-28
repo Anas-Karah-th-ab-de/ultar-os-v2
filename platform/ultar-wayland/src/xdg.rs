@@ -96,6 +96,25 @@ impl Dispatch<XdgWmBase, ()> for State {
     }
 }
 
+fn set_geometry(state: &mut State, xs: &XdgSurface, id: &ObjectId, g: (i32, i32, i32, i32)) {
+    let (x, y, w, h) = g;
+    if w <= 0 || h <= 0 {
+        xs.post_error(xdg_surface::Error::InvalidSize, "geometry without size");
+    } else if let Some(s) = state.objects.surfaces.get_mut(id) {
+        s.xdg.pending_geometry = Some(ultar_surface::proto::Rect::new(x, y, w as u32, h as u32));
+    }
+}
+
+/// The app took a configure: the native serial it stands for goes with the next frame.
+fn ack_configure(state: &mut State, id: &ObjectId, serial: u32) {
+    if let Some(s) = state.objects.surfaces.get_mut(id) {
+        if let Some(&(_, native)) = s.xdg.serials.iter().find(|(w, _)| *w == serial) {
+            s.xdg.acked = native;
+            s.xdg.serials.retain(|(w, _)| *w > serial);
+        }
+    }
+}
+
 impl Dispatch<XdgSurface, WlSurface> for State {
     fn request(
         state: &mut State,
@@ -139,26 +158,8 @@ impl Dispatch<XdgSurface, WlSurface> for State {
                 y,
                 width,
                 height,
-            } => {
-                if width <= 0 || height <= 0 {
-                    xs.post_error(xdg_surface::Error::InvalidSize, "geometry without size");
-                } else if let Some(s) = state.objects.surfaces.get_mut(&id) {
-                    s.xdg.pending_geometry = Some(ultar_surface::proto::Rect::new(
-                        x,
-                        y,
-                        width as u32,
-                        height as u32,
-                    ));
-                }
-            }
-            xdg_surface::Request::AckConfigure { serial } => {
-                if let Some(s) = state.objects.surfaces.get_mut(&id) {
-                    if let Some(&(_, native)) = s.xdg.serials.iter().find(|(w, _)| *w == serial) {
-                        s.xdg.acked = native;
-                        s.xdg.serials.retain(|(w, _)| *w > serial);
-                    }
-                }
-            }
+            } => set_geometry(state, xs, &id, (x, y, width, height)),
+            xdg_surface::Request::AckConfigure { serial } => ack_configure(state, &id, serial),
             _ => {}
         }
     }
@@ -320,6 +321,70 @@ pub fn native_scale(state: &State, id: &ObjectId) -> u32 {
         .max(1000)
 }
 
+/// The native request for an xdg_toplevel request (the title is set here).
+fn toplevel_request(
+    state: &mut State,
+    id: &ObjectId,
+    native: ultar_surface::proto::SurfaceId,
+    request: xdg_toplevel::Request,
+) -> Option<Request> {
+    let set = |state| {
+        Some(Request::SetState {
+            surface: native,
+            state,
+        })
+    };
+    match request {
+        xdg_toplevel::Request::SetTitle { title } => {
+            set_title(state, id, native, &title);
+            None
+        }
+        xdg_toplevel::Request::SetMinSize { width, height } => {
+            size_limits(state, id, Some((width, height)), None)
+        }
+        xdg_toplevel::Request::SetMaxSize { width, height } => {
+            size_limits(state, id, None, Some((width, height)))
+        }
+        xdg_toplevel::Request::SetMaximized => set(WindowState::Maximized),
+        xdg_toplevel::Request::SetFullscreen { .. } => set(WindowState::Fullscreen),
+        xdg_toplevel::Request::UnsetMaximized | xdg_toplevel::Request::UnsetFullscreen => {
+            set(WindowState::Normal)
+        }
+        xdg_toplevel::Request::SetMinimized => set(WindowState::Minimized),
+        xdg_toplevel::Request::Move { serial, .. } => Some(Request::Move {
+            surface: native,
+            serial: state.serials.native(serial),
+        }),
+        xdg_toplevel::Request::Resize { serial, edges, .. } => {
+            let bits = match edges {
+                WEnum::Value(e) => e as u32,
+                WEnum::Unknown(u) => u,
+            };
+            let edges = ResizeEdges((bits & 15) as u8);
+            Some(Request::Resize {
+                surface: native,
+                serial: state.serials.native(serial),
+                edges,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The title goes to the compositor and is kept (for a window shown again).
+fn set_title(
+    state: &mut State,
+    id: &ObjectId,
+    native: ultar_surface::proto::SurfaceId,
+    title: &str,
+) {
+    let r = state.native.set_title(native, title);
+    state.native_result(r);
+    if let Some(Role::Toplevel(t)) = state.objects.surfaces.get_mut(id).map(|s| &mut s.role) {
+        t.title = crate::native::short_title(title);
+    }
+}
+
 impl Dispatch<XdgToplevel, WlSurface> for State {
     fn request(
         state: &mut State,
@@ -338,62 +403,7 @@ impl Dispatch<XdgToplevel, WlSurface> for State {
         else {
             return;
         };
-        let req = match request {
-            xdg_toplevel::Request::SetTitle { title } => {
-                let r = state.native.set_title(native, &title);
-                state.native_result(r);
-                if let Some(Role::Toplevel(t)) = state
-                    .objects
-                    .surfaces
-                    .get_mut(&surface.id())
-                    .map(|s| &mut s.role)
-                {
-                    t.title = crate::native::short_title(&title);
-                }
-                return;
-            }
-            xdg_toplevel::Request::SetMinSize { width, height } => {
-                size_limits(state, &surface.id(), Some((width, height)), None)
-            }
-            xdg_toplevel::Request::SetMaxSize { width, height } => {
-                size_limits(state, &surface.id(), None, Some((width, height)))
-            }
-            xdg_toplevel::Request::SetMaximized => Some(Request::SetState {
-                surface: native,
-                state: WindowState::Maximized,
-            }),
-            xdg_toplevel::Request::SetFullscreen { .. } => Some(Request::SetState {
-                surface: native,
-                state: WindowState::Fullscreen,
-            }),
-            xdg_toplevel::Request::UnsetMaximized | xdg_toplevel::Request::UnsetFullscreen => {
-                Some(Request::SetState {
-                    surface: native,
-                    state: WindowState::Normal,
-                })
-            }
-            xdg_toplevel::Request::SetMinimized => Some(Request::SetState {
-                surface: native,
-                state: WindowState::Minimized,
-            }),
-            xdg_toplevel::Request::Move { serial, .. } => Some(Request::Move {
-                surface: native,
-                serial: state.serials.native(serial),
-            }),
-            xdg_toplevel::Request::Resize { serial, edges, .. } => {
-                let bits = match edges {
-                    WEnum::Value(e) => e as u32,
-                    WEnum::Unknown(u) => u,
-                };
-                Some(Request::Resize {
-                    surface: native,
-                    serial: state.serials.native(serial),
-                    edges: ResizeEdges((bits & 15) as u8),
-                })
-            }
-            _ => None,
-        };
-        if let Some(req) = req {
+        if let Some(req) = toplevel_request(state, &surface.id(), native, request) {
             let r = state.native.client.send(&req);
             state.native_result(r);
         }

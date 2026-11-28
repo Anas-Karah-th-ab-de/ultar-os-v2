@@ -267,29 +267,7 @@ impl Native {
             return Ok(None);
         }
         let id = self.client.new_buffer_id();
-        let storage = match transport {
-            Transport::SharedMemory => {
-                let shared = SharedBuffer::create(w as usize * h as usize * 4)?;
-                let request = Request::CreateShmBuffer {
-                    buffer: id,
-                    width: w,
-                    height: h,
-                    stride: w * 4,
-                    format,
-                };
-                self.client.send_with_fd(&request, shared.fd())?;
-                Storage::Shared(shared)
-            }
-            Transport::Inline => {
-                self.client.send(&Request::CreateInlineBuffer {
-                    buffer: id,
-                    width: w,
-                    height: h,
-                    format,
-                })?;
-                Storage::Inline
-            }
-        };
+        let storage = new_storage(&mut self.client, transport, id, (w, h), format)?;
         self.bytes += need;
         let whole = vec![Rect::new(0, 0, w, h)];
         let Some(s) = self.surfaces.get_mut(&surface) else {
@@ -305,6 +283,40 @@ impl Native {
             missing: whole,
         });
         Ok(Some(s.buffers.len() - 1))
+    }
+}
+
+/// The memory of a new native buffer: shared (sealed memory file) or inline.
+fn new_storage(
+    client: &mut Client,
+    transport: Transport,
+    id: BufferId,
+    (width, height): (u32, u32),
+    format: PixelFormat,
+) -> Result<Storage, ClientError> {
+    match transport {
+        Transport::SharedMemory => {
+            let shared = SharedBuffer::create(width as usize * height as usize * 4)?;
+            let stride = width * 4;
+            let request = Request::CreateShmBuffer {
+                buffer: id,
+                width,
+                height,
+                stride,
+                format,
+            };
+            client.send_with_fd(&request, shared.fd())?;
+            Ok(Storage::Shared(shared))
+        }
+        Transport::Inline => {
+            client.send(&Request::CreateInlineBuffer {
+                buffer: id,
+                width,
+                height,
+                format,
+            })?;
+            Ok(Storage::Inline)
+        }
     }
 }
 
