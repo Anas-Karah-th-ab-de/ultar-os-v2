@@ -312,6 +312,9 @@ pub struct Proc {
     pub pids: crate::groups::PidCharge,
     /// Bytes a blocking `write` to a full pipe has delivered so far (the call continues later)
     pub io_done: u64,
+    /// `PR_SET_PDEATHSIG`: signal for this thread when its parent process ends (0 = none; a child
+    /// starts without one)
+    pub pdeathsig: u8,
 }
 
 impl Proc {
@@ -829,6 +832,7 @@ fn spawn_in(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>,
         link: crate::isolation::pid::PidLink::new(crate::isolation::pid::PidNs::initial(), pid),
         pids,
         io_done: 0,
+        pdeathsig: 0,
     };
     Ok(Box::new(p))
 }
@@ -1127,8 +1131,15 @@ fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
         drop(fds);
         drop(space);
     }
+    let orphans: Vec<(u64, u64, u8)> = ps.iter().filter(|c| c.ppid == tgid && c.tgid != tgid).map(|c| (c.tgid, c.pid, c.pdeathsig)).collect();
     for c in ps.iter_mut().filter(|c| c.ppid == tgid) {
         c.ppid = 0;
+    }
+    // PR_SET_PDEATHSIG: each child that asked for it learns that its parent ended
+    for (child, thread, sig) in orphans {
+        if sig != 0 {
+            crate::signal::send_locked(ps, child, thread, sig as u64);
+        }
     }
     end_pid_namespace(ps, tgid);
     vfork_parent_gone(tgid);

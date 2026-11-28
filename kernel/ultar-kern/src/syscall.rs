@@ -236,7 +236,7 @@ fn shown(p: &Proc, global: u64) -> i64 {
     p.link.ns().local(global).unwrap_or(0) as i64
 }
 
-fn put(va: u64, data: &[u8]) -> bool {
+pub(crate) fn put(va: u64, data: &[u8]) -> bool {
     with(|p| proc::write_user(p.space(), va, data)).unwrap_or(false)
 }
 
@@ -2470,6 +2470,18 @@ fn unix_path(addr: u64, len: u64) -> Option<(String, bool)> {
     Some((String::from_utf8_lossy(&raw[..end]).into_owned(), abstract_name))
 }
 
+/// Key of a Unix socket name in the listener list. A path is its node; an abstract name is resolved in the
+/// caller's file tree view and, inside a network namespace, belongs to that namespace alone (as on Linux) –
+/// two cells sharing one root cannot meet through an abstract name.
+fn unix_key(host: String, abstract_name: bool) -> String {
+    let ns = crate::isolation::net::NetView::current().ns;
+    if abstract_name && ns != crate::isolation::net::HOST {
+        alloc::format!("@net{}:{}", ns, host)
+    } else {
+        host
+    }
+}
+
 /// A listening Unix socket as the list sees it: weak, so the list never keeps a closed listener alive.
 type Listener = alloc::sync::Weak<spin::Mutex<proc::UnixState>>;
 
@@ -2520,7 +2532,7 @@ fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
         let Some((path, abstract_name)) = unix_path(addr, len) else { return Res::Val(-22) };
         // socket paths live in the caller's view like every other path; the node decides who may connect
         let path = match locate(-100, &path, true).and_then(|l| crate::uds::connect_node(&l, abstract_name).map(|_| l.host)) {
-            Ok(host) => host,
+            Ok(host) => unix_key(host, abstract_name),
             Err(e) => return Res::Val(e),
         };
         let l = UNIX_LISTEN.lock().iter().find(|(p, _, _)| *p == path).and_then(|(_, s, who)| Some((s.upgrade()?, *who)));
@@ -2849,7 +2861,7 @@ fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
         // a path gets a node in the file tree (EADDRINUSE if something is there); an abstract name
         // is taken while its listener lives
         let path = match locate(-100, &path, true).and_then(|l| crate::uds::bind_node(&l, abstract_name).map(|_| l.host)) {
-            Ok(host) => host,
+            Ok(host) => unix_key(host, abstract_name),
             Err(e) => return e,
         };
         let mut list = UNIX_LISTEN.lock();
@@ -3109,13 +3121,14 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
     let pid = proc::new_pid();
     let fs_now = unsafe { crate::paging::rdmsr(0xC000_0100) };
     let thread = flags & VM != 0 && flags & VFORK == 0;
-    // namespaces: only mount and pid exist; a thread cannot get its own
+    // namespaces: mount, pid and network exist; a thread cannot get its own
     let new_ns = flags & (calls::CLONE_NEWNS | calls::CLONE_NEWPID);
-    if flags & calls::CLONE_NEW_UNSUPPORTED != 0 || new_ns != 0 && (thread || flags & THREAD != 0) {
+    let new_net = flags & calls::CLONE_NEWNET != 0;
+    if flags & calls::CLONE_NEW_UNSUPPORTED != 0 || (new_ns != 0 || new_net) && (thread || flags & THREAD != 0) {
         return -EINVAL;
     }
     let child = with(|p| {
-        if new_ns != 0 && !p.g.iso.rights.has(Rights::MOUNT) {
+        if (new_ns != 0 || new_net) && !p.g.iso.rights.has(Rights::MOUNT) {
             return Err(-EPERM);
         }
         // pid namespace of the child: a new one, or the one set for children (unshare/setns)
@@ -3161,6 +3174,9 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             iso.pid_ns_children = child_ns.clone();
             if flags & calls::CLONE_NEWNS != 0 {
                 iso.mnt = iso.mnt.copy();
+            }
+            if new_net {
+                iso.net.ns = crate::isolation::net::new_namespace();
             }
             let mut fds: Vec<Option<Fd>> = crate::mem::try_with_capacity(p.g.fds.len()).ok_or(-ENOMEM)?;
             for o in p.g.fds.iter() {
@@ -3230,6 +3246,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             link,
             pids,
             io_done: 0,
+            pdeathsig: 0,
         }))
         })
         .and_then(|(seen, child)| {

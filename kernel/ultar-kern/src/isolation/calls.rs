@@ -3,6 +3,7 @@
 
 use super::mount::{join, repath, MountNs, Opts, Source};
 use super::path::{link_at, parent};
+use super::net;
 use super::pid::PidNs;
 use super::rights::Rights;
 use super::tmpfs::{self, Tmpfs};
@@ -31,8 +32,10 @@ const ENAMETOOLONG: i64 = 36;
 pub const CLONE_NEWNS: u64 = 0x0002_0000;
 /// `clone`/`unshare` flag: new pid namespace.
 pub const CLONE_NEWPID: u64 = 0x2000_0000;
-/// Namespace kinds this stage does not have: cgroup, uts, ipc, user, net.
-pub const CLONE_NEW_UNSUPPORTED: u64 = 0x0200_0000 | 0x0400_0000 | 0x0800_0000 | 0x1000_0000 | 0x4000_0000;
+/// `clone`/`unshare` flag: new network namespace (own loopback, see [`super::net`]).
+pub use super::net::CLONE_NEWNET;
+/// Namespace kinds the kernel does not have: cgroup, uts, ipc, user.
+pub const CLONE_NEW_UNSUPPORTED: u64 = 0x0200_0000 | 0x0400_0000 | 0x0800_0000 | 0x1000_0000;
 
 const MS_RDONLY: u64 = 1;
 const MS_NOEXEC: u64 = 8;
@@ -46,6 +49,8 @@ const MS_SHARED: u64 = 1 << 20;
 const MNT_DETACH: u64 = 2;
 const UMOUNT_NOFOLLOW: u64 = 8;
 
+const PR_SET_PDEATHSIG: u64 = 1;
+const PR_GET_PDEATHSIG: u64 = 2;
 const PR_CAPBSET_READ: u64 = 23;
 const PR_CAPBSET_DROP: u64 = 24;
 const PR_GET_AUXV: u64 = 0x4155_5856;
@@ -96,12 +101,40 @@ pub fn sys_prctl(option: u64, arg: u64) -> i64 {
             }
             0
         }
+        PR_SET_PDEATHSIG => set_parent_death_signal(arg),
+        PR_GET_PDEATHSIG => get_parent_death_signal(arg),
+        net::PR_ULTAR_NET_GUARD => {
+            // a one-way switch: nothing turns it off, every later child inherits it
+            with(|p| p.g.iso.net.guard = true);
+            0
+        }
+        net::PR_ULTAR_NET_GUARD_GET => with(|p| p.g.iso.net.guard as i64).unwrap_or(0),
+        net::PR_ULTAR_NET_NS_GET => with(|p| p.g.iso.net.ns as i64).unwrap_or(0),
         PR_ULTAR_RIGHTS_GET => with(|p| p.g.iso.rights.bits() as i64).unwrap_or(0),
         PR_ULTAR_RIGHTS_DROP => {
             with(|p| p.g.iso.rights.drop_mask(arg));
             0
         }
         _ => 0,
+    }
+}
+
+/// `PR_SET_PDEATHSIG`: the signal this thread gets when its parent process ends (0 = none).
+fn set_parent_death_signal(sig: u64) -> i64 {
+    if sig > 64 {
+        return -EINVAL;
+    }
+    with(|p| p.pdeathsig = sig as u8);
+    0
+}
+
+/// `PR_GET_PDEATHSIG`: write the signal as an `int` to the caller's pointer.
+fn get_parent_death_signal(at: u64) -> i64 {
+    let sig = with(|p| p.pdeathsig as i32).unwrap_or(0);
+    if crate::syscall::put(at, &sig.to_le_bytes()) {
+        0
+    } else {
+        -EFAULT
     }
 }
 
@@ -247,18 +280,19 @@ pub fn sys_chroot(path: u64) -> i64 {
     0
 }
 
-/// `unshare(flags)`: `CLONE_NEWNS` and `CLONE_NEWPID`; `CLONE_FS`/`CLONE_FILES`/`CLONE_SYSVSEM` are accepted.
+/// `unshare(flags)`: `CLONE_NEWNS`, `CLONE_NEWPID` and `CLONE_NEWNET`; `CLONE_FS`/`CLONE_FILES`/`CLONE_SYSVSEM` are
+/// accepted.
 pub fn sys_unshare(flags: u64) -> i64 {
-    const ACCEPTED: u64 = CLONE_NEWNS | CLONE_NEWPID | 0x200 | 0x400 | 0x4_0000;
+    const ACCEPTED: u64 = CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWNET | 0x200 | 0x400 | 0x4_0000;
     if flags & !ACCEPTED != 0 {
         return -EINVAL;
     }
     with_threads(|p, threads| {
-        if flags & (CLONE_NEWNS | CLONE_NEWPID) != 0 && !p.g.iso.rights.has(Rights::MOUNT) {
+        if flags & (CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWNET) != 0 && !p.g.iso.rights.has(Rights::MOUNT) {
             return -EPERM;
         }
-        // file tree view and descriptors are shared by the threads of a group and cannot be split off
-        if flags & (CLONE_NEWNS | 0x200 | 0x400) != 0 && threads > 1 {
+        // file tree view, network and descriptors are shared by the threads of a group and cannot be split off
+        if flags & (CLONE_NEWNS | CLONE_NEWNET | 0x200 | 0x400) != 0 && threads > 1 {
             return -EINVAL;
         }
         let mut child_ns = None;
@@ -274,6 +308,9 @@ pub fn sys_unshare(flags: u64) -> i64 {
         if flags & CLONE_NEWNS != 0 {
             let copy: Arc<MountNs> = p.g.iso.mnt.copy();
             p.g.iso.mnt = copy;
+        }
+        if flags & CLONE_NEWNET != 0 {
+            p.g.iso.net.ns = net::new_namespace();
         }
         if let Some(ns) = child_ns {
             p.g.iso.pid_ns_children = ns;
