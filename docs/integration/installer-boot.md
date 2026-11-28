@@ -29,6 +29,11 @@ binaries (the patch deletes the committed test binaries below).
      `/dev/ultar/part/ultar-data`. The kernel never sees the passphrase: root with the raw-device right
      writes `open <offset> <master key>`; the kernel maps the segment (software AES, the kernel keeps no
      SSE state) and mounts it as `/data` only if an ext4 is behind it (wrong key: `EKEYREJECTED`).
+     Key hygiene: the key copy of the control write and the hex/raw key are overwritten right after
+     use; the AES key schedule is cleared when it is dropped (`aes` feature `zeroize`) and wiped
+     before every power-off and restart, after which the mapping refuses every access.
+     Speed: the ext4 code keeps the group descriptor blocks it has read (up to 1 MiB) and updates
+     them on every write, so lookups and allocations no longer read them from the disk each time.
    - Start: ultar-init runs the graphical unlock screen `/usr/bin/ultar-unlock` (platform/ultar-unlock)
      before anything writes to `/data` and before the services (not on the phone, which uses
      `ultar-secure`/cryptsetup). It draws with the UI toolkit straight onto the framebuffer (look of the

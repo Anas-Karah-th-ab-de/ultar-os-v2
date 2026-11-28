@@ -53,7 +53,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let lang = Lang::from_env();
     let tr = i18n::translator(lang);
     let title = tr.t("app.appbuilder.name").into_owned();
-    let env = PaintEnv::new(lang, ThemeKind::Dark);
+    // the person's theme, accent and text size, handed over by the app launcher
+    let env = PaintEnv::new(lang, ThemeKind::Dark).with_session(false);
     let ui = Ui::new(env, InputMode::Pointer, Size::new(960.0, 640.0), tr)?;
     let socket =
         std::env::var("ULTAR_COMPOSITOR_SOCKET").unwrap_or_else(|_| COMPOSITOR_DEFAULT.to_string());

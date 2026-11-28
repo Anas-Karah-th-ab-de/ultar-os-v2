@@ -48,6 +48,7 @@ pub mod follow;
 pub mod install;
 mod instances;
 pub mod launcher;
+pub mod look;
 pub mod manifest;
 pub mod msg;
 pub mod open;

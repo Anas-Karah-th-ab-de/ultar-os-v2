@@ -57,6 +57,15 @@ impl Ui {
         }
     }
 
+    /// Switches the accent colour (`appearance.accent_color`).
+    pub fn set_accent(&mut self, accent: crate::tokens::Accent) {
+        if self.env.accent != accent {
+            self.env.accent = accent;
+            self.dirty.full = true;
+            self.layers.backdrop.ready = false;
+        }
+    }
+
     /// Sets the device pixels per logical point (0.5 to 8).
     pub fn set_scale(&mut self, scale: f32) -> Result<(), UiError> {
         if !(scale.is_finite() && (0.5..=8.0).contains(&scale)) {

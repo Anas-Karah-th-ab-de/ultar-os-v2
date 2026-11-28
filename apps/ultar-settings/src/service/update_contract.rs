@@ -1,5 +1,5 @@
-//! The three messages of the updater's contract this app uses (`update.check`,
-//! `update.offline`, topic `update.progress`).
+//! The messages of the updater's contract this app uses (`update.check`, `update.download`,
+//! `update.apply`, `update.offline`, topic `update.progress`).
 //!
 //! The contract lives in `system/core/ultar-update/src/contract.rs`, which an app may not
 //! depend on (`ultar-check layers`: apps → `ultar-bus` only). These types are field-for-field
@@ -82,6 +82,17 @@ impl Topic for Progress {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Check {}
 
+/// `update.download` – download the newest release.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct Download {
+    /// Use a metered (or unknown) connection; counts only for an administrator of the updater.
+    pub allow_metered: bool,
+}
+
+/// `update.apply` – install the downloaded release into the other slot.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct Apply {}
+
 /// `update.offline` – an update from a drive or folder.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct Offline {
@@ -100,6 +111,22 @@ impl Message for Check {
 }
 impl Message for Offline {
     const VERSION: u16 = 1;
+}
+impl Message for Download {
+    const VERSION: u16 = 1;
+}
+impl Message for Apply {
+    const VERSION: u16 = 1;
+}
+impl Call for Download {
+    const SERVICE: &'static str = "update";
+    const METHOD: &'static str = "download";
+    type Reply = Accepted;
+}
+impl Call for Apply {
+    const SERVICE: &'static str = "update";
+    const METHOD: &'static str = "apply";
+    type Reply = Accepted;
 }
 impl Message for Accepted {
     const VERSION: u16 = 1;

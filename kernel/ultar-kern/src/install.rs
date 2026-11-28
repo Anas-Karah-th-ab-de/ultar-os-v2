@@ -309,6 +309,53 @@ fn sichtbar(s: &str, rtl: bool) -> Vec<char> {
 }
 
 impl Canvas {
+    /// Das Firmenlogo von KM Code Craft (`ultar_brand::logo`, Bitmap für dunklen Grund)
+    /// `breite` Pixel breit mit oberer linker Ecke (x, y): verkleinert per Flächenmittel
+    /// (nie vergrößert, nie gespiegelt), mit seiner Deckkraft über den Grund gemischt.
+    /// Gibt die gezeichnete Höhe zurück (0: kein Logo).
+    pub(crate) fn logo(&mut self, x: i32, y: i32, breite: i32) -> i32 {
+        let Ok(bild) = ultar_brand::logo::bitmap() else { return 0 };
+        let (sw, sh) = (bild.width as i64, bild.height as i64);
+        let dw = i64::from(breite.clamp(1, bild.width as i32));
+        let dh = (dw * sh / sw).max(1);
+        for ty in 0..dh {
+            let py = y as i64 + ty;
+            if py < 0 || py >= self.h as i64 {
+                continue;
+            }
+            let (y0, y1) = (ty * sh / dh, ((ty + 1) * sh / dh).max(ty * sh / dh + 1).min(sh));
+            for tx in 0..dw {
+                let px = x as i64 + tx;
+                if px < 0 || px >= self.w as i64 {
+                    continue;
+                }
+                let (x0, x1) = (tx * sw / dw, ((tx + 1) * sw / dw).max(tx * sw / dw + 1).min(sw));
+                // Summen, mit der Deckkraft gewichtet (kein dunkler Saum an den Kanten)
+                let (mut r, mut g, mut b, mut a, mut n) = (0u64, 0u64, 0u64, 0u64, 0u64);
+                for sy in y0..y1 {
+                    for sx in x0..x1 {
+                        let i = ((sy * sw + sx) * 4) as usize;
+                        let Some(p) = bild.rgba.get(i..i + 4) else { continue };
+                        let al = u64::from(p[3]);
+                        r += u64::from(p[0]) * al;
+                        g += u64::from(p[1]) * al;
+                        b += u64::from(p[2]) * al;
+                        a += al;
+                        n += 1;
+                    }
+                }
+                if a == 0 || n == 0 {
+                    continue;
+                }
+                let farbe = (((r / a) as u32) << 16) | (((g / a) as u32) << 8) | ((b / a) as u32);
+                let deckung = (a / n) as u32;
+                let i = py as usize * self.w + px as usize;
+                self.px[i] = mischen(self.px[i], farbe, deckung);
+            }
+        }
+        dh as i32
+    }
+
     pub(crate) fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: u32) {
         let (x0, y0) = (x.max(0) as usize, y.max(0) as usize);
         let (x1, y1) = (((x + w).max(0) as usize).min(self.w), ((y + h).max(0) as usize).min(self.h));
@@ -995,6 +1042,12 @@ impl Ui {
                     self.cv.text_c(w / 2, y + 12, s, 2, if aktiv { GOLD2 } else { TEXT });
                     self.knopf(w / 2 - bw / 2, y, bw, 56, Aktion::Sprache(l));
                     y += 70;
+                }
+                // das Firmenlogo unter der Sprachwahl, wenn die Karte Platz hat
+                let lw = 220;
+                let lh = lw * ultar_brand::logo::HEIGHT as i32 / ultar_brand::logo::WIDTH as i32;
+                if unten - (y + 10) >= lh + 10 {
+                    self.cv.logo(w / 2 - lw / 2, y + 10, lw);
                 }
                 let bx = if self.rtl() { kx + 28 } else { kx + kw - 28 - 200 };
                 self.schaltflaeche(bx, unten, 200, t(self.lang, "next"), Aktion::Weiter, true);

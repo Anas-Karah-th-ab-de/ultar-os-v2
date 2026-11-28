@@ -6,7 +6,11 @@
 //! and the flash deadline and damages the outputs when they change.
 
 use super::{ClientId, State};
-use ultar_surface::proto::{ColourFilter, ErrorCode, Request, Rights, DEFAULT_ZOOM_PERCENT};
+use ultar_i18n::Lang;
+use ultar_surface::proto::{
+    ColourFilter, ErrorCode, LookLang, Request, Rights, DEFAULT_ZOOM_PERCENT,
+};
+use ultar_ui::tokens::ThemeKind;
 
 /// The accessibility view configuration and the flash deadline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,8 +71,39 @@ impl State {
                 self.damage_all();
                 Ok(())
             }
+            Request::ConfigureLook { lang, light } => {
+                self.require_visual_permission(client, Rights::OUTPUT_CONFIG)?;
+                self.set_look(lang, light);
+                Ok(())
+            }
             _ => Ok(()),
         }
+    }
+
+    /// The language and theme of the title bars, dialog frames and the ground
+    /// (`region.language`, `appearance.theme`): every title bar is drawn again, on the side
+    /// the language reads from.
+    pub(super) fn set_look(&mut self, lang: LookLang, light: bool) {
+        let lang = match lang {
+            LookLang::Ar => Lang::Ar,
+            LookLang::En => Lang::En,
+            LookLang::De => Lang::De,
+        };
+        let theme = if light {
+            ThemeKind::Light
+        } else {
+            ThemeKind::Dark
+        };
+        if self.config.lang == lang && self.config.theme == theme && self.decor.is_some() {
+            return;
+        }
+        self.config.lang = lang;
+        self.config.theme = theme;
+        self.decor = crate::decor::DecorRenderer::new(lang, theme);
+        for w in &mut self.windows {
+            w.title.cache = None;
+        }
+        self.damage_all();
     }
 
     fn require_visual_permission(&self, client: ClientId, needed: Rights) -> Result<(), ErrorCode> {

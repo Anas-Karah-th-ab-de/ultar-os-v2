@@ -47,9 +47,9 @@ impl State {
             | Request::ConfigureKeyRepeat { .. }
             | Request::ConfigureKeyHelpers { .. }
             | Request::ConfigureKeyboard { .. }) => self.output_request(client, r),
-            r @ (Request::ConfigureVisual { .. } | Request::VisualAlert { .. }) => {
-                self.visual_request(client, r)
-            }
+            r @ (Request::ConfigureVisual { .. }
+            | Request::VisualAlert { .. }
+            | Request::ConfigureLook { .. }) => self.visual_request(client, r),
             Request::Hello { app_id, .. } => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.hello = true;
