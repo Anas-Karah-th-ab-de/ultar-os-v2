@@ -80,6 +80,9 @@ fn register(
     match state.services.get(service) {
         Some(owner) if *owner != conn => return Err(ErrorCode::NameTaken),
         Some(_) => {}
+        None if entry.services.len() >= rules.config.max_services_per_connection => {
+            return Err(ErrorCode::LimitExceeded);
+        }
         None => {
             state.services.insert(service.to_owned(), conn);
             if let Some(entry) = state.conns.get_mut(&conn) {
@@ -169,11 +172,17 @@ fn check_publish(
         return Err(ErrorCode::PermissionDenied);
     }
     let retain = envelope.flags & FLAG_RETAIN != 0;
-    if retain
-        && !state.retained.contains_key(&envelope.target)
-        && state.retained.len() >= rules.config.max_retained
-    {
-        return Err(ErrorCode::LimitExceeded);
+    if retain && !state.retained.contains_key(&envelope.target) {
+        let own = state
+            .retained
+            .values()
+            .filter(|r| r.owner == entry.identity.as_str())
+            .count();
+        if state.retained.len() >= rules.config.max_retained
+            || own >= rules.config.max_retained_per_identity
+        {
+            return Err(ErrorCode::LimitExceeded);
+        }
     }
     Ok(())
 }
@@ -206,6 +215,11 @@ fn publish(
         .collect();
     let id = envelope.id;
     let retain = envelope.flags & FLAG_RETAIN != 0;
+    let owner = state
+        .conns
+        .get(&conn)
+        .map(|e| e.identity.as_str().to_owned())
+        .unwrap_or_default();
     let event = Envelope {
         id: 0,
         flags: 0,
@@ -223,6 +237,7 @@ fn publish(
         let retained = Retained {
             version: event.version,
             payload: event.payload,
+            owner,
         };
         state.retained.insert(event.target, retained);
     }

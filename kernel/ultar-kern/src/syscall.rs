@@ -3049,6 +3049,10 @@ fn sys_mprotect(addr: u64, len: u64, prot: u64) -> i64 {
             sp.protect(a, w, x);
             a += 4096;
         }
+        // other threads of this process may run on other cores with the old rights cached
+        if p.g.refs() > 1 {
+            crate::apic::flush_tlb_others();
+        }
         0
     })
     .unwrap_or(-ENOMEM)
@@ -3068,6 +3072,10 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
         while a < addr + ((len + 4095) & !4095) {
             p.space_mut().unmap(a);
             a += 4096;
+        }
+        // the freed pages must not stay reachable through another core's TLB
+        if p.g.refs() > 1 {
+            crate::apic::flush_tlb_others();
         }
         0
     })

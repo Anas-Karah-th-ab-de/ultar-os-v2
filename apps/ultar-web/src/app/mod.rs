@@ -250,7 +250,9 @@ impl<E: WebEngine> Browser<E> {
             can_back: active.is_some_and(|t| t.can_back),
             can_forward: active.is_some_and(|t| t.can_forward),
             loading: active.is_some_and(|t| t.loading),
-            address: active.map(|t| t.url.clone()).unwrap_or_default(),
+            address: active
+                .map(|t| crate::url::readable(&t.url))
+                .unwrap_or_default(),
             protection: host.map_or(self.state.settings.protection, |h| {
                 self.state.settings.protects(&h)
             }),

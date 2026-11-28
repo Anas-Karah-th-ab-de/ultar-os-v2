@@ -78,6 +78,14 @@ Die vollständigen Berichte mit Fundstellen: `docs/review/ultar-ui-runde-1.md`; 
 | S-13 | `--input-ack` im ausgelieferten Compositor | nur mit Merkmal `test-hooks` (desktop-e2e baut es), Datei ohne Verknüpfung folgen, 0600 | Compositor-Tests mit und ohne Merkmal |
 | S-15 | `ui.client-header` | nur `app.system` kann es bekommen (Starter-Profil), seit S-7 geprüft | Profil-Tests |
 | Kern | `clone(CLONE_THREAD)` ohne `CLONE_VM` | `EINVAL` wie Linux | `schutztest` |
+| Kern | `mprotect`/`munmap` ohne Abgleich der anderen Kerne | TLB-Abgleich über Vektor 0x43 bei mehreren Fäden, begrenztes Warten | `schutztest` (Schreib-Faden auf anderem Kern fällt sofort, 4 Kerne) |
+| Kern | kein `SCM_CREDENTIALS` | angegebene Kennungen werden geprüft (eigene pid/uid/gid, sonst nur mit `SET_ID`, `EPERM`); weitergegeben wird nichts, `SO_PEERCRED` bleibt maßgeblich | `schutztest` |
+| devd | Index ohne Seriennummer | Index trägt eine Nummer, devd merkt sich die höchste und lehnt ältere ab (`devd.notice.index-older`) | devd-/driverpkg-Tests |
+| Bus | keine Grenzen je Kennung | höchstens 64 behaltene Themen je Kennung (von 256), 16 Dienstnamen je Verbindung; Sockel-Pfad ersetzte schon vorher nur tote Sockel | `per_identity_limits` |
+| Einstellungen | Bestätigung nach Fristablauf; zweite Instanz | späte Bestätigung nimmt die Änderung zurück; Sperre des Verzeichnisses (`already_running`); `--policy`/`--allow-all` waren schon exklusiv | Einstellungsdienst-Tests |
+| Server | Namen nicht normalisiert; Signalisierung ohne Grenze | Namen getrimmt, klein, ohne Steuer-/unsichtbare Zeichen (alte Konten melden sich weiter an und gelten als vergeben); 20 Nachrichten/s je Sockel (Stoß 100); Geräte je Konto waren schon begrenzt | Server-Tests |
+| BT | BT-Tastaturen nach S-4 abgewiesen | Kern nennt den Erzeuger (`device/ultar_creator`), devd-seat und Compositor lassen Geräte von `ultar-btd` (827) zu | `bttest`, devd-Test |
+| Telefon | Einstellungen ohne Zielseite | `settings://<bereich>`; das Telefon öffnet `settings://apps/phone` | Tests |
 
 Noch offen dazu: der Anruf-Bildschirm erscheint weiterhin ohne Bindung an ein „klingelt“-Ereignis von `ril`/`calld`; `mprotect` ändert Rechte nur auf dem eigenen Kern, ohne Abgleich der anderen Prozessorkerne (wie schon `munmap`); Bluetooth-Tastaturen über `btd` werden jetzt wie alle virtuellen Geräte abgewiesen, bis devd/Compositor sie über eine feste Kennung des Erzeugers zulassen und Sicherheitstasten nur von Hardware nehmen.
 

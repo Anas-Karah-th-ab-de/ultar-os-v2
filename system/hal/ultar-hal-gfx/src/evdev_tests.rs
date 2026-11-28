@@ -257,11 +257,13 @@ fn only_seat_devices_are_admitted() {
     let seat = SeatPolicy {
         group: Some(gid),
         virtual_allowed: Vec::new(),
+        virtual_owners: Vec::new(),
     };
     assert!(seat.admits(&path, &file));
     let other = SeatPolicy {
         group: Some(gid.wrapping_add(1)),
         virtual_allowed: Vec::new(),
+        virtual_owners: Vec::new(),
     };
     assert!(!other.admits(&path, &file), "node of another group refused");
     std::fs::remove_file(&path).unwrap();

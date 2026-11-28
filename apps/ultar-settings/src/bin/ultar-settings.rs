@@ -45,6 +45,12 @@ struct Options {
     documents: Option<PathBuf>,
 }
 
+/// The page a `settings://<area>[/…]` URI names (an unknown area: none).
+fn area_of_uri(uri: &str) -> Option<usize> {
+    let rest = uri.strip_prefix("settings://")?;
+    index_of(rest.split(['/', '?', '#']).next()?)
+}
+
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, AppError> {
     let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
     let mut o = Options {
@@ -52,7 +58,12 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, AppError> {
         bus: env("ULTAR_BUS_SOCKET"),
         lang: Lang::from_env(),
         light: false,
-        area: index_of("displays").unwrap_or(0),
+        // `settings://<area>[/…]` from the launcher (`ULTAR_OPEN_URI`), else Displays
+        area: std::env::var("ULTAR_OPEN_URI")
+            .ok()
+            .and_then(|uri| area_of_uri(&uri))
+            .or_else(|| index_of("displays"))
+            .unwrap_or(0),
         catalogs: env("ULTAR_CATALOGS"),
         documents: env("ULTAR_DOCUMENTS"),
     };
@@ -162,5 +173,18 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(AppError::Usage) => ExitCode::from(2),
         Err(_) => ExitCode::FAILURE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_settings_uri_names_a_page() {
+        assert_eq!(area_of_uri("settings://apps"), index_of("apps"));
+        assert_eq!(area_of_uri("settings://apps/phone"), index_of("apps"));
+        assert_eq!(area_of_uri("settings://nope"), None);
+        assert_eq!(area_of_uri("files://apps"), None);
     }
 }

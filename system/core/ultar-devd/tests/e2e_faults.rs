@@ -106,13 +106,15 @@ fn swapped_missing_and_foreign_packages() {
                 .with(TextArg::Key("devd.detail.wrong-package".into()))
         )
     );
-    // The package file was not copied to this system: no candidate, nothing quarantined.
+    // The package file was not copied to this system: no candidate, nothing quarantined; the
+    // kernel's own nvme driver still runs the disk, so it counts as working.
     let rig = beelink_rig("missing");
     rig.standard_depot();
     std::fs::remove_file(rig.depot.join("nvme-1.0.0.utr")).unwrap();
     let (daemon, _) = rig.start();
     let list = daemon.list();
-    assert_eq!(row(&list, NVME0).phase, NoDriver);
+    assert_eq!(row(&list, NVME0).phase, Active);
+    assert!(row(&list, NVME0).active.is_none());
     assert_eq!(
         row(&list, NVME0).reason.as_ref().unwrap().key,
         "devd.reason.kernel-only"
@@ -146,7 +148,17 @@ fn unverifiable_depot_leaves_every_device_driverless_with_a_notice() {
     let (mut daemon, memory) = rig.start();
     let list = daemon.list();
     assert_eq!(list.devices.len(), 14);
-    assert!(list.devices.iter().all(|d| d.phase == NoDriver));
+    // No package can be used; a device works only where the kernel's own driver runs it.
+    assert!(list.devices.iter().all(|d| d.active.is_none()));
+    assert!(list.devices.iter().all(|d| match d.phase {
+        NoDriver => true,
+        Active => d
+            .reason
+            .as_ref()
+            .is_some_and(|r| r.key == "devd.reason.kernel-only"),
+        _ => false,
+    }));
+    assert!(list.devices.iter().any(|d| d.phase == NoDriver));
     assert_eq!(
         list.notices[0],
         Text::key("devd.notice.depot-unreadable")
