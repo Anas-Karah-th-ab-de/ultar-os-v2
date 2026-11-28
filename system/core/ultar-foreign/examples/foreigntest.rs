@@ -235,50 +235,42 @@ fn windows_programs(area: &Path, private: impl Fn() -> Result<(), String>) -> Re
     }
     std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
     std::env::set_current_dir("/").map_err(|e| e.to_string())?;
-    let mut steps: Vec<(&[&str], &str, u64)> = vec![
-        (&["/usr/bin/wine", "--version"] as &[&str], "wine-", 300),
-        (&["/usr/bin/wineboot", "-i"] as &[&str], "", 1500),
+    const MSI: &str = "/opt/ultar-test/program.msi";
+    const WIN_MSI: &[&str] = &[
+        "/usr/bin/wine",
+        "msiexec",
+        "/i",
+        "Z:\\opt\\ultar-test\\program.msi",
+        "/qn",
+    ];
+    const SEVEN: &[&str] = &["/usr/bin/wine", "C:\\Program Files\\7-Zip\\7z.exe", "i"];
+    const STEPS: [(&[&str], &str, u64); 3] = [
+        (&["/usr/bin/wine", "--version"], "wine-", 300),
+        (&["/usr/bin/wineboot", "-i"], "", 1500),
         (
-            &["/usr/bin/wine", "cmd", "/c", "echo", "ultar-wine"] as &[&str],
+            &["/usr/bin/wine", "cmd", "/c", "echo", "ultar-wine"],
             "ultar-wine",
             900,
         ),
     ];
-    // a real program when the test put one into the area (foreign-e2e.sh WIN_MSI=…): 7-Zip's MSI
-    if Path::new("/opt/ultar-test/program.msi").exists() {
-        steps.push((
-            &[
-                "/usr/bin/wine",
-                "msiexec",
-                "/i",
-                "Z:\\opt\\ultar-test\\program.msi",
-                "/qn",
-            ],
-            "",
-            1500,
-        ));
-        steps.push((
-            &["/usr/bin/wine", "C:\\Program Files\\7-Zip\\7z.exe", "i"],
-            "7-Zip",
-            600,
-        ));
-    }
-    // every step runs (a prefix that stops half-way can still run a 64-bit program); each says how it went
+    // a real program when the test put one into the area (foreign-e2e.sh WIN_MSI=…): 7-Zip's MSI;
+    // every step runs (a prefix that stops half-way can still run a 64-bit program)
+    let real = [(WIN_MSI, "", 1500), (SEVEN, "7-Zip", 600)];
+    let more = if Path::new(MSI).exists() {
+        &real[..]
+    } else {
+        &[]
+    };
     let mut failed: Vec<String> = Vec::new();
-    for (program, expect, secs) in steps {
+    for &(program, expect, secs) in STEPS.iter().chain(more) {
         let why = match run_for(program, secs) {
             Ok(out) if out.contains(expect) => None,
             Ok(out) => Some(tail(&out)),
             Err(e) => Some(e),
         };
-        println!(
-            "FOREIGN-WINDOWS: {} {}",
-            program.join(" "),
-            if why.is_none() { "ok" } else { "FEHLT" }
-        );
-        if let Some(why) = why {
-            failed.push(format!("{}: {why}", program.join(" ")));
-        }
+        let verdict = if why.is_none() { "ok" } else { "FEHLT" };
+        println!("FOREIGN-WINDOWS: {} {verdict}", program.join(" "));
+        failed.extend(why.map(|w| format!("{}: {w}", program.join(" "))));
     }
     let result = if failed.is_empty() {
         Ok(())
