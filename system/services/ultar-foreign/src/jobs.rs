@@ -112,9 +112,10 @@ fn read_deb(ctx: &Ctx, mut opened: detect::Opened, job: u64) -> Result<Copied, F
         control,
     };
     let ran = cellrun::run(&ctx.helper, &cell, INSPECT_LIMIT).map_err(|_| Failure::Internal);
-    let control = ran.ok().filter(|r| r.code == Some(0)).and_then(|r| {
-        desktop::parse_control(&String::from_utf8_lossy(&r.output))
-    });
+    let control = ran
+        .ok()
+        .filter(|r| r.code == Some(0))
+        .and_then(|r| desktop::parse_control(&String::from_utf8_lossy(&r.output)));
     match control {
         Some(c) => Ok(copied(c)),
         None => {
@@ -243,6 +244,40 @@ pub fn purge(ctx: &Ctx, package: &str) -> Result<(), Failure> {
 }
 
 /// The apps a package's programs become; registered with the launcher one by one.
+/// Registers (or replaces) one app with the launcher; true when the launcher took it as
+/// exactly this app of profile `app.foreign`.
+pub fn register_one(client: &Client, record: &AppRecord) -> bool {
+    let call = InstallForeign {
+        manifest: record.manifest(),
+    };
+    client
+        .call(&call, LAUNCHER_WAIT)
+        .is_ok_and(|r| r.app == record.id && r.profile == "app.foreign")
+}
+
+/// `foreign.set_choices` that grants more: an administrator confirms, then the launcher
+/// gets the app with its new permissions. `Ok(None)`: not confirmed.
+pub fn change(
+    client: &Client,
+    caller: &str,
+    job: u64,
+    record: &AppRecord,
+) -> Result<Option<AppRecord>, Failure> {
+    step(client, job, Step::Confirm, 20, Vec::new());
+    let source = Source::from_word(&record.source).unwrap_or(Source::Unknown);
+    let mut text = question(&record.name, source, &record.choices(), false);
+    text.key = "foreign.confirm.change".into();
+    if !confirm(client, caller, text)? {
+        return Ok(None);
+    }
+    step(client, job, Step::Register, 80, Vec::new());
+    if register_one(client, record) {
+        Ok(Some(record.clone()))
+    } else {
+        Err(Failure::Launcher)
+    }
+}
+
 fn register(
     ctx: &Ctx,
     client: &Client,
@@ -280,10 +315,7 @@ fn register(
             folders: Vec::new(),
         };
         record.set_choices(choices);
-        let call = InstallForeign {
-            manifest: record.manifest(),
-        };
-        if client.call(&call, LAUNCHER_WAIT).is_err() {
+        if !register_one(client, &record) {
             unregister(client, &done);
             return Err(Failure::Launcher);
         }
@@ -349,7 +381,14 @@ pub fn install_file(
     )?;
     step(client, req.job, Step::Register, 85, Vec::new());
     let package = copied.control.package.clone();
-    match register(ctx, client, state, &package, &copied.control.version, &req.choices) {
+    match register(
+        ctx,
+        client,
+        state,
+        &package,
+        &copied.control.version,
+        &req.choices,
+    ) {
         Ok(apps) => Ok(Some(apps)),
         Err(failure) => {
             let _ = purge(ctx, &package);
@@ -395,7 +434,10 @@ mod tests {
         // outside the person's areas and drives: refused, not merely unreadable
         assert_eq!(inspect(&ctx, "/etc/hostname", 1), InspectOutcome::Invalid);
         let missing = dir.join("missing.deb");
-        assert_eq!(inspect(&ctx, missing.to_str().unwrap(), 1), InspectOutcome::Unreadable);
+        assert_eq!(
+            inspect(&ctx, missing.to_str().unwrap(), 1),
+            InspectOutcome::Unreadable
+        );
         let exe = dir.join("setup.exe");
         let mut head = vec![0u8; 256];
         head[..2].copy_from_slice(b"MZ");

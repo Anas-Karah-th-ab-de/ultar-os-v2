@@ -287,10 +287,7 @@ mod tests {
         let lan_alone = GOOD
             .replace("network = \"allowed\"", "network = \"none\"")
             .replace("lan = false", "lan = true");
-        assert_eq!(
-            parse(lan_alone.as_bytes()),
-            Err(ManifestError::Permission)
-        );
+        assert_eq!(parse(lan_alone.as_bytes()), Err(ManifestError::Permission));
         let huge = format!("{GOOD}# {}\n", "x".repeat(20_000));
         assert_eq!(parse(huge.as_bytes()), Err(ManifestError::Size));
     }

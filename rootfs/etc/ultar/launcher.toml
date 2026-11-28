@@ -57,3 +57,8 @@ app_bus = "/run/ultar/appbus"
 bus_apps = "/run/ultar/launcher/bus-apps.toml"
 areas_root = "/data/ultar/areas"
 publish_root = "/data/ultar/publish"
+# Apps from other systems (profile app.foreign, docs/integration/ultar-foreign.md): the Linux
+# area written by ultar-foreign is bound read-only (nosuid, nodev) as the root of their cells;
+# the Wayland bridge's directory (ultar-wayland, docs/FREMD-APPS.md P1) read-only at /.ultar.
+foreign_runtime = "/data/ultar/foreign/linux"
+foreign_bridge = "/usr/lib/ultar/foreign"

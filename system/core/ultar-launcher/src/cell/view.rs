@@ -39,7 +39,9 @@ fn mount_point(root: &Path, path: &Path) -> Result<PathBuf, CellFailure> {
 fn safe_link_target(target: &Path) -> bool {
     target.is_relative()
         && target.components().next().is_some()
-        && target.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+        && target
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
         && target.as_os_str().len() <= 64
 }
 

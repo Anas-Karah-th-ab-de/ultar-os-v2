@@ -211,20 +211,25 @@ subscribe = ["settings.changed"]
 # their permissions and taking a permission back (launcher.revoke; never launcher.grant: a
 # permission is granted only through the shell's system dialog), and the installed apps that
 # declare each kind as the choices of the default-app rows (launcher.candidates). Administrator
-# actions are confirmed by the services in the system dialog, not by this rule.
+# actions are confirmed by the services in the system dialog, not by this rule. The apps from
+# other systems (foreign.list/set_choices/remove, the Linux area's state and update): granting
+# such an app more is confirmed by the foreign service in the system dialog as well.
 [[rule]]
 identity  = "app.settings"
-call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "update.download", "update.apply", "launcher.list", "launcher.permissions", "launcher.revoke", "launcher.candidates", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4"]
-subscribe = ["settings.changed", "settings.pending", "settings.pending_resolved", "devices.capabilities", "devices.driver_state", "net.wifi", "vpn.state", "display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state", "power.state", "update.progress"]
+call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "update.download", "update.apply", "launcher.list", "launcher.permissions", "launcher.revoke", "launcher.candidates", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4", "foreign.list", "foreign.set_choices", "foreign.remove", "foreign.runtime_state", "foreign.runtime_update"]
+subscribe = ["settings.changed", "settings.pending", "settings.pending_resolved", "devices.capabilities", "devices.driver_state", "net.wifi", "vpn.state", "display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state", "power.state", "update.progress", "foreign.changed", "foreign.progress"]
 
+# The Files app: a program file of another system (.deb, .exe, .msi, .apk) is inspected and
+# offered for installation (foreign.inspect, foreign.install: the service still asks for an
+# administrator's password and shows its progress, foreign.progress).
 # The Files app: opens a file with its default app – the launcher resolves the URI through
 # apps.default.* (launcher.resolve), then Files starts that app (launcher.start v2 with the
 # URI); launcher.list for the installed apps, the drives in the sidebar and their eject
 # buttons, "the drive may be removed" (notify.post, also in app.*).
 [[rule]]
 identity  = "app.files"
-call      = ["launcher.start", "launcher.list", "launcher.resolve", "volumes.eject"]
-subscribe = ["volumes.state"]
+call      = ["launcher.start", "launcher.list", "launcher.resolve", "volumes.eject", "foreign.inspect", "foreign.install"]
+subscribe = ["volumes.state", "foreign.progress"]
 
 # The App-Builder (store id km-code-craft.appbuilder): installs the package it built for
 # testing; the launcher verifies the signature and refuses it without launcher.admin.
@@ -328,6 +333,18 @@ identity = "system.btd"
 register = ["bluetooth"]
 publish  = ["bluetooth.state"]
 call     = ["sysdialog.bt_pair"]
+
+# Apps from other systems (842, docs/integration/ultar-foreign.md): offers `foreign`
+# (inspect a file, install a Linux program, list, change and remove such apps). It asks the
+# system dialog for an administrator's password before any installation
+# (sysdialog.authenticate) and registers each program with the launcher through
+# launcher.install_foreign; `launcher.foreign` is a right, not a call: it lets the launcher
+# take unsigned app.foreign manifests and uninstall foreign apps from exactly this identity.
+[[rule]]
+identity  = "system.foreign"
+register  = ["foreign"]
+publish   = ["foreign.progress", "foreign.changed"]
+call      = ["launcher.install_foreign", "launcher.uninstall", "launcher.foreign", "sysdialog.authenticate"]
 
 # Removable-drive service (828): offers `volumes`, follows who is in front and the Storage
 # page settings (settings.get/changed). With automount off it offers a drive with a "Mount"

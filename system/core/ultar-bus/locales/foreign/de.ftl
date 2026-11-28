@@ -3,6 +3,7 @@
 foreign.confirm.install = „{arg0}“ ({arg1}) installieren. Dieses Programm stammt aus einem anderen System und wurde von KM Code Craft nicht geprüft. Es läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
 foreign.confirm.archive = Das Paket „{arg0}“ aus den Quellen des Linux-Bereichs installieren. Das Programm läuft abgeschottet in einer eigenen Zelle; Netz: {arg2}; Ordner: {arg3}.
 foreign.confirm.update = Die Pakete des Linux-Bereichs aus seinen signierten Quellen aktualisieren.
+foreign.confirm.change = „{arg0}“ mehr erlauben. Dieses Programm stammt aus einem anderen System und wurde von KM Code Craft nicht geprüft; Netz: {arg2}; Ordner: {arg3}.
 foreign.source.deb = Linux-Paket
 foreign.source.exe = Windows-Programm
 foreign.source.msi = Windows-Installer

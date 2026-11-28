@@ -52,7 +52,11 @@ pub fn host_path(runtime: &Path, inside: &str) -> Option<PathBuf> {
 
 /// The files a package installed (`/var/lib/dpkg/info/<package>[:<arch>].list`).
 pub fn package_files(runtime: &Path, package: &str) -> Vec<String> {
-    for name in [format!("{package}.list"), format!("{package}:amd64.list"), format!("{package}:arm64.list")] {
+    for name in [
+        format!("{package}.list"),
+        format!("{package}:amd64.list"),
+        format!("{package}:arm64.list"),
+    ] {
         if let Some(text) = read_small(&runtime.join("var/lib/dpkg/info").join(name)) {
             return text.lines().map(str::to_owned).collect();
         }
@@ -181,7 +185,12 @@ mod tests {
     fn area(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("ufh-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        for d in ["usr/bin", "usr/share/applications", "usr/share/icons/hicolor/64x64/apps", "var/lib/dpkg/info"] {
+        for d in [
+            "usr/bin",
+            "usr/share/applications",
+            "usr/share/icons/hicolor/64x64/apps",
+            "var/lib/dpkg/info",
+        ] {
             std::fs::create_dir_all(root.join(d)).unwrap();
         }
         std::os::unix::fs::symlink("usr/bin", root.join("bin")).unwrap();

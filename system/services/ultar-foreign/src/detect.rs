@@ -79,7 +79,12 @@ pub fn open_source(roots: &[std::path::PathBuf], path: &str) -> std::io::Result<
         .split_last()
         .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
     for part in inner {
-        dir = openat(&dir, part.as_os_str(), dirs | OFlags::NOFOLLOW, Mode::empty())?;
+        dir = openat(
+            &dir,
+            part.as_os_str(),
+            dirs | OFlags::NOFOLLOW,
+            Mode::empty(),
+        )?;
     }
     // NONBLOCK: a planted pipe must not hold the service
     let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
@@ -92,7 +97,10 @@ pub fn open_source(roots: &[std::path::PathBuf], path: &str) -> std::io::Result<
     let mut head = Vec::with_capacity(HEAD);
     (&mut file).take(HEAD as u64).read_to_end(&mut head)?;
     file.seek(SeekFrom::Start(0))?;
-    let name = wanted.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = wanted
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
     Ok(Opened {
         size: u64::try_from(stat.st_size).unwrap_or(u64::MAX),
         source: source_of(&head, name),
@@ -113,7 +121,10 @@ pub fn path_ok(path: &str) -> bool {
 /// The file's name without the kind (`mousepad_0.6.2_amd64.deb` → `mousepad`) – a
 /// first name until the package says its own.
 pub fn stem(path: &Path) -> String {
-    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
     name.split('_')
         .next()
         .unwrap_or_default()
@@ -152,7 +163,14 @@ mod tests {
     #[test]
     fn paths_and_names() {
         assert!(path_ok("/data/ultar/areas/downloads/a.deb"));
-        for bad in ["a.deb", "/data/../etc/shadow", "/data//a", "/x/./y", "", "/a\0b"] {
+        for bad in [
+            "a.deb",
+            "/data/../etc/shadow",
+            "/data//a",
+            "/x/./y",
+            "",
+            "/a\0b",
+        ] {
             assert!(!path_ok(bad), "{bad:?}");
         }
         assert_eq!(stem(Path::new("/d/mousepad_0.6.2-1_amd64.deb")), "mousepad");

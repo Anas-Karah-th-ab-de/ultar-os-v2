@@ -10,10 +10,9 @@ use crate::state::State;
 use std::path::PathBuf;
 use ultar_bus::messages::foreign::{
     Changed, Failure, Inspect, InspectReply, Install, InstallFrom, InstallOutcome, InstallReply,
-    List, ListReply, Outcome, OutcomeReply, Remove, RuntimeState, RuntimeStateReply,
-    RuntimeUpdate, SetChoices, Source, Step, MAX_APPS, SERVICE,
+    List, ListReply, Outcome, OutcomeReply, Remove, RuntimeState, RuntimeStateReply, RuntimeUpdate,
+    SetChoices, Source, Step, MAX_APPS, SERVICE,
 };
-use ultar_bus::messages::launcher::InstallForeign;
 use ultar_bus::{Call, Client, ErrorCode, IncomingRequest};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Service};
@@ -32,7 +31,12 @@ impl ForeignService {
     /// where files may come from (`detect::SOURCES` on a device).
     pub fn new(root: PathBuf, helper: PathBuf, sources: Vec<PathBuf>) -> Self {
         let layout = Layout::new(&root);
-        let state = State::load(&layout.state()).unwrap_or_default();
+        // a damaged state is kept aside (never overwritten by an empty one): the launcher
+        // still knows the apps, an administrator can look at it
+        let state = State::load(&layout.state()).unwrap_or_else(|_| {
+            let _ = std::fs::rename(layout.state(), layout.state().with_extension("damaged"));
+            State::default()
+        });
         Self {
             ctx: Ctx {
                 layout,
@@ -138,7 +142,9 @@ impl ForeignService {
                     self.state.put(a);
                 }
                 self.save(bus);
-                bus.log(Record::new(Level::Info, "foreign.installed").count("apps", ids.len() as u64));
+                bus.log(
+                    Record::new(Level::Info, "foreign.installed").count("apps", ids.len() as u64),
+                );
                 bus.publish(&progress(Step::Done, ids));
             }
             Ok(None) => bus.publish(&progress(Step::Cancelled, Vec::new())),
@@ -149,18 +155,34 @@ impl ForeignService {
         }
     }
 
-    fn set_choices(&mut self, set: SetChoices, bus: &Bus<'_, Self>) -> Outcome {
+    fn set_choices(&mut self, set: SetChoices, caller: String, bus: &Bus<'_, Self>) -> Outcome {
         if !set.choices.is_valid() {
             return Outcome::Invalid;
         }
         let Some(mut record) = self.state.get(&set.id).cloned() else {
             return Outcome::Unknown;
         };
+        let widens = set.choices.widens(&record.choices());
         record.set_choices(&set.choices);
-        let call = InstallForeign {
-            manifest: record.manifest(),
-        };
-        if bus.call(&call, std::time::Duration::from_secs(20)).is_err() {
+        if widens {
+            // granting more is confirmed like an installation (never by the caller alone)
+            if self.busy {
+                return Outcome::Busy;
+            }
+            let job = self.job_id();
+            self.busy = bus.later(move |client| {
+                let result = jobs::change(client, &caller, job, &record);
+                let apps = result.map(|r| r.map(|a| vec![a]));
+                Box::new(move |s: &mut ForeignService, bus| s.finished(job, apps, bus))
+            });
+            return if self.busy {
+                Outcome::Asking(job)
+            } else {
+                Outcome::Busy
+            };
+        }
+        // taking back needs no confirmation
+        if !jobs::register_one(bus.client(), &record) {
             return Outcome::Failed;
         }
         self.state.put(record);
@@ -195,12 +217,14 @@ impl ForeignService {
             let ctx = self.ctx.clone();
             self.busy = bus.later(move |_client: &Client| {
                 let purged = jobs::purge(&ctx, &record.package);
-                Box::new(move |s: &mut ForeignService, bus: &Bus<'_, ForeignService>| {
-                    s.busy = false;
-                    if purged.is_err() {
-                        bus.log(Record::new(Level::Warn, "foreign.purge_failed"));
-                    }
-                })
+                Box::new(
+                    move |s: &mut ForeignService, bus: &Bus<'_, ForeignService>| {
+                        s.busy = false;
+                        if purged.is_err() {
+                            bus.log(Record::new(Level::Warn, "foreign.purge_failed"));
+                        }
+                    },
+                )
             });
         }
         Outcome::Done
@@ -262,12 +286,18 @@ impl Service for ForeignService {
                 });
             }
             m if m == List::METHOD => {
-                let apps = self.state.apps.iter().take(MAX_APPS).map(|a| a.listed()).collect();
+                let apps = self
+                    .state
+                    .apps
+                    .iter()
+                    .take(MAX_APPS)
+                    .map(|a| a.listed())
+                    .collect();
                 answer::<List>(request, |_| ListReply { apps });
             }
             m if m == SetChoices::METHOD => {
                 answer::<SetChoices>(request, |s| OutcomeReply {
-                    outcome: self.set_choices(s, bus),
+                    outcome: self.set_choices(s, caller, bus),
                 });
             }
             m if m == Remove::METHOD => {

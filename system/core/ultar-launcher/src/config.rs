@@ -260,6 +260,13 @@ mod tests {
         assert!(config.uids.first > 1000 && config.uids.last < 65534);
         assert!(config.paths.group_root.is_some());
         assert!(config.system_view.iter().all(|p| p.is_absolute()));
+        // the Linux area is the one ultar-foreign writes (its --root/linux)
+        let foreign = include_str!("../../../../rootfs/etc/ultar/services/foreign.toml");
+        let runtime = config.paths.foreign_runtime.unwrap();
+        let root = runtime.parent().unwrap().display().to_string();
+        assert!(foreign.contains(&format!("\"--root\", \"{root}\"")));
+        assert_eq!(runtime.file_name().unwrap(), "linux");
+        assert!(config.paths.foreign_bridge.unwrap().is_absolute());
     }
 
     #[test]

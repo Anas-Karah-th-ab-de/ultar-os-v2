@@ -227,10 +227,9 @@ mod tests {
 
     #[test]
     fn control_fields_and_versions() {
-        let c = parse_control(
-            "Package: mousepad\nVersion: 0.6.2-1\nMaintainer: Xubuntu <x@u.org>\n",
-        )
-        .unwrap();
+        let c =
+            parse_control("Package: mousepad\nVersion: 0.6.2-1\nMaintainer: Xubuntu <x@u.org>\n")
+                .unwrap();
         assert_eq!(c.package, "mousepad");
         assert_eq!(c.maintainer, "Xubuntu <x@u.org>");
         assert_eq!(parse_control("Package: ../etc\n"), None);

@@ -50,11 +50,12 @@ pub struct State {
 
 impl State {
     /// Reads the state at `path` (missing: empty; damaged: an error).
-    pub fn load(path: &Path) -> Result<Self, ()> {
+    pub fn load(path: &Path) -> std::io::Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).map_err(|_| ()),
+            Ok(text) => toml::from_str(&text)
+                .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(_) => Err(()),
+            Err(e) => Err(e),
         }
     }
 
@@ -89,7 +90,9 @@ impl State {
 
     /// Whether another app than `except` still comes from `package`.
     pub fn package_used(&self, package: &str, except: &str) -> bool {
-        self.apps.iter().any(|a| a.package == package && a.id != except)
+        self.apps
+            .iter()
+            .any(|a| a.package == package && a.id != except)
     }
 
     /// A free id for the entry `file` of `source`, keeping one this package already has.
@@ -169,7 +172,12 @@ impl AppRecord {
         perms.insert("network".into(), text(network));
         perms.insert(
             "files".into(),
-            toml::Value::Array(self.folders.iter().map(|f| text(&format!("{f}:rw"))).collect()),
+            toml::Value::Array(
+                self.folders
+                    .iter()
+                    .map(|f| text(&format!("{f}:rw")))
+                    .collect(),
+            ),
         );
         root.insert("permissions".into(), toml::Value::Table(perms));
         let mut foreign = toml::Table::new();
@@ -235,15 +243,21 @@ mod tests {
     fn ids_are_short_valid_and_free() {
         assert_eq!(slug("org.xfce.mousepad", 14).as_deref(), Some("mousepad"));
         assert_eq!(slug("7zip_GUI", 14).as_deref(), Some("a7zip-gui"));
-        assert_eq!(slug("a-very-long-program-name", 14).as_deref(), Some("a-very-long-pr"));
+        assert_eq!(
+            slug("a-very-long-program-name", 14).as_deref(),
+            Some("a-very-long-pr")
+        );
         assert_eq!(slug("---", 14), None);
         let mut s = State::default();
-        let id = s.id_for(Source::Deb, "mousepad", "org.xfce.mousepad").unwrap();
+        let id = s
+            .id_for(Source::Deb, "mousepad", "org.xfce.mousepad")
+            .unwrap();
         assert_eq!(id, "foreign.deb-mousepad");
         assert!(id.len() <= MAX_ID);
         s.put(record(&id, "other-package"));
         assert_eq!(
-            s.id_for(Source::Deb, "mousepad", "org.xfce.mousepad").as_deref(),
+            s.id_for(Source::Deb, "mousepad", "org.xfce.mousepad")
+                .as_deref(),
             Some("foreign.deb-mousepad-2")
         );
     }
@@ -267,11 +281,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ufs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("state.toml");
-        assert_eq!(State::load(&path), Ok(State::default()));
+        assert_eq!(State::load(&path).unwrap(), State::default());
         let mut s = State::default();
         s.put(record("foreign.deb-mousepad", "mousepad"));
         s.save(&path).unwrap();
-        assert_eq!(State::load(&path), Ok(s.clone()));
+        assert_eq!(State::load(&path).unwrap(), s.clone());
         assert!(!s.package_used("mousepad", "foreign.deb-mousepad"));
         std::fs::write(&path, "apps = 3").unwrap();
         assert!(State::load(&path).is_err());

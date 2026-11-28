@@ -196,8 +196,12 @@ fn mount_point(root: &Path, inside: &str) -> Result<PathBuf, ()> {
 fn bind_writable(runtime: &Path) -> Result<(), ()> {
     use rustix::mount::{mount_bind, mount_remount, MountFlags};
     mount_bind(runtime, runtime).map_err(|_| ())?;
-    mount_remount(runtime, MountFlags::BIND | MountFlags::NOSUID | MountFlags::NODEV, "")
-        .map_err(|_| ())
+    mount_remount(
+        runtime,
+        MountFlags::BIND | MountFlags::NOSUID | MountFlags::NODEV,
+        "",
+    )
+    .map_err(|_| ())
 }
 
 fn devices(root: &Path) -> Result<(), ()> {
@@ -344,7 +348,10 @@ pub fn stage_two(words: &[String]) -> i32 {
         return SETUP_FAILED;
     }
     let mut command = Command::new(&job.program[0]);
-    command.args(&job.program[1..]).env_clear().stdin(Stdio::null());
+    command
+        .args(&job.program[1..])
+        .env_clear()
+        .stdin(Stdio::null());
     for (k, v) in environment() {
         command.env(k, v);
     }
@@ -385,6 +392,11 @@ mod tests {
             inbox: None,
             program: vec!["/bin/true".into()],
         };
-        assert!(run(Path::new("/nonexistent/helper"), &job, Duration::from_secs(1)).is_err());
+        assert!(run(
+            Path::new("/nonexistent/helper"),
+            &job,
+            Duration::from_secs(1)
+        )
+        .is_err());
     }
 }

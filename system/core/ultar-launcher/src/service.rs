@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ultar_bus::messages::launcher::{
     Candidates, CandidatesReply, Grant, Install, InstallForeign, List, ListReply, Permissions,
-    Resolve, ResolveReply, Revoke, Start, StartReplyV1, StartV1, Stop, Uninstall,
-    UninstallReply, ADMIN_METHOD, FOREIGN_METHOD, SERVICE,
+    Resolve, ResolveReply, Revoke, Start, StartReplyV1, StartV1, Stop, Uninstall, UninstallReply,
+    ADMIN_METHOD, FOREIGN_METHOD, SERVICE,
 };
 use ultar_bus::Message;
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
@@ -206,9 +206,8 @@ pub fn answer(request: IncomingRequest, launcher: &Arc<Launcher>, admins: &Mutex
                 .map_err(code)
         }),
         "install" => request.respond::<Install>(|i| launcher.install(&i.package).map_err(code)),
-        "install_foreign" => request.respond::<InstallForeign>(|i| {
-            launcher.install_foreign(&i.manifest).map_err(code)
-        }),
+        "install_foreign" => request
+            .respond::<InstallForeign>(|i| launcher.install_foreign(&i.manifest).map_err(code)),
         "uninstall" => request.respond::<Uninstall>(|u| {
             launcher
                 .uninstall(&u.app, u.keep_data)

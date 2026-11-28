@@ -159,7 +159,12 @@ fn foreign_isolation(
     entry: &Entry,
     manifest: &Manifest,
 ) -> Result<(bool, Option<bool>), LaunchError> {
-    for feature in [Feature::Ids, Feature::Cell, Feature::Groups, Feature::DeviceBinds] {
+    for feature in [
+        Feature::Ids,
+        Feature::Cell,
+        Feature::Groups,
+        Feature::DeviceBinds,
+    ] {
         platform
             .require_strictly(feature)
             .map_err(LaunchError::Platform)?;

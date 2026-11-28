@@ -119,6 +119,14 @@ impl Choices {
             && self.folders.len() <= MAX_FOLDERS
             && self.folders.iter().all(|f| FOLDERS.contains(&f.as_str()))
     }
+
+    /// Whether `self` grants anything `before` did not (network, the local network, a
+    /// folder): such a change is confirmed by an administrator like an installation.
+    pub fn widens(&self, before: &Choices) -> bool {
+        (self.network == NetworkChoice::Internet && before.network == NetworkChoice::None)
+            || (self.lan && !before.lan)
+            || self.folders.iter().any(|f| !before.folders.contains(f))
+    }
 }
 
 /// `foreign.inspect` – what a file of the person is, before anything happens.
@@ -303,6 +311,9 @@ pub struct ListReply {
 pub enum Outcome {
     /// Done.
     Done,
+    /// The change grants more: an administrator is asked first. The end follows on
+    /// [`Progress`] of this job (`Done`, `Cancelled` or `Failed`).
+    Asking(u64),
     /// No app from another system has this id.
     Unknown,
     /// A value is refused.
@@ -511,5 +522,30 @@ mod tests {
             ..Choices::default()
         };
         assert!(!unknown.is_valid());
+    }
+
+    #[test]
+    fn granting_more_is_noticed_and_taking_back_is_not() {
+        let none = Choices::default();
+        let net = Choices {
+            network: NetworkChoice::Internet,
+            ..Choices::default()
+        };
+        let lan = Choices {
+            lan: true,
+            ..net.clone()
+        };
+        let docs = Choices {
+            folders: vec!["documents".into()],
+            ..net.clone()
+        };
+        assert!(net.widens(&none) && lan.widens(&net) && docs.widens(&net));
+        assert!(
+            docs.widens(&lan),
+            "a folder is more, even with less network"
+        );
+        for (after, before) in [(&none, &net), (&net, &lan), (&net, &docs), (&none, &none)] {
+            assert!(!after.widens(before), "{after:?} after {before:?}");
+        }
     }
 }

@@ -3,6 +3,7 @@
 foreign.confirm.install = تثبيت «{arg0}» ({arg1}). هذا البرنامج من نظام آخر ولم تفحصه KM Code Craft. سيعمل معزولاً في خليته الخاصة، الشبكة: {arg2}، المجلدات: {arg3}.
 foreign.confirm.archive = تثبيت الحزمة «{arg0}» من مصادر منطقة لينكس. سيعمل البرنامج معزولاً في خليته الخاصة، الشبكة: {arg2}، المجلدات: {arg3}.
 foreign.confirm.update = تحديث حزم منطقة لينكس من مصادرها الموقّعة.
+foreign.confirm.change = السماح لـ«{arg0}» بالمزيد. هذا البرنامج من نظام آخر ولم تفحصه KM Code Craft، الشبكة: {arg2}، المجلدات: {arg3}.
 foreign.source.deb = حزمة لينكس
 foreign.source.exe = برنامج ويندوز
 foreign.source.msi = مثبّت ويندوز

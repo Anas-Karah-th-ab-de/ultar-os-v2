@@ -50,6 +50,9 @@ llmcloud = 837
 # The on-screen keyboard (ultar-osk): compositor right ui.input-method only.
 osk = 839
 installer = 840
+# Apps from other systems (ultar-foreign, docs/integration/ultar-foreign.md): installs Linux
+# programs into its Linux area in its own cells and registers them with the launcher.
+foreign = 842
 nobody = 65534
 
 [groups]
@@ -91,7 +94,7 @@ desktop = ["busd"]
 audio = ["audiod"]
 radio = ["netd", "btd"]
 disk = ["volumed"]
-userfiles = ["launcher"]
+userfiles = ["launcher", "foreign"]
 # Their sockets at the bus and the log service are open to their own groups.
 displayd = ["busd", "logd"]
 accountd = ["busd", "logd"]
@@ -112,6 +115,7 @@ llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
 osk = ["busd"]
 updated = ["busd", "logd"]
+foreign = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

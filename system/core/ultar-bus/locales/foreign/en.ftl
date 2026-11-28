@@ -3,6 +3,7 @@
 foreign.confirm.install = Install “{arg0}” ({arg1}). This program comes from another system and was not checked by KM Code Craft. It runs isolated in its own cell; network: {arg2}; folders: {arg3}.
 foreign.confirm.archive = Install the package “{arg0}” from the sources of the Linux area. The program runs isolated in its own cell; network: {arg2}; folders: {arg3}.
 foreign.confirm.update = Update the packages of the Linux area from its signed sources.
+foreign.confirm.change = Allow “{arg0}” more. This program comes from another system and was not checked by KM Code Craft; network: {arg2}; folders: {arg3}.
 foreign.source.deb = Linux package
 foreign.source.exe = Windows program
 foreign.source.msi = Windows installer

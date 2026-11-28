@@ -40,6 +40,7 @@ args = [
     "--listen", "/run/ultar/log/netd.sock=system.netd", "--mode", "0660", "--group", "826",
     "--listen", "/run/ultar/log/btd.sock=system.btd", "--mode", "0660", "--group", "827",
     "--listen", "/run/ultar/log/volumed.sock=system.volumed", "--mode", "0660", "--group", "828",
+    "--listen", "/run/ultar/log/foreign.sock=system.foreign", "--mode", "0660", "--group", "842",
     "--listen", "/run/ultar/log/mesh.sock=system.mesh", "--mode", "0660", "--group", "833",
     "--listen", "/run/ultar/log/agentd.sock=system.agentd", "--mode", "0660", "--group", "834",
     "--listen", "/run/ultar/log/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835",
@@ -57,7 +58,7 @@ args = [
     "--fsync", "batch",
 ]
 user = 802
-groups = [801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833, 834, 835, 837, 841]
+groups = [801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833, 834, 835, 837, 841, 842]
 dirs = ["/data/ultar/log"]
 public_dirs = ["/run/ultar/log"]
 notify = true
