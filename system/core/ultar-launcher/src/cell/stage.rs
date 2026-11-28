@@ -183,7 +183,7 @@ fn confine(plan: &CellPlan) -> Result<(), CellFailure> {
     // and with it this limit; a cell that stays the launcher's own user (a build under
     // test, started without the right to change users) would count that user's other
     // programs too and could not start – there the limit is not set.
-    if let (Some(n), Some(_)) = (plan.nproc, plan.identity) {
+    if let (Some(n), Some(_)) = (plan.limits.nproc, plan.identity) {
         ultar_sys::set_limit(Resource::Processes, n, n).map_err(|_| CellFailure::Setup)?;
     }
     if let Some((uid, gid)) = plan.identity {
@@ -202,7 +202,7 @@ fn confine(plan: &CellPlan) -> Result<(), CellFailure> {
         Ok(()) | Err(Errno::ENOSYS | Errno::EINVAL) => {}
         Err(_) => return Err(CellFailure::Rights),
     }
-    if let Some(mask) = plan.drop_rights {
+    if let Some(mask) = plan.limits.drop_rights {
         ultar_sys::ultar_drop_rights(mask).map_err(|_| CellFailure::Rights)?;
         let left = ultar_sys::ultar_rights().map_err(|_| CellFailure::Rights)?;
         if left & mask != 0 {

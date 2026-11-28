@@ -4,7 +4,7 @@ version = "0.8.1"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
-description = "Service for apps from other systems (Linux, later Windows and Android): checks files, asks the administrator, installs into the Linux area in a cell and registers the programs as app.foreign apps (system services, area 4)"
+description = "Service for apps from other systems (Linux, later Windows and Android): checks files, asks the administrator, installs into the Linux area in a cell and registers the programs as app.foreign apps (system core, area 3: builds cells like the launcher and needs ultar-sys)"
 
 [lib]
 name = "ultar_foreign"
@@ -23,11 +23,11 @@ name = "apk-variant"
 required-features = ["test-sign"]
 
 [dependencies]
-ultar-bus = { path = "../../core/ultar-bus" }
-ultar-service = { path = "../../core/ultar-service" }
-ultar-svckit = { path = "../../core/ultar-svckit" }
+ultar-bus = { path = "../ultar-bus" }
+ultar-service = { path = "../ultar-service" }
+ultar-svckit = { path = "../ultar-svckit" }
 ultar-sys = { path = "../../hal/ultar-sys" }
-ultar-pkg = { path = "../../core/ultar-pkg" }
+ultar-pkg = { path = "../ultar-pkg" }
 tar = "0.4"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde = { version = "1", features = ["derive"] }
@@ -42,4 +42,4 @@ p384 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8
 ecdsa = { version = "0.16", default-features = false, features = ["verifying", "std"] }
 
 [dev-dependencies]
-ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
+ultar-svckit = { path = "../ultar-svckit", features = ["testkit"] }

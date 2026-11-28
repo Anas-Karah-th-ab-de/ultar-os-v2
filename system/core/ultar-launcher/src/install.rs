@@ -169,18 +169,7 @@ impl Launcher {
         let owner = core.owner(uid)?;
         datadir::ensure_app_dir(&core.config.paths.data_root, id.as_str(), owner)
             .map_err(|_| LaunchError::StartFailed)?;
-        // an update keeps what the user granted, as far as it is still declared
-        let kept = previous
-            .filter(|e| e.installed)
-            .map_or(PermissionSet::EMPTY, |e| e.granted);
-        let initial = profile_name.profile().initial_grants(manifest);
-        let granted = PermissionSet::of(
-            &manifest
-                .declared
-                .iter()
-                .filter(|p| kept.has(*p) || initial.has(*p))
-                .collect::<Vec<Permission>>(),
-        );
+        let granted = granted_after(manifest, profile_name, previous);
         let digest = core.store.save_manifest(&id, &signed.bytes)?;
         let entry = Entry {
             uid,
@@ -202,6 +191,26 @@ impl Launcher {
             declared: states(manifest.declared, granted),
         })
     }
+}
+
+/// What the app holds once installed: an update keeps what the user granted, as far as it
+/// is still declared, and the profile adds what it grants at once.
+fn granted_after(
+    manifest: &Manifest,
+    profile_name: ProfileName,
+    previous: Option<Entry>,
+) -> PermissionSet {
+    let kept = previous
+        .filter(|e| e.installed)
+        .map_or(PermissionSet::EMPTY, |e| e.granted);
+    let initial = profile_name.profile().initial_grants(manifest);
+    PermissionSet::of(
+        &manifest
+            .declared
+            .iter()
+            .filter(|p| kept.has(*p) || initial.has(*p))
+            .collect::<Vec<Permission>>(),
+    )
 }
 
 #[cfg(test)]

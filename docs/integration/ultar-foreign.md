@@ -10,7 +10,7 @@ package runs outside a cell, and there is no unsafe mode.
 | Part | Where | What it does |
 |---|---|---|
 | Linux area | `/data/ultar/foreign/linux`, built by `tools/foreign/make-linux-runtime.sh` | Ubuntu 26.04 "resolute" minbase (24.04 "noble" only when resolute cannot be reached): apt/dpkg, GTK 3 and 4, the Qt 6 Wayland plugin, Mesa (llvmpipe), Noto fonts with Arabic, CA certificates, locales ar_SY/en_US/de_DE, a replacement `xdg-utils` (fails with a message: no bus in the cells). Never systemd, udev, an SSH server, snapd, polkit (apt pins at priority -1); no set-id program (removed at build time and by a `DPkg::Post-Invoke` hook after every dpkg run); no device node. Output: the tree, an ext4 image with its SHA-256, and with `ULTAR_PKG_KEY` a signed ultar-pkg component `foreign.linux-runtime-<version>-<arch>.uap` (kind `data`: the image, its checksum and `runtime.txt`). |
-| Service | `system/services/ultar-foreign`, user 844, `rootfs/etc/ultar/services/foreign.toml` | Offers `foreign.*` on the bus (contract `system/core/ultar-bus/src/messages/foreign.rs`, texts `locales/foreign/{ar,en,de}.ftl`). Inspects files, installs `.deb` files after the administrator confirmed, registers each visible program with the launcher, changes and removes them. |
+| Service | `system/core/ultar-foreign` (system core like the launcher, not `system/services`: it builds cells and needs the HAL crate `ultar-sys`, which `tools/check-layers.toml` allows the system core only), user 844, `rootfs/etc/ultar/services/foreign.toml` | Offers `foreign.*` on the bus (contract `system/core/ultar-bus/src/messages/foreign.rs`, texts `locales/foreign/{ar,en,de}.ftl`). Inspects files, installs `.deb` files after the administrator confirmed, registers each visible program with the launcher, changes and removes them. |
 | Launcher profile `app.foreign` | `system/core/ultar-launcher` (`foreign.rs`, `profile.rs`, `plan.rs`) | Kind `compat-deb`: the app's cell has the Linux area read-only (nosuid, nodev) as its root, its own user, home and `/tmp`, the Wayland bridge read-only at `/.ultar`, no bus socket. |
 | Android apps (stage P5) | component of the Linux area, built by `tools/foreign/make-android-runtime.sh` | Android Translation Layer (ATL) with ART (`art_standalone`), `bionic_translation`, wolfSSL (JNI) and OpenSL ES from pinned sources as `ultar-android-runtime_<version>_amd64.deb`, installed into the area; `/opt/ultar-android/bin/ultar-apk-run` starts an app. See "Android apps" below. |
 | Bridge | `ultar-wayland` (stage P1, `/usr/lib/ultar/foreign`) | Started in the cell as `/.ultar/ultar-wayland -- <Exec>`; the only socket in `XDG_RUNTIME_DIR=/tmp/.run` is its `wayland-0`. Without the bridge the program starts without a display. |
@@ -207,7 +207,7 @@ and ultar-pkg reads packages whole into memory – so a component is **two files
 „Windows-Programme“, the same id with Wine). The person gets them from the Ultar Store (it puts its
 downloads into the Downloads area) or on a USB drive; Settings → Apps from other systems →
 „Installieren“ (or „Aktualisieren“) calls `foreign.runtime_update`, and the service
-(`system/services/ultar-foreign/src/component.rs`):
+(`system/core/ultar-foreign/src/component.rs`):
 
 1. looks below its sources (the person's areas, mounted drives; three levels, no links followed) for
    `foreign.linux-runtime-*.uap`, copies each into its inbox (opened without following links) and checks

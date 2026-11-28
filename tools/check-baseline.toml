@@ -990,11 +990,6 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "kernel/ultar-kern/src/drivers/gen_hda.rs"
-count = 1
-
-[[entry]]
-rule = "size"
 path = "kernel/ultar-kern/src/drivers/gen_intel_eth.rs"
 count = 1
 
@@ -1530,11 +1525,6 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "system/core/ultar-busd/src/service_files_tests.rs"
-count = 2
-
-[[entry]]
-rule = "size"
 path = "system/core/ultar-init/src/boot.rs"
 count = 2
 
@@ -1831,7 +1821,7 @@ count = 1
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/drivers/ps2maus.rs"
-count = 9
+count = 8
 
 [[entry]]
 rule = "unsafe"
@@ -1906,7 +1896,7 @@ count = 17
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/proc.rs"
-count = 24
+count = 23
 
 [[entry]]
 rule = "unsafe"
@@ -2201,7 +2191,7 @@ count = 5
 [[entry]]
 rule = "unwrap"
 path = "kernel/ultar-kern/src/signal.rs"
-count = 2
+count = 1
 
 [[entry]]
 rule = "unwrap"
@@ -2877,11 +2867,4 @@ count = 1
 rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
-
-
-# servo-host is its own workspace and cannot use the HAL crate; it names the kernel's sound node once
-[[entry]]
-rule = "paths"
-path = "external/servo-host/src/pcm.rs"
-count = 1
 

@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn service_contract_names_are_valid() {
+    fn device_service_contract_names_are_valid() {
         check_topic::<super::volumes::VolumesState>();
         check_call::<super::volumes::Eject>();
         check_topic::<super::bluetooth::BluetoothState>();
@@ -236,6 +236,10 @@ mod tests {
         check_call::<super::audio::SetMute>();
         check_call::<super::audio::Outputs>();
         check_call::<super::audio::SetOutput>();
+    }
+
+    #[test]
+    fn app_service_contract_names_are_valid() {
         check_call::<super::foreign::Inspect>();
         check_call::<super::foreign::Install>();
         check_call::<super::foreign::List>();

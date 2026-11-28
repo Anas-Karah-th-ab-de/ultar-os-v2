@@ -3,7 +3,7 @@
 //! profile and the grants, never by the app.
 
 use crate::appid::AppId;
-use crate::cell::{view, CellPlan, DevMode};
+use crate::cell::{view, CellLimits, CellPlan, DevMode, ForeignBinds};
 use crate::datadir;
 use crate::error::{LaunchError, PackageError};
 use crate::launcher::Core;
@@ -225,24 +225,27 @@ fn foreign_cell(
     let runtime = core
         .config
         .paths
-        .foreign_runtime
+        .foreign
+        .runtime
         .clone()
         .filter(|r| r.join("usr").is_dir())
         .ok_or(LaunchError::StartFailed)?;
     let bridge = core
         .config
         .paths
-        .foreign_bridge
+        .foreign
+        .bridge
         .clone()
         .filter(|b| b.join(crate::foreign::BRIDGE_PROGRAM).is_file());
     plan.view.clear();
-    plan.runtime = Some(runtime);
+    plan.foreign.runtime = Some(runtime);
     plan.program = crate::foreign::bridged(&plan.program, bridge.is_some());
-    plan.bridge = bridge;
-    plan.setup = core
+    plan.foreign.bridge = bridge;
+    plan.foreign.setup = core
         .config
         .paths
-        .foreign_setup
+        .foreign
+        .setup
         .as_ref()
         .and_then(|root| crate::foreign::setup_dir(root, id));
     plan.publish = None;
@@ -362,12 +365,12 @@ pub(crate) fn prepare(
         publish: publish.clone(),
         groups,
         dev,
-        tmp_bytes: limits.tmp_bytes,
-        drop_rights: platform.ultar.then_some(!keep),
-        nproc: Some(u64::from(limits.pids)),
-        runtime: None,
-        bridge: None,
-        setup: None,
+        limits: CellLimits {
+            tmp_bytes: limits.tmp_bytes,
+            drop_rights: platform.ultar.then_some(!keep),
+            nproc: Some(u64::from(limits.pids)),
+        },
+        foreign: ForeignBinds::default(),
         program,
     };
     let mut env = environment(id, role, if cell { None } else { Some(&data) }, opening);

@@ -150,7 +150,7 @@ fn files_search_filters_by_name_and_content_and_esc_clears() {
     for c in "ميزانية".chars() {
         key(&mut app, Key::Char(c), Modifiers::default());
     }
-    let mut hits = app.state.hits.clone().unwrap();
+    let mut hits = app.state.search.hits.clone().unwrap();
     hits.sort();
     assert_eq!(
         hits,
@@ -159,7 +159,7 @@ fn files_search_filters_by_name_and_content_and_esc_clears() {
     );
     assert_eq!(app.built().item_nodes.len(), 2);
     key(&mut app, Key::Escape, Modifiers::default());
-    assert!(app.state.query.is_empty() && app.state.hits.is_none());
+    assert!(app.state.search.query.is_empty() && app.state.search.hits.is_none());
     assert_eq!(app.built().item_nodes.len(), 7);
 }
 

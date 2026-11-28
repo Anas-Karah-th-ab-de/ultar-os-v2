@@ -167,7 +167,7 @@ fn tools(
     );
     let field = SearchField::new(name.clone())
         .placeholder(name)
-        .text(&s.query);
+        .text(&s.search.query);
     let width = if compact || narrow {
         Sizing::grow(1)
     } else {
