@@ -54,6 +54,11 @@ fn main() -> ExitCode {
         eprintln!("ultar-web-engine: started with unknown options (only the browser starts it)");
         return ExitCode::from(2);
     };
+    // where the sound of pages goes (a stream socket of the sound server)
+    #[cfg(any(feature = "media", test))]
+    if let Some(path) = &args.audio_socket {
+        pcm::set_socket(path);
+    }
     // the page cell first: no network of its own, the proxy is the relay's loopback port
     let proxy = match cell::enter(&args) {
         Ok(cell::Entered::Finished(code)) => return ExitCode::from(code),

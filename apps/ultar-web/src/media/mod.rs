@@ -1,6 +1,6 @@
 //! Sound and video of web pages, played by the browser itself (no browser engine needed):
 //! the file is fetched, its sound decoded in pure Rust ([`audio`]: MP3, AAC, FLAC, Vorbis,
-//! WAV) and played through the sound card ([`sink`]: `/dev/ultar/pcm` of the Ultar kernel),
+//! WAV) and played through the sound server ([`sink`]: a media stream of `ultar-audiod`),
 //! its pictures decoded from MP4/H.264 ([`video`]); both follow one clock ([`clock`]).
 //! [`player::Player`] runs this on threads and hands the newest picture and its state to the
 //! page. Not supported yet: WebM video (VP8/VP9/AV1), Opus sound, streams (HLS/DASH) and

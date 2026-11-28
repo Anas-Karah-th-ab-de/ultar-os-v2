@@ -20,6 +20,9 @@ pub struct Args {
     /// The only way out of a cell without network: the browser's Unix socket for HTTP
     /// `CONNECT` (`--proxy-socket`). The relay inside the cell leads Servo's proxy to it.
     pub proxy_socket: Option<PathBuf>,
+    /// The sound server's stream socket of the browser (`--audio-socket`): where the sound of
+    /// pages goes. Passed into the page cell like the Tor socket.
+    pub audio_socket: Option<PathBuf>,
     /// The cell the host must build before Servo starts.
     pub cell: Cell,
     /// Internal, set by the host itself for its second stage (`--cell-init ROOT`): the folder
@@ -68,6 +71,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Option<Args> {
             "--filter" => a.filter = Some(it.next()?.into()),
             "--proxy" => a.proxy = Some(it.next()?.into_string().ok()?),
             "--proxy-socket" => a.proxy_socket = Some(it.next()?.into()),
+            "--audio-socket" => a.audio_socket = Some(it.next()?.into()),
             "--cell-init" => a.cell_init = Some(it.next()?.into()),
             "--cell-selftest" => a.selftest = true,
             "--cell-ro" => a.cell.read_only.push(it.next()?.into()),
@@ -138,6 +142,17 @@ mod tests {
         );
         assert!(a.selftest && a.proxy.is_none());
         assert!(parse(os(&["--cell-init"])).is_none());
+    }
+
+    #[test]
+    fn the_sound_socket_is_understood() {
+        let a = parse(os(&["--no-cell", "--audio-socket", "/run/ultar/audio/app.browser.sock"]))
+            .unwrap();
+        assert_eq!(
+            a.audio_socket.as_deref(),
+            Some(std::path::Path::new("/run/ultar/audio/app.browser.sock"))
+        );
+        assert!(parse(os(&["--no-cell", "--audio-socket"])).is_none());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! The GStreamer audio sink of the `media` feature: an element registered in the running host
 //! with a higher rank than the sinks of the distributions, so Servo's pipeline (servo-media asks
-//! for `autoaudiosink`) picks it. Every buffer it is given is written to the Ultar sound card
-//! ([`crate::pcm`]: 48 kHz, 16 bit, stereo, non-blocking); when the card is busy the rest of the
+//! for `autoaudiosink`) picks it. Every buffer it is given is written to a stream of the Ultar
+//! sound server ([`crate::pcm`]: 48 kHz, 16 bit, stereo, non-blocking); when it is busy the rest of the
 //! buffer is dropped (no backlog to grow). Its pad accepts exactly that format, so the
 //! converters in front of it (`audioconvert`, `audioresample`) do the rest.
 
@@ -30,7 +30,7 @@ mod imp {
     impl Default for UltarPcmSink {
         fn default() -> Self {
             UltarPcmSink {
-                location: Mutex::new(pcm::PCM_NODE.to_string()),
+                location: Mutex::new(pcm::socket()),
                 card: Mutex::new(None),
             }
         }
@@ -48,8 +48,8 @@ mod imp {
             static PROPS: LazyLock<Vec<glib::ParamSpec>> = LazyLock::new(|| {
                 vec![glib::ParamSpecString::builder("location")
                     .nick("Location")
-                    .blurb("The sound card node (a test may name any writable file)")
-                    .default_value(Some(pcm::PCM_NODE))
+                    .blurb("The sound server's stream socket")
+                    .default_value(Some(pcm::AUDIO_SOCKET))
                     .build()]
             });
             PROPS.as_ref()
@@ -85,7 +85,7 @@ mod imp {
                 gst::subclass::ElementMetadata::new(
                     "Ultar PCM Sink",
                     "Sink/Audio",
-                    "Writes raw 48 kHz 16-bit stereo audio to the Ultar sound card",
+                    "Writes raw 48 kHz 16-bit stereo audio to the Ultar sound server",
                     "Ultar",
                 )
             });
@@ -203,14 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn buffers_reach_the_card_node_unchanged_and_in_order() {
+    fn buffers_reach_the_sound_server_unchanged_and_in_order() {
         install();
         let dir = std::env::temp_dir().join(format!("ultar-pcm-sink-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let node = dir.join("pcm");
         std::fs::write(&node, b"").unwrap();
+        let socket = dir.join("server.sock");
+        crate::pcm::stand_in::serve(&socket, &node);
         let el = gst::ElementFactory::make("ultarpcmsink")
-            .property("location", node.to_str().unwrap())
+            .property("location", socket.to_str().unwrap())
             .property("sync", false)
             .build()
             .unwrap();
@@ -234,6 +236,7 @@ mod tests {
         assert!(pad.chain(buffer(&a)).is_ok());
         assert!(pad.chain(buffer(&b)).is_ok());
         el.set_state(gst::State::Null).unwrap();
+        crate::pcm::stand_in::wait_for(&node, 128);
         let written = std::fs::read(&node).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(written, (0..128u8).collect::<Vec<u8>>());

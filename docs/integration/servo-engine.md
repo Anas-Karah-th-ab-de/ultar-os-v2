@@ -117,8 +117,13 @@ vom Host gesetzt). Das Bündel, sein Bau und die Annahmen stehen in `servo-bundl
    die Liste, was im Kern fehlt, steht in `servo-cell.md`. Entwicklung: `ultar-web --no-cell`.
 2. **Ultar-Kern:** belegt (Abschnitt „Ultar-Kern“ oben, Einzelheiten in `servo-bundle.md`). Offen dort:
    iris (Grafikkarte) ungetestet, Bündel noch unsigniert, Spawn der Engine durch den Browser auf dem Kern.
-3. **Ton und Video:** Merkmal `media` (GStreamer): die Tonsenke für `/dev/ultar/pcm` ist da
-   (`src/pcm.rs`, `src/media/gst.rs`, Einheitentests grün). Offen: GStreamer samt Plug-ins als eigene
+3. **Ton und Video:** Merkmal `media` (GStreamer): die Tonsenke schreibt in einen Medien-Strom des
+   Tonservers (`ultar-audiod`, Socket `--audio-socket`, Standard `/run/ultar/audio/app.browser.sock`;
+   `src/pcm.rs`, `src/media/gst.rs`, Einheitentests mit einem Stand-in-Server grün). Der Host hat
+   kein Kernel-Recht `sound` mehr. Offen: der Socket muss in die Seitenzelle (`--audio-socket` liegt
+   unter einem Ordner der Zelle, geprüft in `cell::plan`); dass der Starter (Browser, Launcher) nur
+   diesen einen Socket in die Zelle legt und `--audio-socket` mitgibt, ist nicht verdrahtet.
+   Offen außerdem: GStreamer samt Plug-ins als eigene
    Pakete (Bündel hat noch kein `lib/gstreamer-1.0`), Ton auf dem Kern nicht gehört. YouTube & Co.
    brauchen MSE, das Servo nicht hat. Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).
 4. Auswahllisten (`<select>`), Datei-Auswahl, Dialoge (`alert`), Kontextmenüs der Seite: der Host
