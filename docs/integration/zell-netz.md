@@ -58,6 +58,11 @@ multicast and subnet broadcast refused, DNS server on 53 allowed and its answer 
 survives fork + `execve`; the host never got it; `clone(CLONE_NEWNET)`; `CLONE_NEWNET` without `MOUNT` →
 `EPERM`; `PR_SET_PDEATHSIG` ends an orphan with its parent, without it the orphan lives on.
 
+Found along the way (a kernel bug older than this stage): a blocking `connect` could wait for good when the
+answer was handled inside the call – a local RST (closed port on a loopback) or SYN-ACK came back within the
+call's own `poll()`, and the wait then started from the generation after it. The wait now starts from the
+generation before the attempt, and a refusal seen inside the call is returned at once (`ECONNREFUSED`).
+
 ## 4. Not done / open
 
 * No IPv6 at all in the kernel (`AF_INET6` → `EAFNOSUPPORT`); the barrier rules for IPv6 come with IPv6.
