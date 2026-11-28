@@ -57,11 +57,12 @@ fn component_first() {
         return;
     };
     let out = std::process::Command::new(&test)
-        .args(["--helper", &format!("{bin}/ultar-foreign"), "--work", "/data/componenttest"])
+        // below the service's root, where the kernel test's data disk takes new directories
+        .args(["--helper", &format!("{bin}/ultar-foreign"), "--work", "/data/foreign/componenttest"])
         .output()
         .unwrap_or_else(|e| fail(&format!("component: {e}")));
     let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
+    for line in text.lines().chain(String::from_utf8_lossy(&out.stderr).lines().take(20)) {
         println!("{line}");
     }
     check(text.contains("COMPONENT: ALLES OK"), "component: the component test failed");
