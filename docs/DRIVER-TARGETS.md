@@ -1,6 +1,6 @@
 # Treiberziele – zwei Testrechner vollständig
 
-Stand 22.11.2026 · Ziel: Ultar-Kern (ohne Linux) läuft auf **beiden** Rechnern vollständig, jeder Treiber als `.utr`
+Stand 28.11.2026 (Welle A: MSI/MSI-X, IOMMU, RNDIS, SDHCI, BT-ID) · Ziel: Ultar-Kern (ohne Linux) läuft auf **beiden** Rechnern vollständig, jeder Treiber als `.utr`
 im Installationsmedium.
 
 - **T1** Lenovo ThinkPad P1 Gen 3 – Laptop (Akku, Panel 4K, Touchpad, WLAN) → `devices/thinkpad-p1-gen3/`
@@ -21,7 +21,7 @@ und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 | xHCI + Hubs + HID (Tastatur/Maus) + Massenspeicher | ✔ | ✔ | ✅ T2 geprüft, T1 🔧 | xHCI 1.2 |
 | Anzeige über UEFI-GOP (feste Auflösung) | ✔ | ✔ | ✅ | UEFI |
 | Ethernet Intel I219-LM | ✔ | – | 🔧 `gen-intel-eth` deckt I219 ab, am Gerät prüfen | Intel-Datenblatt |
-| Ethernet Intel E610 10 GbE | – | ✔ | ✅ geprüft; Verbindung mit Kabel, MSI-X offen | Intel-Datenblatt |
+| Ethernet Intel E610 10 GbE | – | ✔ | ✅ geprüft; MSI-X RxQ0 am echten E610 (VFIO) belegt (`netz` → „10G MSI-X-Unterbrechungen: 1“); Verbindung mit Kabel/Gegenstelle + Durchsatz offen | Intel-Datenblatt |
 | MSI/MSI-X, IOMMU (DMAR) für DMA-Schutz | ✔ | ✔ | 🔧 MSI/MSI-X: Rahmen `msi.rs` (Vektoren 0x90–0xEF, Tabelle in BAR); E610-10G nutzt es, am echten Gerät (VFIO) belegt. IOMMU `iommu.rs`: VT-d an, RAM 1:1, in QEMU geprüft; echte 2 Einheiten des Beelink: beim Direktstart | PCI 3.0, VT-d |
 | PS/2 (Tastatur, TrackPoint) | ✔ | – (kein i8042) | ✅ | |
 
