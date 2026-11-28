@@ -1,0 +1,26 @@
+[package]
+name = "ultar-pdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS PDF reader: continuous pages, zoom, search with highlights, select and copy (area 6, apps)"
+
+[lib]
+name = "ultar_pdf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-pdf"
+path = "src/bin/ultar-pdf.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+# Rendering, text, search over pages (hayro, pure Rust) and the recents list.
+ultar-office = { path = "../ultar-office" }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }

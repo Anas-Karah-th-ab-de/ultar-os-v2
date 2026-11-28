@@ -430,11 +430,6 @@ count = 1
 
 [[entry]]
 rule = "text"
-path = "apps/ultar-office/src/pdf.rs"
-count = 5
-
-[[entry]]
-rule = "text"
 path = "external/ultar-telegram/src/lib.rs"
 count = 2
 
@@ -956,11 +951,6 @@ count = 1
 [[entry]]
 rule = "size"
 path = "apps/ultar-office/src/docx.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-office/src/pdf.rs"
 count = 1
 
 [[entry]]

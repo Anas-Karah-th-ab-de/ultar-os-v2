@@ -59,6 +59,7 @@ members = [
     "apps/ultar-editor",
     "apps/ultar-sheet",
     "apps/ultar-doc",
+    "apps/ultar-pdf",
     "apps/ultar-terminal",
     "apps/ultar-remote",
     "external/ultar-telegram",
