@@ -26,6 +26,18 @@ pub const ULAUNCH: &str = env!("CARGO_BIN_EXE_ulaunch");
 /// Patience for anything a process does.
 pub const WAIT: Duration = Duration::from_secs(20);
 
+/// Polls `f` until it is true or [`WAIT`] passed.
+pub fn wait_until_ok(mut f: impl FnMut() -> bool) -> bool {
+    let end = std::time::Instant::now() + WAIT;
+    while std::time::Instant::now() < end {
+        if f() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    f()
+}
+
 /// Whether the tests run with root (real cells).
 pub fn root() -> bool {
     ultar_sys::euid() == 0
