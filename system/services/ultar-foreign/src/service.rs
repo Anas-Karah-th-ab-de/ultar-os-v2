@@ -24,6 +24,9 @@ pub struct ForeignService {
     /// A job runs.
     busy: bool,
     next_job: u64,
+    /// The bytes of the Linux area, counted once (a walk over the whole tree is slow on a
+    /// small device) and counted again after anything that changes the area.
+    runtime_size: std::cell::Cell<Option<u64>>,
 }
 
 impl ForeignService {
@@ -46,6 +49,7 @@ impl ForeignService {
             state,
             busy: false,
             next_job: 1,
+            runtime_size: std::cell::Cell::new(None),
         }
     }
 
@@ -56,6 +60,7 @@ impl ForeignService {
     }
 
     fn save(&self, bus: &Bus<'_, Self>) -> bool {
+        self.runtime_size.set(None);
         let saved = self.state.save(&self.ctx.layout.state()).is_ok();
         if !saved {
             bus.log(Record::new(Level::Error, "foreign.state_not_saved"));
@@ -134,6 +139,7 @@ impl ForeignService {
         bus: &Bus<'_, Self>,
     ) {
         self.busy = false;
+        self.runtime_size.set(None);
         let progress = |step, apps| ultar_bus::messages::foreign::Progress {
             job,
             step,
@@ -231,6 +237,7 @@ impl ForeignService {
                 Box::new(
                     move |s: &mut ForeignService, bus: &Bus<'_, ForeignService>| {
                         s.busy = false;
+                        s.runtime_size.set(None);
                         if purged.is_err() {
                             bus.log(Record::new(Level::Warn, "foreign.purge_failed"));
                         }
@@ -247,7 +254,12 @@ impl ForeignService {
             installed,
             version: self.ctx.layout.runtime_version(),
             size_bytes: if installed {
-                size_of(&self.ctx.layout.runtime(), 400_000)
+                let size = self
+                    .runtime_size
+                    .get()
+                    .unwrap_or_else(|| size_of(&self.ctx.layout.runtime(), 400_000));
+                self.runtime_size.set(Some(size));
+                size
             } else {
                 0
             },

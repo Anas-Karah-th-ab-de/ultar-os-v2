@@ -32,7 +32,13 @@ use world::{Args, World, APP};
 const APT_WAIT: Duration = Duration::from_secs(1500);
 
 fn fail(what: &str) -> ! {
-    println!("FOREIGN-APP-KERN: FEHLER {what}");
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "FOREIGN-APP-KERN: FEHLER {what}");
+    let _ = out.flush();
+    drop(out);
+    // the console of the kernel is slow: let the line out before the process ends
+    std::thread::sleep(Duration::from_secs(2));
     std::process::exit(1);
 }
 
@@ -53,14 +59,22 @@ fn main() {
     let progress = files
         .subscribe::<ultar_bus::messages::foreign::Progress>()
         .unwrap();
-    check(
-        world::poll(Duration::from_secs(120), || {
-            settings
-                .call(&RuntimeState {}, Duration::from_secs(2))
-                .is_ok_and(|r| r.installed)
-        }),
-        "the service does not see the Linux area",
-    );
+    // the first answer counts the Linux area once (slow on the Ultar kernel)
+    let mut last = String::from("no answer");
+    let seen = world::poll(Duration::from_secs(600), || {
+        match settings.call(&RuntimeState {}, Duration::from_secs(120)) {
+            Ok(r) if r.installed => true,
+            Ok(r) => {
+                last = format!("{r:?}");
+                false
+            }
+            Err(e) => {
+                last = format!("{e:?}");
+                false
+            }
+        }
+    });
+    check(seen, &format!("the service does not see the Linux area: {last}"));
     println!("FOREIGN-APP: service ok");
 
     // 1. Files installs the package of the person (the dialog answers "authorized")
