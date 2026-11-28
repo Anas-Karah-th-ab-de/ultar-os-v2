@@ -10,7 +10,8 @@ protocol: `docs/COMPOSITOR.md`, `docs/integration/ultar-compositor.md`.
 | `platform/ultar-wayland` (new, lib + bin `ultar-wayland`) | platform (5) | A Wayland server in pure Rust (`wayland-server` 0.31 with its Rust backend: no libwayland, statically buildable). It serves **one** foreign app cell and passes every window on to `ultar-compositor` as one ordinary client of the compositor's own protocol. |
 | `platform/ultar-wayland/examples/uwl-demo.rs` | example | a Wayland app without any library (wire format by hand), for the Ultar kernel where no Ubuntu app exists |
 | `tools/kern-test/wayland-e2e.sh` | tools | crate tests + real Ubuntu apps with screenshots; last line `WAYLAND: ALLES OK` |
-| `tools/kern-test/wayland-kern.sh`, `wayland-qemu.py`, `uwl-qemu.sh` | tools | the static bridge on the Ultar kernel in QEMU, verdict from a screenshot |
+| `platform/ultar-wayland/examples/uwl-kern.rs` | example | static launcher for the kernel run (compositor, then bridge + demo; no shell needed) |
+| `tools/kern-test/wayland-kern.sh`, `wayland-qemu.py` | tools | the static bridge on the Ultar kernel in QEMU, verdict from a screenshot |
 | `Cargo.toml` (root) | – | workspace member `platform/ultar-wayland` |
 
 ## 2. How it runs

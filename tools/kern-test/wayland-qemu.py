@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Wayland bridge on the Ultar kernel in QEMU: the compositor on fb0, ultar-wayland and the static
-raw-protocol app uwl-demo (window colour #3366CC), started by /bin/uwl-qemu.sh with busybox sh.
+raw-protocol app uwl-demo (window colour #3366CC), started by the static launcher /bin/uwl-kern.
 A screenshot through the QEMU monitor gives the verdict: at least 10 000 pixels of #3366CC.
 
    wayland-qemu.py <esp.img> <shot.ppm>
 
-The image must carry /bin/ultar-compositor, /bin/ultar-wayland, /bin/uwl-demo (static builds),
-/bin/busybox and /bin/uwl-qemu.sh (tools/kern-test/uwl-qemu.sh). Last line: WAYLAND-QEMU: OK|FAILED.
+The image must carry /bin/ultar-compositor, /bin/ultar-wayland, /bin/uwl-demo and /bin/uwl-kern
+(static builds, tools/kern-test/wayland-kern.sh). Last line: WAYLAND-QEMU: OK|FAILED.
 Environment: SMP (2), MEM (1024), WAIT (seconds for the start line, 120)."""
 import os, re, select, socket, subprocess, sys, time
 
@@ -74,7 +74,7 @@ try:
         print("\nWAYLAND-QEMU: FAILED no shell prompt")
         sys.exit(2)
     log = b""
-    command = os.environ.get("COMMAND", "/bin/busybox sh /bin/uwl-qemu.sh")
+    command = os.environ.get("COMMAND", "/bin/uwl-kern")
     p.stdin.write(command.encode() + b"\r")
     p.stdin.flush()
     seen = read_until(rb"uwl-demo: drawn", float(os.environ.get("WAIT", "120")))
