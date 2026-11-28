@@ -158,21 +158,85 @@ pub struct CellPlan {
     pub groups: Vec<u32>,
     /// Device nodes.
     pub dev: DevMode,
+    /// The private `/tmp`, the kernel rights and the processes of the app.
+    pub limits: CellLimits,
+    /// What an app from another system sees besides its own data.
+    pub foreign: ForeignBinds,
+    /// The program.
+    pub program: Program,
+}
+
+/// The private `/tmp`, the kernel rights and the processes of the app.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct CellLimits {
     /// Size of the private `/tmp`.
     pub tmp_bytes: u64,
     /// Kernel rights to drop (`None`: the kernel has none).
     pub drop_rights: Option<u64>,
     /// Process limit of the app's user.
     pub nproc: Option<u64>,
-    /// An app from another system: the Linux area's root on the host; its entries
-    /// (`foreign::RUNTIME_ENTRIES`) replace [`CellPlan::view`] in the cell, read-only.
+}
+
+impl CellLimits {
+    fn push_args(&self, args: &mut Vec<String>) {
+        args.extend(["--tmp".into(), self.tmp_bytes.to_string()]);
+        if let Some(mask) = self.drop_rights {
+            args.extend(["--drop".into(), format!("{mask:x}")]);
+        }
+        if let Some(n) = self.nproc {
+            args.extend(["--nproc".into(), n.to_string()]);
+        }
+    }
+
+    /// Takes one of the options of [`CellLimits::push_args`]; `None` for anything else.
+    fn set(&mut self, option: &str, value: &str) -> Option<()> {
+        match option {
+            "--tmp" => self.tmp_bytes = value.parse().ok()?,
+            "--drop" => self.drop_rights = Some(u64::from_str_radix(value, 16).ok()?),
+            "--nproc" => self.nproc = Some(value.parse().ok()?),
+            _ => return None,
+        }
+        Some(())
+    }
+}
+
+/// What an app from another system sees besides its own data (all read-only; none for
+/// the system's own apps).
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct ForeignBinds {
+    /// The Linux area's root on the host; its entries (`foreign::RUNTIME_ENTRIES`)
+    /// replace [`CellPlan::view`] in the cell, read-only.
     pub runtime: Option<PathBuf>,
     /// The directory of the Wayland bridge, bound read-only at `/.ultar`.
     pub bridge: Option<PathBuf>,
     /// The app's own installer directory (Windows programs), bound read-only at `/.setup`.
     pub setup: Option<PathBuf>,
-    /// The program.
-    pub program: Program,
+}
+
+impl ForeignBinds {
+    fn push_args(&self, args: &mut Vec<String>) {
+        for (option, dir) in [
+            ("--runtime", &self.runtime),
+            ("--bridge", &self.bridge),
+            ("--setup", &self.setup),
+        ] {
+            if let Some(dir) = dir {
+                args.extend([option.into(), text(dir)]);
+            }
+        }
+    }
+
+    /// Takes one of the options of [`ForeignBinds::push_args`]; `None` for anything else.
+    fn set(&mut self, option: &str, dir: PathBuf) -> Option<()> {
+        let slot = match option {
+            "--runtime" => &mut self.runtime,
+            "--bridge" => &mut self.bridge,
+            "--setup" => &mut self.setup,
+            _ => return None,
+        };
+        *slot = Some(dir);
+        Some(())
+    }
 }
 
 fn flags_word(ns: Namespaces) -> String {
@@ -282,22 +346,8 @@ impl CellPlan {
             args.extend(["--groups".into(), group.to_string()]);
         }
         args.extend(["--dev".into(), self.dev.word().into()]);
-        args.extend(["--tmp".into(), self.tmp_bytes.to_string()]);
-        if let Some(mask) = self.drop_rights {
-            args.extend(["--drop".into(), format!("{mask:x}")]);
-        }
-        if let Some(n) = self.nproc {
-            args.extend(["--nproc".into(), n.to_string()]);
-        }
-        if let Some(dir) = &self.runtime {
-            args.extend(["--runtime".into(), text(dir)]);
-        }
-        if let Some(dir) = &self.bridge {
-            args.extend(["--bridge".into(), text(dir)]);
-        }
-        if let Some(dir) = &self.setup {
-            args.extend(["--setup".into(), text(dir)]);
-        }
+        self.limits.push_args(&mut args);
+        self.foreign.push_args(&mut args);
         args.push("--".into());
         args.push(self.program.exec.clone());
         args.extend(self.program.args.iter().cloned());
@@ -319,12 +369,8 @@ impl CellPlan {
             publish: None,
             groups: Vec::new(),
             dev: DevMode::None,
-            tmp_bytes: 0,
-            drop_rights: None,
-            nproc: None,
-            runtime: None,
-            bridge: None,
-            setup: None,
+            limits: CellLimits::default(),
+            foreign: ForeignBinds::default(),
             program: Program {
                 exec: String::new(),
                 args: Vec::new(),
@@ -353,12 +399,8 @@ impl CellPlan {
                 "--publish" => plan.publish = Some(path()?),
                 "--groups" => plan.groups.push(value.parse::<u32>().ok()?),
                 "--dev" => plan.dev = DevMode::from_word(value)?,
-                "--tmp" => plan.tmp_bytes = value.parse().ok()?,
-                "--drop" => plan.drop_rights = Some(u64::from_str_radix(value, 16).ok()?),
-                "--nproc" => plan.nproc = Some(value.parse().ok()?),
-                "--runtime" => plan.runtime = Some(path()?),
-                "--bridge" => plan.bridge = Some(path()?),
-                "--setup" => plan.setup = Some(path()?),
+                "--tmp" | "--drop" | "--nproc" => plan.limits.set(option, value)?,
+                "--runtime" | "--bridge" | "--setup" => plan.foreign.set(option, path()?)?,
                 _ => return None,
             }
         }

@@ -86,6 +86,15 @@ struct RawPaths {
     bus_apps: Option<String>,
     areas_root: Option<String>,
     publish_root: Option<String>,
+    /// `foreign_*`: unknown keys still refuse the file (`deny_unknown_fields` above
+    /// covers the flattened part).
+    #[serde(flatten)]
+    foreign: RawForeignPaths,
+}
+
+/// The keys of `[paths]` for apps from other systems.
+#[derive(Deserialize)]
+struct RawForeignPaths {
     foreign_runtime: Option<String>,
     foreign_bridge: Option<String>,
     foreign_setup: Option<String>,
@@ -108,9 +117,11 @@ impl RawPaths {
             bus_apps: optional("bus_apps", self.bus_apps)?,
             areas_root: optional("areas_root", self.areas_root)?,
             publish_root: optional("publish_root", self.publish_root)?,
-            foreign_runtime: optional("foreign_runtime", self.foreign_runtime)?,
-            foreign_bridge: optional("foreign_bridge", self.foreign_bridge)?,
-            foreign_setup: optional("foreign_setup", self.foreign_setup)?,
+            foreign: ForeignPaths {
+                runtime: optional("foreign_runtime", self.foreign.foreign_runtime)?,
+                bridge: optional("foreign_bridge", self.foreign.foreign_bridge)?,
+                setup: optional("foreign_setup", self.foreign.foreign_setup)?,
+            },
         })
     }
 }
@@ -149,16 +160,24 @@ pub struct Paths {
     /// Where apps named in `publishers` publish for the system (`<publish_root>/<id>`, `0755`,
     /// owned by the app; the root is the launcher's own `0755` directory).
     pub publish_root: Option<PathBuf>,
-    /// Root of the Linux area for apps from other systems (`foreign.rs`): what their cells
-    /// see as `/`, read-only. `None`: such apps do not start.
-    pub foreign_runtime: Option<PathBuf>,
-    /// Directory holding the Wayland bridge (`ultar-wayland`, static), bound read-only at
-    /// `/.ultar` in their cells. `None`: they start without a window.
-    pub foreign_bridge: Option<PathBuf>,
-    /// Root of the installers of Windows programs (`ultar-foreign --root`/setup): the
-    /// directory named like a foreign app is bound read-only at `/.setup` in its cell, so
-    /// that the program installs itself in its own cell on its first start. `None`: none.
-    pub foreign_setup: Option<PathBuf>,
+    /// What apps from other systems need (`[paths] foreign_*`).
+    pub foreign: ForeignPaths,
+}
+
+/// Directories for apps from other systems (`foreign.rs`).
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct ForeignPaths {
+    /// Root of the Linux area (`foreign_runtime`): what their cells see as `/`,
+    /// read-only. `None`: such apps do not start.
+    pub runtime: Option<PathBuf>,
+    /// Directory holding the Wayland bridge (`foreign_bridge`; `ultar-wayland`, static),
+    /// bound read-only at `/.ultar` in their cells. `None`: they start without a window.
+    pub bridge: Option<PathBuf>,
+    /// Root of the installers of Windows programs (`foreign_setup`; `ultar-foreign
+    /// --root`/setup): the directory named like a foreign app is bound read-only at
+    /// `/.setup` in its cell, so that the program installs itself in its own cell on its
+    /// first start. `None`: none.
+    pub setup: Option<PathBuf>,
 }
 
 /// The configuration.
@@ -268,13 +287,13 @@ mod tests {
         assert!(config.system_view.iter().all(|p| p.is_absolute()));
         // the Linux area is the one ultar-foreign writes (its --root/linux)
         let foreign = include_str!("../../../../rootfs/etc/ultar/services/foreign.toml");
-        let runtime = config.paths.foreign_runtime.unwrap();
+        let runtime = config.paths.foreign.runtime.unwrap();
         let root = runtime.parent().unwrap().display().to_string();
         assert!(foreign.contains(&format!("\"--root\", \"{root}\"")));
         assert_eq!(runtime.file_name().unwrap(), "linux");
-        assert!(config.paths.foreign_bridge.unwrap().is_absolute());
+        assert!(config.paths.foreign.bridge.unwrap().is_absolute());
         assert_eq!(
-            config.paths.foreign_setup.unwrap(),
+            config.paths.foreign.setup.unwrap(),
             Path::new(&root).join("setup")
         );
     }
@@ -360,6 +379,25 @@ mod tests {
             Err(ConfigError::Io(_))
         ));
         assert_eq!(ConfigError::Range.to_string(), "launcher.config.range");
+    }
+
+    /// The keys for apps from other systems are a part of their own but `[paths]` still
+    /// refuses unknown keys and checks every path.
+    #[test]
+    fn the_paths_of_foreign_apps_are_checked_like_the_others() {
+        let runtime = "foreign_runtime = \"/data/ultar/foreign/linux\"";
+        assert!(SHIPPED.contains(runtime));
+        let unknown = SHIPPED.replacen(runtime, &format!("{runtime}\nforeign_other = \"/x\""), 1);
+        assert_eq!(Config::parse(&unknown), Err(ConfigError::Syntax));
+        let wrong_type = SHIPPED.replacen(runtime, "foreign_runtime = 1", 1);
+        assert_eq!(Config::parse(&wrong_type), Err(ConfigError::Syntax));
+        let relative = SHIPPED.replacen(runtime, "foreign_runtime = \"linux\"", 1);
+        assert_eq!(
+            Config::parse(&relative),
+            Err(ConfigError::Path("foreign_runtime"))
+        );
+        let none = SHIPPED.replacen(runtime, "", 1);
+        assert_eq!(Config::parse(&none).unwrap().paths.foreign.runtime, None);
     }
 
     #[test]

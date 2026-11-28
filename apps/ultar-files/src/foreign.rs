@@ -10,8 +10,8 @@ use crate::fs::{AreaId, Loc};
 use crate::model::Drive;
 use crate::service::PortError;
 use ultar_bus::messages::foreign::{
-    Choices, Failure, InspectOutcome, Inspected, InstallOutcome, NetworkChoice, Progress, Source,
-    Step,
+    Choices, Failure, InspectOutcome, Inspected, InstallOutcome, NetworkChoice, Progress, Refusal,
+    Source, Step,
 };
 
 /// File name endings Files hands to the service instead of opening them.
@@ -112,7 +112,10 @@ impl Sheet {
     pub fn inspected(&mut self, answer: Result<InspectOutcome, PortError>) {
         self.phase = match answer {
             Ok(InspectOutcome::Found(i)) if i.installable => Phase::Ready(i),
-            Ok(InspectOutcome::Found(i)) => Phase::Problem(not_installable(i.source)),
+            Ok(InspectOutcome::Found(i)) => Phase::Problem(match i.refusal {
+                Some(r) => refusal_key(r),
+                None => not_installable(i.source),
+            }),
             Ok(InspectOutcome::Unreadable) => Phase::Problem("files.foreign.unreadable"),
             Ok(InspectOutcome::TooLarge) => Phase::Problem("files.foreign.too_large"),
             Ok(InspectOutcome::Invalid) => Phase::Problem("files.foreign.invalid"),
@@ -236,7 +239,23 @@ pub fn failure_key(f: Failure) -> &'static str {
         Failure::Space => "files.foreign.failed.space",
         Failure::Launcher => "files.foreign.failed.launcher",
         Failure::NoConfirmation => "files.foreign.failed.no_confirmation",
+        Failure::SignerChanged => "files.foreign.failed.signer_changed",
+        Failure::Older => "files.foreign.failed.older",
         Failure::Internal => "files.foreign.failed.internal",
+    }
+}
+
+/// i18n key of why an app from another system is refused although its kind can be installed
+/// (Android apps: processor, signature, start screen, component).
+pub fn refusal_key(r: Refusal) -> &'static str {
+    match r {
+        Refusal::NeedsArm => "files.foreign.refusal.needs_arm",
+        Refusal::NeedsOtherProcessor => "files.foreign.refusal.needs_other_processor",
+        Refusal::Unsigned => "files.foreign.refusal.unsigned",
+        Refusal::OldSignature => "files.foreign.refusal.old_signature",
+        Refusal::BadSignature => "files.foreign.refusal.bad_signature",
+        Refusal::NoStartScreen => "files.foreign.refusal.no_start_screen",
+        Refusal::RuntimeMissing => "files.foreign.refusal.runtime_missing",
     }
 }
 
@@ -272,6 +291,9 @@ mod tests {
                 lan: false,
                 folders: vec!["documents".into()],
             },
+            signer: String::new(),
+            refusal: None,
+            not_granted: Vec::new(),
         })
     }
 

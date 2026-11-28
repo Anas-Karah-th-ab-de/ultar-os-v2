@@ -249,6 +249,8 @@ fn record(id: String, d: &Described, file: &str, stem: &str, icon: String) -> Ap
         network: false,
         lan: false,
         folders: Vec::new(),
+        signers: Vec::new(),
+        version_code: 0,
     }
 }
 

@@ -12,6 +12,7 @@ package runs outside a cell, and there is no unsafe mode.
 | Linux area | `/data/ultar/foreign/linux`, built by `tools/foreign/make-linux-runtime.sh` | Ubuntu 26.04 "resolute" minbase (24.04 "noble" only when resolute cannot be reached): apt/dpkg, GTK 3 and 4, the Qt 6 Wayland plugin, Mesa (llvmpipe), Noto fonts with Arabic, CA certificates, locales ar_SY/en_US/de_DE, a replacement `xdg-utils` (fails with a message: no bus in the cells). Never systemd, udev, an SSH server, snapd, polkit (apt pins at priority -1); no set-id program (removed at build time and by a `DPkg::Post-Invoke` hook after every dpkg run); no device node. Output: the tree, an ext4 image with its SHA-256, and with `ULTAR_PKG_KEY` a signed ultar-pkg component `foreign.linux-runtime-<version>-<arch>.uap` (kind `data`: the image, its checksum and `runtime.txt`). |
 | Service | `system/core/ultar-foreign` (system core like the launcher, not `system/services`: it builds cells and needs the HAL crate `ultar-sys`, which `tools/check-layers.toml` allows the system core only), user 844, `rootfs/etc/ultar/services/foreign.toml` | Offers `foreign.*` on the bus (contract `system/core/ultar-bus/src/messages/foreign.rs`, texts `locales/foreign/{ar,en,de}.ftl`). Inspects files, installs `.deb` files after the administrator confirmed, registers each visible program with the launcher, changes and removes them. |
 | Launcher profile `app.foreign` | `system/core/ultar-launcher` (`foreign.rs`, `profile.rs`, `plan.rs`) | Kind `compat-deb`: the app's cell has the Linux area read-only (nosuid, nodev) as its root, its own user, home and `/tmp`, the Wayland bridge read-only at `/.ultar`, no bus socket. |
+| Android apps (stage P5) | component of the Linux area, built by `tools/foreign/make-android-runtime.sh` | Android Translation Layer (ATL) with ART (`art_standalone`), `bionic_translation`, wolfSSL (JNI) and OpenSL ES from pinned sources as `ultar-android-runtime_<version>_amd64.deb`, installed into the area; `/opt/ultar-android/bin/ultar-apk-run` starts an app. See "Android apps" below. |
 | Bridge | `ultar-wayland` (stage P1, `/usr/lib/ultar/foreign`) | Started in the cell as `/.ultar/ultar-wayland -- <Exec>`; the only socket in `XDG_RUNTIME_DIR=/tmp/.run` is its `wayland-0`. Without the bridge the program starts without a display. |
 
 ## Flow of an installation
@@ -102,6 +103,8 @@ from the person's language (`ar_SY`, `en_US`, `de_DE`).
 | unit and contract | `cargo test -p ultar-foreign -p ultar-launcher -p ultar-bus -p ultar-busd` | `test result: ok` |
 | Linux end to end (root) | `tools/foreign/linux-e2e.sh [OUT]` | `FOREIGN-LINUX-E2E: ALLES OK` |
 | area | `TEST_PACKAGE=mousepad tools/foreign/make-linux-runtime.sh OUT` | `LINUX-RUNTIME: OK` |
+| Android runtime | `tools/foreign/make-android-runtime.sh AREA OUT` | `ANDROID-RUNTIME: OK` |
+| Android end to end (root) | `tools/foreign/android-e2e.sh [OUT]` | `FOREIGN-ANDROID-E2E: ALLES OK` |
 | Ultar kernel (QEMU) | `AREA=OUT tools/kern-test/foreign-e2e.sh` | `FOREIGN: ALLES OK` or `FOREIGN: FEHLENDE KERN-FUNKTIONEN: …` |
 | kernel features alone (QEMU) | `tools/kern-test/fremd-kern.sh` | `FREMD-KERN: ALLES OK` |
 | GTK window (QEMU, picture) | `AREA=OUT tools/kern-test/foreign-gtk-kern.sh` | `FOREIGN-GTK: SHOT …` |
@@ -149,7 +152,11 @@ ultar-wayland): the window shows (`FOREIGN-GTK: SHOT … colours=453`). GTK's im
 loaders through `bwrap`, which needs user namespaces (the Ultar kernel has none, on purpose). The area ships
 `bubblewrap 99:0.11-ultar1` from `tools/foreign/bwrap-shim.c` instead (pinned like the xdg-utils
 replacement): it reads bwrap's options, keeps `--chdir`, `--setenv`/`--unsetenv`/`--clearenv`, `--argv0`,
-`--die-with-parent`, `--block-fd`, `--args` and runs the program in place. This weakens nothing: the program
+`--die-with-parent`, `--new-session`, `--block-fd`, `--args` and the seccomp filters it is handed
+(`--seccomp`, `--add-seccomp-fd`: put on the program right before it starts, as bwrap does – on Linux
+glycin's own syscall filter still holds; a kernel without seccomp, the Ultar kernel, skips them), closes the
+descriptors meant for the sandbox (`--file`, `--bind-data`, `--info-fd` …) and runs the program in place.
+This weakens nothing: the program
 already runs in the app's cell (own uid, read-only area, no bus, no capabilities, `NoNewPrivs`), which is the
 sandbox bwrap would have built, and the shim cannot grant more than the cell has.
 
@@ -340,6 +347,102 @@ user data: c0000018` (`STATUS_CONFLICTING_ADDRESSES`), nothing of the prefix is 
 "code" means read in the kernel's sources and not yet reached by the run (it stops at the first
 mapping). Until these exist, Windows programs run on the Linux kernel only (like apps with network without
 the barrier of stage P0).
+
+## Android apps (stage P5, 28.11.2026, branch `feat/fa-p5-android`)
+
+**Runtime.** `tools/foreign/make-android-runtime.sh AREA [OUT]` builds in a build tree of its own (Ubuntu of
+the area's release with the build dependencies, never in the area, never on the VPS) from these sources
+(their licences; the commits are written to `OUT/SOURCES` and `/opt/ultar-android/SOURCES`):
+
+| Source | Commit / tag | Licence |
+|---|---|---|
+| `android_translation_layer` (gitlab.com/android_translation_layer) | `b87f0455fda749b8138eba52dee45e0105861656` | GPL-3.0-or-later |
+| `art_standalone` (ART, libcore, wolfSSL-JNI) | `381138f574985b593eaaa64ad5660cfc4040d4b4` | Apache-2.0, GPL-2.0 with classpath exception (libcore) |
+| `bionic_translation` | `6253dec7f24a57a94039a088cb436d880e92e3be` | Apache-2.0 / BSD |
+| `libopensles-standalone` | `c6982620c7dadeb90220b23c575b25eeffda765f` | Apache-2.0 |
+| `wolfssl` (github.com/wolfSSL) | `v5.8.2-stable` (`decea12e223869c8f8f3ab5a53dc90b69f436eb2`) | GPL-3.0-or-later |
+
+Everything installed by the five builds goes into one package `ultar-android-runtime` whose `Depends` are the
+Ubuntu packages of the libraries it needs (from the programs' `NEEDED` entries); it is installed into a
+copy of the area with the area's apt (set-id bits removed, no device node left, every program's libraries
+resolve). `OUT/linux` is the area with the component (`/etc/ultar-runtime` gets `android=<version>`),
+`OUT/linux-android-<version>-amd64.ext4` its image, with `ULTAR_PKG_KEY` a signed component
+`foreign.android-runtime-<version>-amd64.uap`. A self-test lets ART run a program of its own in the area
+(`OUT/hello.dex`, also used on the Ultar kernel).
+
+What the component never has: Google services or any Play store; real device identities (ATL answers fixed
+values: the Android id `_totally_an_androidID`, manufacturer and model fixed, system properties
+`unknown`; the area's `/etc/machine-id` is empty); location, microphone and WebView (`ultar-apk-run`
+unsets ATL's switches `ATL_UGLY_ENABLE_LOCATION/MICROPHONE/WEBVIEW` and the debugger port
+`JDWP_LISTEN`).
+
+**Inspection** (pure Rust, `src/apk`, in the inspection cell as the internal program
+`/.ultar-internal/apk-inspect`; the service re-checks the bounded line answer): ZIP (stored/deflate, no
+ZIP64, no encryption; at most 100 000 entries, 16 MiB directory), the binary `AndroidManifest.xml`
+(package, version name/code, min SDK, permissions, label, icon, the enabled launcher activity or alias),
+`resources.arsc` (label per language, icon per density, references followed four deep), APK Signature
+Scheme v3 then v2 (signing block, signature over the signed data with the signer's key: RSA PKCS#1 and
+PSS, ECDSA P-256/P-384; the certificate's key must be the signing key; content digest over the entries,
+the directory and the end record in 1 MiB chunks). The ZIP, manifest and resource readers are fuzz-tested
+(no panic, bounded memory); the signature check is tested with files signed by a test signer
+(`src/apk/testsign.rs`, feature `test-sign`, never in the service) and with changed bytes.
+The dialog shows the signer as the SHA-256 of its certificate with its common name, **unverified** (an
+Android certificate names nobody checked). Suggested: "internet only" when the app asks for `INTERNET`,
+nothing else. Camera, microphone, location, contacts, phone, SMS and sensors are never granted; the
+answer lists those the app asks for (`Inspected.not_granted`, texts `foreign.android.*`).
+
+**Refused** (`Inspected.refusal`, texts `foreign.refusal.*`; `foreign.install` ends `Failure::Damaged`
+before anyone is asked): only ARM code ("needs an ARM processor"), other processors, unsigned, JAR signing
+(v1) only, a signature that does not match, no start screen, the runtime not installed. An **update** must
+come from one of the installed app's signers (else `Failure::SignerChanged`, before anyone is asked) and
+must not be older (`Failure::Older`).
+
+**Installation** (installation cell, internal program `/.ultar-internal/apk-place`, which reads the copy
+again and must find the same package without refusal): the APK as
+`/opt/ultar-android/apps/<package>/base.apk` (0644 root) and its x86-64 libraries (`lib/x86_64/*.so`, plain
+names only, at most 512 files, 256 MiB each, 1 GiB together) in `…/<package>/lib`; the icon (largest
+density, at most 256 KiB) next to the others; the app `foreign.apk-<name>` (kind `compat-apk`, same profile
+and cell as a Linux program: area read-only as its root, own user, no bus, no network without the
+permission) starting `/opt/ultar-android/bin/ultar-apk-run <package> <activity>` behind the Wayland bridge.
+**Removal** deletes the package's directory in the area (internal program `apk-remove`) and the app with its
+data.
+
+**Start** (`ultar-apk-run`): the app's data (`ANDROID_APP_DATA_DIR`, ART's `ANDROID_DATA`) is
+`$HOME/android` – writable, never executable; native code is never extracted there
+(`ATL_SKIP_NATIVES_EXTRACTION=1`): its `lib` is a link to the read-only copy in the area.
+
+**Pictures.** ATL decodes every Android `Bitmap` with GTK; gdk-pixbuf 2.44 of the area loads images through
+glycin, which starts its loaders with `bwrap` – without the area's bwrap stand-in (above, `bwrap-shim.c`)
+every picture stayed empty in the app's cell and the test app stopped with a `NullPointerException`.
+`make-android-runtime.sh` refuses a Linux area without it.
+
+**Checked** (`tools/foreign/android-e2e.sh`, 28.11.2026, Linux server, real cells, headless Weston as the
+display): Gravity Defied (`org.happysanta.gd_29.apk` of ATL's test set, SHA-256 `0786257c…d675`, Java, APK
+signature v2) – inspected (label, version, signer, "internet only" suggested), refused variants (ARM only,
+one changed byte, JAR signing only, unsigned), cancel installs nothing, installed as `foreign.apk-gd` (uid
+20000), its window shows the game (menu, track, pictures), an update by another signer and an older one are
+refused, removal leaves nothing: `FOREIGN-ANDROID-E2E: ALLES OK`.
+
+**What ATL cannot do (yet).** ATL implements a part of the Android API on GTK: many apps stop at an
+unimplemented class or method; no Google services (by design); no WebView, location or microphone (off
+here); no GPU – OpenGL ES runs on Mesa's software renderer only, 3D games are slow; no other app's activities
+or content providers, no background services that outlive the window, no notifications into the system yet;
+ARM-only apps are refused (no translation of ARM code). ART runs without a compiled boot image: the cache in
+the app's data is never executable (`noexec`), so ART falls back to its interpreter and JIT – the first start
+takes some seconds longer. Shipping a precompiled boot image in the read-only area would remove that.
+
+**On the Ultar kernel** (QEMU, `tools/kern-test/foreign-e2e.sh` with `AREA=OUT` on `integ/fa-linux` `a885a16d`,
+28.11.2026): every check of the service and its cells passes, including `package-install`; ART does not run
+yet (`FOREIGN: FEHLENDE KERN-FUNKTIONEN: android-art`). The check now stops each program after a time limit
+and reports what it saw:
+
+| Missing | Seen | Consequence |
+|---|---|---|
+| `readlink("/proc/self/exe")` through a proc mounted in the area (`sys_readlink` answers only paths that resolve to the kernel's own `/proc/`) | `readlink /proc/self/exe` prints nothing in the area | glibc cannot expand `$ORIGIN`, the run path of `dalvikvm` – `libnativehelper.so` not found, exit 127 |
+| `/proc/<pid>/maps` | `pthread_getattr_np failed for GetThreadStack: No such file or directory` | glibc cannot tell the main thread's stack: ART aborts at its start (seen when started through ld.so, which needs no `$ORIGIN`) |
+| mappings below 4 GB (`MAP_32BIT`, address hints) | `The requested address space (0x7f00251df000, …) cannot fit in low_4gb` | ART's heap holds 32-bit references and must lie below 4 GB |
+| a program that aborts ends | after its fatal error ART was still running after 300 s (killed by the check) | a crashing app would hang instead of ending |
+| writing larger files into the area's image | `ENOSPC` copying the check's files into the 2.2 GB test image (the plain area's 0.6 GB image works) – cause open: the kernel's ext4 or too few free inodes in the image | the check keeps ART's data on a tmpfs |
 
 ## Open points
 

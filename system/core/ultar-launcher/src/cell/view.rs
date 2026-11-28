@@ -85,7 +85,7 @@ fn tmp_options(plan: &CellPlan) -> String {
         .identity
         .map(|(uid, gid)| format!(",uid={uid},gid={gid}"))
         .unwrap_or_default();
-    format!("size={},mode=0700{owner}", plan.tmp_bytes.max(65536))
+    format!("size={},mode=0700{owner}", plan.limits.tmp_bytes.max(65536))
 }
 
 /// One device node of the kernel at the same name below the cell's `/dev` tmpfs `target`
@@ -138,15 +138,15 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
     // the private /tmp first: a view directory below /tmp stays visible
     let tmp = mount_point(root, Path::new(TMP))?;
     sys_cell::mount_tmpfs(&tmp, &tmp_options(plan)).map_err(|_| CellFailure::Mounts)?;
-    match &plan.runtime {
+    match &plan.foreign.runtime {
         Some(runtime) => bind_runtime(root, runtime)?,
         None => bind_dirs(root, &plan.view)?,
     }
-    if let Some(bridge) = plan.bridge.as_ref().filter(|b| b.is_dir()) {
+    if let Some(bridge) = plan.foreign.bridge.as_ref().filter(|b| b.is_dir()) {
         let target = mount_point(root, Path::new(crate::foreign::BRIDGE_IN_CELL))?;
         sys_cell::bind(bridge, &target, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
     }
-    if let Some(setup) = plan.setup.as_ref().filter(|s| s.is_dir()) {
+    if let Some(setup) = plan.foreign.setup.as_ref().filter(|s| s.is_dir()) {
         let target = mount_point(root, Path::new(crate::foreign::SETUP_IN_CELL))?;
         sys_cell::bind(setup, &target, BindMode::ReadOnly).map_err(|_| CellFailure::Mounts)?;
     }
@@ -157,6 +157,7 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
         sys_cell::mount_proc(&proc).map_err(|_| CellFailure::Mounts)?;
     }
     let sound = plan
+        .limits
         .drop_rights
         .is_some_and(|drop| drop & crate::perm::KERNEL_SOUND == 0);
     devices(root, plan.dev, sound)?;
@@ -190,6 +191,7 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::{CellLimits, ForeignBinds};
     use crate::manifest::Program;
     use ultar_sys::cell::Namespaces;
 
@@ -212,12 +214,12 @@ mod tests {
             publish: None,
             groups: Vec::new(),
             dev: DevMode::None,
-            tmp_bytes: 64 << 20,
-            drop_rights: None,
-            nproc: None,
-            runtime: None,
-            bridge: None,
-            setup: None,
+            limits: CellLimits {
+                tmp_bytes: 64 << 20,
+                drop_rights: None,
+                nproc: None,
+            },
+            foreign: ForeignBinds::default(),
             program: Program {
                 exec: "/bin/x".into(),
                 args: Vec::new(),
@@ -228,7 +230,7 @@ mod tests {
             "size=67108864,mode=0700,uid=20001,gid=20001"
         );
         plan.identity = None;
-        plan.tmp_bytes = 1;
+        plan.limits.tmp_bytes = 1;
         assert_eq!(tmp_options(&plan), "size=65536,mode=0700");
         // nothing to do without a /dev
         assert_eq!(
