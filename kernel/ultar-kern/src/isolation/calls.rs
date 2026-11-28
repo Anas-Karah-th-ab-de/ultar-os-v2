@@ -389,7 +389,11 @@ pub fn sys_symlink(target: u64, dirfd: i64, linkpath: u64) -> i64 {
         Ok(l) => l,
         Err(e) => return e,
     };
-    if !tmpfs::is_private(&loc.host) {
+    // links are made in tmpfs; on a disk only by a cell holding CELL_CHOWN, on its own writable
+    // mounts (the Linux area's installation cell: packages carry links) – never by the host or an
+    // app cell, so no host service meets a link an app planted in its data
+    let disk = !tmpfs::is_private(&loc.host);
+    if disk && !(loc.confined && crate::perm::cell_owns(&parent(&loc.host))) {
         return -EPERM;
     }
     if loc.read_only {
@@ -404,9 +408,19 @@ pub fn sys_symlink(target: u64, dirfd: i64, linkpath: u64) -> i64 {
     if let Err(e) = crate::perm::may_create(&loc.host) {
         return e;
     }
-    if tmpfs::symlink(&loc.host, &target) {
-        crate::perm::created(&loc.host, crate::perm::S_IFLNK, 0o777);
+    let made = if disk {
+        fs::disk_symlink(&loc.host, &target)
+    } else {
+        tmpfs::symlink(&loc.host, &target)
+    };
+    if made {
+        // a link on disk has no attributes to record (storing them would reach its target)
+        if !disk {
+            crate::perm::created(&loc.host, crate::perm::S_IFLNK, 0o777);
+        }
         0
+    } else if disk {
+        -EROFS
     } else {
         -EEXIST
     }

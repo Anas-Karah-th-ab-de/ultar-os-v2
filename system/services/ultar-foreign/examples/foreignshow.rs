@@ -100,9 +100,16 @@ fn main() {
     let _ = std::fs::create_dir_all(Path::new(SOCKET).parent().unwrap());
     let run = area.join(RUN_IN_AREA);
     let _ = std::fs::create_dir_all(&run);
-    let comp: Vec<String> = ["--socket", SOCKET, "--allow-root", "--lang", "en", "--no-cursor"]
-        .map(str::to_owned)
-        .to_vec();
+    let comp: Vec<String> = [
+        "--socket",
+        SOCKET,
+        "--allow-root",
+        "--lang",
+        "en",
+        "--no-cursor",
+    ]
+    .map(str::to_owned)
+    .to_vec();
     let Ok(_compositor) = spawn(&bin.join("ultar-compositor"), &comp) else {
         println!("foreignshow: compositor did not start");
         std::process::exit(1);

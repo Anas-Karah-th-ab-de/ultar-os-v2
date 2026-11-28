@@ -791,6 +791,11 @@ impl Ext4 {
         if flags & 0x1000_0000 != 0 {
             return out;
         }
+        // a fast symbolic link keeps its target in i_block and owns no block (i_blocks 0): those
+        // bytes are no block pointers and must never be freed as such
+        if le16(raw, 0) & 0xF000 == 0xA000 && flags & 0x80000 == 0 && le32(raw, 0x1C) == 0 {
+            return out;
+        }
         if flags & 0x80000 != 0 {
             fn walk(fs: &Ext4, node: &[u8], out: &mut Vec<(u64, u64)>, depth: u32) {
                 if le16(node, 0) != 0xF30A || depth > 8 {
@@ -1157,6 +1162,42 @@ impl Ext4 {
         self.set_data(ino, data)
     }
 
+    /// Symbolic link at `path` to `target` (stored as is, not checked): a fast link (target in
+    /// i_block, no block) below 60 bytes, else one data block like a file's.
+    pub fn symlink(&self, path: &str, target: &str) -> WResult<()> {
+        let (parent, name) = Self::split(path);
+        if name.is_empty() || name.len() > 255 || target.is_empty() || target.len() >= self.bs as usize {
+            return Err("ungültiger Name");
+        }
+        let (dino, d) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
+        if !d.is_dir() {
+            return Err("kein Verzeichnis");
+        }
+        if self.list(&d).iter().any(|e| e.0 == name) {
+            return Err("existiert");
+        }
+        let ino = self.new_inode(0o120777, false)?;
+        let made = if target.len() < 60 {
+            self.get_raw(ino).and_then(|mut raw| {
+                raw[40..100].fill(0);
+                raw[40..40 + target.len()].copy_from_slice(target.as_bytes());
+                let flags = le32(&raw, 32) & !0x80000;
+                put32(&mut raw, 32, flags);
+                put32(&mut raw, 4, target.len() as u64);
+                put32(&mut raw, 108, 0);
+                put32(&mut raw, 0x1C, 0);
+                self.put_inode(ino, &mut raw)
+            })
+        } else {
+            self.set_data(ino, target.as_bytes())
+        };
+        if let Err(e) = made.and_then(|()| self.dir_add(dino, name, ino, 7)) {
+            let _ = self.free_inode(ino, false);
+            return Err(e);
+        }
+        Ok(())
+    }
+
     pub fn mkdir(&self, path: &str) -> WResult<()> {
         let (parent, name) = Self::split(path);
         let (dino, d) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
@@ -1200,8 +1241,11 @@ impl Ext4 {
 
     pub fn unlink(&self, path: &str) -> WResult<()> {
         let (parent, name) = Self::split(path);
-        let (dino, _) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
-        let (ino, node) = self.lookup(path).ok_or("nicht gefunden")?;
+        let (dino, dnode) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
+        // the entry itself, never what a link at the name points to (a link is removed as a link,
+        // also when its target is a directory or missing)
+        let ino = self.list(&dnode).into_iter().find(|e| e.0 == name).map(|e| e.1).ok_or("nicht gefunden")?;
+        let node = self.inode(ino).ok_or("Lesefehler")?;
         let dir = node.is_dir();
         if dir && !self.list(&node).is_empty() {
             return Err("Verzeichnis nicht leer");

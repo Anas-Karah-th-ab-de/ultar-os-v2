@@ -867,6 +867,14 @@ pub fn mkdir(path: &str) -> bool {
     tmpfs::store(&alloc::format!("{path}/"), Arc::new(Vec::new()))
 }
 
+/// A symbolic link on a writable ext4 (the caller checked the view: only cells make them there).
+pub fn disk_symlink(path: &str, target: &str) -> bool {
+    match ext4_target(path) {
+        Some((i, rel)) => matches!(with_ext4(i, |x| x.symlink(&rel, target)), Some(Ok(()))),
+        None => false,
+    }
+}
+
 pub fn unlink(path: &str) -> bool {
     if crate::devices::sysfs::is_tree(path) {
         return false;

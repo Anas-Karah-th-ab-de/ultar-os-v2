@@ -351,6 +351,30 @@ fn main() {
             &["/usr/bin/dpkg-deb", "--field", &target, "Package"],
         );
         report("package-fields", fields.map(|_| ()));
+        // what dpkg's control area looks like after dpkg-deb unpacked it (diagnostics: printed)
+        let control = cell(
+            &helper,
+            Mode::Install,
+            &area,
+            Some(inbox.clone()),
+            &[
+                "/bin/sh",
+                "-c",
+                "rm -rf /var/tmp/ft && mkdir -p /var/tmp/ft && cd /var/tmp/ft && \
+                 dpkg-deb --control /run/inbox/package.deb ci; echo \"code $?\"; \
+                 echo \"slash: $(ls ci/ | tr '\\n' ' ')\"; echo \"noslash: $(ls ci | tr '\\n' ' ')\"; \
+                 echo \"lstat: $(stat -c '%F' ci/control) / $(stat -c '%F' /var/tmp/ft/ci/control)\"; \
+                 echo \"glob: $(echo ci/*)\"; \
+                 rm -rf /var/tmp/ft",
+            ],
+        );
+        match &control {
+            Ok(out) | Err(out) => {
+                for line in out.lines().take(20) {
+                    println!("FOREIGN:   control {line}");
+                }
+            }
+        }
         let apt = cell(
             &helper,
             Mode::Install,

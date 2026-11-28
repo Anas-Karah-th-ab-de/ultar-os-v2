@@ -27,6 +27,7 @@ const EACCES: i64 = 13;
 const PROT_EXEC: u64 = 4;
 const EFAULT: i64 = 14;
 const EEXIST: i64 = 17;
+const ENOTEMPTY: i64 = 39;
 const EXDEV: i64 = 18;
 const ENOTDIR: i64 = 20;
 const EISDIR: i64 = 21;
@@ -469,7 +470,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
         137 | 138 => Res::Val(sys_statfs(nr == 138, a[0], a[1])),
         334 | 332 | 435 | 326 | 425 | 426 | 427 => Res::Val(-ENOSYS),
-        86 | 265 => Res::Val(-1),
+        86 => Res::Val(sys_link(-100, a[0], -100, a[1], 0)),
+        265 => Res::Val(sys_link(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3], a[4])),
         95 => Res::Val(with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0)),
         96 => {
             let ns = now_ns(0);
@@ -1656,23 +1658,42 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if let Err(e) = crate::perm::may_remove(&ol.host).and_then(|_| crate::perm::may_remove(&nl.host)) {
         return e;
     }
-    // a symbolic link is moved as a link (links exist on tmpfs only)
+    // a symbolic link is moved as a link: within tmpfs, or by a cell within its writable disk mounts
     if let Some(target) = link_at(&ol) {
-        if !crate::isolation::tmpfs::is_private(&nl.host) {
+        let tmp = crate::isolation::tmpfs::is_private(&nl.host);
+        let disk = !tmp
+            && !crate::isolation::tmpfs::is_private(&ol.host)
+            && nl.confined
+            && crate::perm::cell_owns(&crate::isolation::path::parent(&nl.host));
+        if !tmp && !disk {
             return -EXDEV;
         }
+        if matches!(fs::stat(&nl.host), Some((1, _))) && link_at(&nl).is_none() {
+            return -EISDIR;
+        }
         fs::unlink(&nl.host);
-        if !crate::isolation::tmpfs::symlink(&nl.host, &target) {
+        let made = if tmp {
+            crate::isolation::tmpfs::symlink(&nl.host, &target)
+        } else {
+            fs::disk_symlink(&nl.host, &target)
+        };
+        if !made {
             return -EEXIST;
         }
-        crate::perm::moved(&ol.host, &nl.host);
+        if tmp {
+            crate::perm::moved(&ol.host, &nl.host);
+        } else {
+            // a link on disk has no attributes of its own to carry (they would reach its target)
+            crate::perm::forget(&ol.host);
+        }
         fs::unlink(&ol.host);
         return 0;
     }
-    // a directory is not moved by copying one file's bytes: the caller copies the tree and removes
-    // the old one, as across file systems (Files, mv)
+    // a directory: an empty one moves (a new empty directory with its mode and owner, the old one
+    // removed – how dpkg puts every new directory in place); one with entries is not moved by copying
+    // one file's bytes: the caller copies the tree and removes the old one, as across file systems
     if matches!(fs::stat(&ol.host), Some((1, _))) {
-        return -EXDEV;
+        return rename_empty_dir(&ol.host, &nl.host);
     }
     // a link at the new name is replaced, not written through
     let replaced_link = link_at(&nl).is_some();
@@ -1688,6 +1709,89 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     crate::perm::moved(&o, &n);
     if !fs::unlink(&o) {
         return -EROFS;
+    }
+    0
+}
+
+/// The entries of the directory at `host` (none for anything else).
+fn dir_has_entries(host: &str) -> bool {
+    matches!(fs::open(host), Some(fs::Node::Dir(e)) if e.iter().any(|d| d.name != "." && d.name != ".."))
+}
+
+/// `rename` of a directory (checks done by the caller): an empty directory only, onto a free name or
+/// an empty directory. Anything else is `EXDEV` (with entries), `ENOTEMPTY` or `ENOTDIR` (the target).
+fn rename_empty_dir(old: &str, new: &str) -> i64 {
+    if old == new {
+        return 0;
+    }
+    if dir_has_entries(old) || new.starts_with(&alloc::format!("{old}/")) {
+        return if dir_has_entries(old) { -EXDEV } else { -EINVAL };
+    }
+    match fs::stat(new) {
+        Some((1, _)) if dir_has_entries(new) => return -ENOTEMPTY,
+        Some((1, _)) => {
+            if !fs::unlink(new) {
+                return -EROFS;
+            }
+            crate::perm::forget(new);
+        }
+        Some(_) => return -ENOTDIR,
+        None => {}
+    }
+    if !fs::mkdir(new) {
+        return -EROFS;
+    }
+    crate::perm::moved(old, new);
+    if !fs::unlink(old) {
+        // put things back: the old directory stays, the new one goes
+        crate::perm::moved(new, old);
+        fs::unlink(new);
+        return -EROFS;
+    }
+    0
+}
+
+/// `link(old, new)` / `linkat(…, flags)`: the kernel keeps no shared inodes across its file systems
+/// (a rename copies too), so a "hard link" is a copy of a regular file with its mode and owner – what
+/// dpkg needs for its backup of the status file. Directories, links and device nodes are refused.
+fn sys_link(od: i64, op: u64, nd: i64, np: u64, flags: u64) -> i64 {
+    const AT_SYMLINK_FOLLOW: u64 = 0x400;
+    const AT_EMPTY_PATH: u64 = 0x1000;
+    if flags & !(AT_SYMLINK_FOLLOW | AT_EMPTY_PATH) != 0 || flags & AT_EMPTY_PATH != 0 {
+        return -EINVAL;
+    }
+    let (Some(o), Some(n)) = (ustr(op), ustr(np)) else { return -EFAULT };
+    let (ol, nl) = match (locate(od, &o, flags & AT_SYMLINK_FOLLOW != 0), locate(nd, &n, false)) {
+        (Ok(o), Ok(n)) => (o, n),
+        (Err(e), _) | (_, Err(e)) => return e,
+    };
+    if nl.mount_point || fs::stat(&nl.host).is_some() || link_at(&nl).is_some() {
+        return -EEXIST;
+    }
+    if nl.read_only {
+        return -EROFS;
+    }
+    if kernel_tree(&nl.host) || kernel_tree(&ol.host) {
+        return -EPERM;
+    }
+    if link_at(&ol).is_some() {
+        return -EPERM;
+    }
+    match fs::stat(&ol.host) {
+        Some((0, _)) => {}
+        Some(_) => return -EPERM,
+        None => return -ENOENT,
+    }
+    if let Err(e) = crate::perm::check(&ol.host, crate::perm::R).and_then(|_| crate::perm::may_create(&nl.host)) {
+        return e;
+    }
+    let Some(data) = fs::read_all(&ol.host) else { return -ENOENT };
+    let attr = crate::perm::of(&ol.host);
+    if let Err(e) = fs::store_file_res(&nl.host, data) {
+        return e;
+    }
+    if let Some(a) = attr {
+        crate::perm::store(&nl.host, a);
     }
     0
 }
@@ -1762,6 +1866,8 @@ fn sys_unlink(dirfd: i64, path: u64) -> i64 {
     if fs::unlink(&path) {
         crate::perm::forget(&path);
         0
+    } else if dir_has_entries(&path) {
+        -ENOTEMPTY
     } else if fs::stat(&path).is_some() {
         -EROFS
     } else {

@@ -97,7 +97,8 @@ fn may_set_ids() -> bool {
 
 /// The right `CELL_CHOWN` covers the entry at host path `path`: the caller sits in a cell, holds the
 /// right, and the entry lies on one of the cell's own writable mounts (never the whole host tree).
-fn cell_owns(path: &str) -> bool {
+/// The same right lets such a cell make symbolic links there (a Linux area's packages carry links).
+pub(crate) fn cell_owns(path: &str) -> bool {
     let Some((mnt, root, held)) = with(|p| (p.g.iso.mnt.clone(), p.g.iso.root.clone(), p.g.iso.rights.has(Rights::CELL_CHOWN) && p.g.iso.confined())) else {
         return false;
     };
