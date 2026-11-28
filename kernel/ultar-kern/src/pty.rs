@@ -69,7 +69,9 @@ struct State {
 
 impl State {
     fn flag(&self, at: usize) -> u32 {
-        u32::from_le_bytes(self.termios[at..at + 4].try_into().unwrap())
+        let mut w = [0u8; 4];
+        w.copy_from_slice(&self.termios[at..at + 4]);
+        u32::from_le_bytes(w)
     }
     fn cc(&self, i: usize) -> u8 {
         self.termios[17 + i]
@@ -250,7 +252,7 @@ pub enum Answer {
 
 pub fn ioctl(end: &End, req: u64, arg_in: Option<&[u8]>, caller_pgid: u64, pending: usize) -> Answer {
     let mut st = end.pty.state.lock();
-    let word = |b: Option<&[u8]>| b.and_then(|b| b.get(0..4)).map(|w| u32::from_le_bytes(w.try_into().unwrap()));
+    let word = |b: Option<&[u8]>| b.and_then(|b| b.get(0..4)).map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]));
     match req {
         0x5401 | 0x802c_542a => {
             let mut b = st.termios.to_vec();

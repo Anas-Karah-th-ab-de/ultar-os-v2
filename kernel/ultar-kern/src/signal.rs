@@ -97,11 +97,18 @@ pub fn interrupt_all() {
     }
 }
 
+fn r32(buf: &[u8], o: usize) -> u32 {
+    let mut w = [0u8; 4];
+    w.copy_from_slice(&buf[o..o + 4]);
+    u32::from_le_bytes(w)
+}
 fn w64(buf: &mut [u8], o: usize, v: u64) {
     buf[o..o + 8].copy_from_slice(&v.to_le_bytes());
 }
 fn r64(buf: &[u8], o: usize) -> u64 {
-    u64::from_le_bytes(buf[o..o + 8].try_into().unwrap())
+    let mut w = [0u8; 8];
+    w.copy_from_slice(&buf[o..o + 8]);
+    u64::from_le_bytes(w)
 }
 
 const UC: usize = 8;
@@ -267,7 +274,7 @@ fn write_uc_stack(b: &mut [u8], alt: &proc::AltStack, sp: u64) {
 
 /// rt_sigreturn puts back the alternate stack saved in `uc_stack` (as Linux' `restore_altstack`).
 fn restore_altstack(p: &mut Proc, uc: &[u8], sp: u64) {
-    let flags = u32::from_le_bytes(uc[24..28].try_into().unwrap());
+    let flags = r32(uc, 24);
     let (ss_sp, size) = (r64(uc, 16), r64(uc, 32));
     let _ = set_altstack(p, sp, ss_sp, flags, size);
 }
@@ -291,7 +298,7 @@ pub fn sigaltstack(p: &mut Proc, sp: u64, ss: u64, old: u64) -> i64 {
     let before = p.altstack;
     if ss != 0 {
         let Some(b) = proc::read_user(p.space(), ss, 24) else { return -14 };
-        let flags = u32::from_le_bytes(b[8..12].try_into().unwrap());
+        let flags = r32(&b, 8);
         if let Err(e) = set_altstack(p, sp, r64(&b, 0), flags, r64(&b, 16)) {
             return e;
         }

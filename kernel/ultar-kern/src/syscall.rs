@@ -87,44 +87,49 @@ fn poll_terminal() {
             continue;
         }
         if t.icanon {
-            match b0 {
-                b'\n' => {
-                    t.line.push(b'\n');
-                    let l = core::mem::take(&mut t.line);
-                    t.ready.extend(l);
-                    if t.echo {
-                        echo(b"\n");
-                    }
-                }
-                0x7f | 0x08 => {
-                    if t.line.pop().is_some() && t.echo {
-                        echo(b"\x08 \x08");
-                    }
-                }
-                4 => {
-                    if t.line.is_empty() {
-                        t.eof = true;
-                    } else {
-                        let l = core::mem::take(&mut t.line);
-                        t.ready.extend(l);
-                    }
-                }
-                _ => {
-                    if b0 == bytes[0] {
-                        t.line.extend_from_slice(bytes);
-                    } else {
-                        t.line.push(b0);
-                    }
-                    if t.echo {
-                        echo(bytes);
-                    }
-                }
-            }
+            tty_canonical(&mut t, b0, bytes);
         } else {
             if b0 == bytes[0] {
                 t.ready.extend(bytes.iter().copied());
             } else {
                 t.ready.push_back(b0);
+            }
+            if t.echo {
+                echo(bytes);
+            }
+        }
+    }
+}
+
+/// A byte of a canonical (line-edited) terminal: line end, erase, end of file, else into the line.
+fn tty_canonical(t: &mut Tty, b0: u8, bytes: &[u8]) {
+    match b0 {
+        b'\n' => {
+            t.line.push(b'\n');
+            let l = core::mem::take(&mut t.line);
+            t.ready.extend(l);
+            if t.echo {
+                echo(b"\n");
+            }
+        }
+        0x7f | 0x08 => {
+            if t.line.pop().is_some() && t.echo {
+                echo(b"\x08 \x08");
+            }
+        }
+        4 => {
+            if t.line.is_empty() {
+                t.eof = true;
+            } else {
+                let l = core::mem::take(&mut t.line);
+                t.ready.extend(l);
+            }
+        }
+        _ => {
+            if b0 == bytes[0] {
+                t.line.extend_from_slice(bytes);
+            } else {
+                t.line.push(b0);
             }
             if t.echo {
                 echo(bytes);
@@ -154,6 +159,7 @@ pub fn random_u64() -> u64 {
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
 fn cmos(r: u8) -> u8 {
+    // SAFETY: the CMOS index/data ports 0x70/0x71; reading a clock register changes no memory.
     unsafe {
         crate::arch::outb(0x70, r);
         crate::arch::inb(0x71)
@@ -720,8 +726,10 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             Some(FdKind::Zero) => Direct::Fill(false),
             Some(FdKind::Random) => Direct::Fill(true),
             // a file mapped shared somewhere: its object holds the current bytes (filemap.rs)
-            Some(FdKind::File { path, pos, .. }) if crate::filemap::live(path).is_some() => Direct::Shared(crate::filemap::live(path).unwrap(), *pos),
-            Some(FdKind::File { data, pos, .. }) => Direct::File(data.clone(), *pos),
+            Some(FdKind::File { data, path, pos, .. }) => match crate::filemap::live(path) {
+                Some(obj) => Direct::Shared(obj, *pos),
+                None => Direct::File(data.clone(), *pos),
+            },
             Some(FdKind::Mem(m, pos)) => Direct::Mem(m.clone(), *pos),
             _ => Direct::No,
         };
@@ -3411,31 +3419,38 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
             }
             return va as i64;
         }
-        let mut a = va;
-        while a < va + len {
-            let Some(pa) = p.space_mut().map(a, w || prot & 1 != 0 || prot == 0, x) else {
-                // no memory: take back what this call mapped
-                while a > va {
-                    a -= 4096;
-                    p.space_mut().unmap(a);
-                }
-                return -ENOMEM;
-            };
-            if file_noexec {
-                p.space().mark_noexec_file(a);
-            }
-            if let Some(d) = &data {
-                let s = (off + (a - va)) as usize;
-                if s < d.len() {
-                    let n = (d.len() - s).min(4096);
-                    unsafe { core::ptr::copy_nonoverlapping(d[s..].as_ptr(), pa as *mut u8, n) };
-                }
-            }
-            a += 4096;
-        }
-        va as i64
+        map_copy(p, va, len, (w || prot & 1 != 0 || prot == 0, x), data.as_deref().map(|d| (&d[..], off)), file_noexec)
     })
     .unwrap_or(-ENOMEM)
+}
+
+/// Pages for `[va, va + len)` at once, filled from `data` at `off` (a private copy of a file): `va`, or
+/// `ENOMEM` with nothing of it left mapped.
+fn map_copy(p: &mut Proc, va: u64, len: u64, (w, x): (bool, bool), data: Option<(&[u8], u64)>, noexec: bool) -> i64 {
+    let mut a = va;
+    while a < va + len {
+        let Some(pa) = p.space_mut().map(a, w, x) else {
+            // no memory: take back what this call mapped
+            while a > va {
+                a -= 4096;
+                p.space_mut().unmap(a);
+            }
+            return -ENOMEM;
+        };
+        if noexec {
+            p.space().mark_noexec_file(a);
+        }
+        if let Some((d, off)) = data {
+            let s = (off + (a - va)) as usize;
+            if s < d.len() {
+                let n = (d.len() - s).min(4096);
+                // SAFETY: `pa` is the page just mapped for `a` (own, 4 KiB); `n` bytes fit in it and in `d`.
+                unsafe { core::ptr::copy_nonoverlapping(d[s..].as_ptr(), pa as *mut u8, n) };
+            }
+        }
+        a += 4096;
+    }
+    va as i64
 }
 
 /// `mprotect(addr, len, prot)`: the rights of mapped pages and of the reserved range change at once.
@@ -3512,6 +3527,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
         return -EINVAL;
     }
     let pid = proc::new_pid();
+    // SAFETY: reads the FS base MSR of this core (the caller's user FS); no memory is touched.
     let fs_now = unsafe { crate::paging::rdmsr(0xC000_0100) };
     let thread = flags & VM != 0 && flags & VFORK == 0;
     // namespaces: mount, pid and network exist; a thread cannot get its own
@@ -3628,6 +3644,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             frame: alloc::boxed::Box::new(fr),
             kstack,
             fs_base: if flags & SETTLS != 0 { tls } else { fs_now },
+            // SAFETY: reads the user GS base waiting in KERNEL_GS_BASE on this core; no memory is touched.
             gs_base: unsafe { crate::paging::rdmsr(0xC000_0102) },
             // a new thread starts without an alternate signal stack; a forked child keeps it (as Linux)
             altstack: if thread { proc::AltStack::default() } else { p.altstack },
@@ -3677,6 +3694,7 @@ fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
     let Some(pa) = with(|p| p.space().translate(addr).map(|x| x.0)).flatten() else { return Res::Val(-EFAULT) };
     match cmd {
         0 | 9 => {
+            // SAFETY: `pa` is the caller's own mapped page holding the futex word (translate above), aligned u32.
             let cur = unsafe { core::ptr::read_volatile(pa as *const u32) };
             if cur != val as u32 {
                 return Res::Val(-11);
@@ -3775,6 +3793,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
             return -8;
         }
     };
+    // SAFETY: the kernel's own tables map everything the kernel needs while the old space goes away.
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
     with(|p| {
         p.g.auxv = img.auxv.clone();
@@ -3799,6 +3818,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
         reset_at_exec(p);
         p.space().activate();
     });
+    // SAFETY: a fresh program starts with FS and GS base 0; writing these MSRs touches no memory.
     unsafe {
         crate::paging::wrmsr(0xC000_0100, 0);
         crate::paging::wrmsr(0xC000_0102, 0);
@@ -3989,10 +4009,12 @@ fn sys_arch_prctl(code: u64, addr: u64) -> i64 {
         if addr >= USER_TOP {
             return -EPERM;
         }
+        // SAFETY: `addr` was checked to lie in the user half; the MSR only sets this thread's FS/GS base.
         unsafe { crate::paging::wrmsr(msr, addr) };
         with(|p| if code == SET_FS { p.fs_base = addr } else { p.gs_base = addr });
         return 0;
     }
+    // SAFETY: reads this thread's FS/GS base MSR; no memory is touched.
     let v = unsafe { crate::paging::rdmsr(msr) };
     if put(addr, &v.to_le_bytes()) {
         0

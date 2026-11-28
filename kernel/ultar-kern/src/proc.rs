@@ -1318,24 +1318,7 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
     let cr2: u64;
     unsafe { core::arch::asm!("mov {}, cr2", out(reg) cr2) };
     crate::heap::clear_refused();
-    // a user access in a low window that met a kernel page (present, no user bit) is an absent page
-    // of the window; one that the page already allows came from another core's stale translation
-    let user_prot = v == 14 && f.err & 1 != 0 && f.err & 4 != 0 && crate::paging::low_window(cr2, cr2 + 1).is_some();
-    let (kernel_page, stale) = if user_prot {
-        let ps = PROCS.lock();
-        let me = current();
-        match ps.iter().find(|p| p.pid == me).and_then(|p| p.g.space.as_ref()) {
-            Some(s) => (s.kernel_page_at(cr2), s.allows(cr2, f.err & 2 != 0, f.err & 0x10 != 0)),
-            None => (false, false),
-        }
-    } else {
-        (false, false)
-    };
-    if stale {
-        // SAFETY: invalidates the translation of one user address; no memory is touched.
-        unsafe { core::arch::asm!("invlpg [{}]", in(reg) cr2) };
-        return;
-    }
+    let Some(kernel_page) = window_fault(v, f, cr2) else { return };
     if v == 14 && (f.err & 1 == 0 || kernel_page) {
         // reservierter mmap-Bereich oder Stapel: Seite jetzt belegen
         use crate::paging::Fault;
@@ -1382,6 +1365,36 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
             }
         }
     }
+    fatal_log(f, v, cr2);
+    exit_current(sig as i32);
+}
+
+/// A page fault of a user access in a low window: `Some(true)` when it met a kernel page (present,
+/// no user bit) – an absent page of the window; `None` when the page already allows the access (another
+/// core's stale translation, now flushed: nothing more to do); else `Some(false)`.
+fn window_fault(v: u64, f: &TrapFrame, cr2: u64) -> Option<bool> {
+    if !(v == 14 && f.err & 1 != 0 && f.err & 4 != 0 && crate::paging::low_window(cr2, cr2 + 1).is_some()) {
+        return Some(false);
+    }
+    let (kernel_page, stale) = {
+        let ps = PROCS.lock();
+        let me = current();
+        match ps.iter().find(|p| p.pid == me).and_then(|p| p.g.space.as_ref()) {
+            Some(s) => (s.kernel_page_at(cr2), s.allows(cr2, f.err & 2 != 0, f.err & 0x10 != 0)),
+            None => (false, false),
+        }
+    };
+    if stale {
+        // SAFETY: invalidates the translation of one user address; no memory is touched.
+        unsafe { core::arch::asm!("invlpg [{}]", in(reg) cr2) };
+        return None;
+    }
+    Some(kernel_page)
+}
+
+/// The kernel log line of a fatal exception; one without a page also tells its error code and the
+/// instruction's bytes (what the program did).
+fn fatal_log(f: &TrapFrame, v: u64, cr2: u64) {
     // built and freed in an inner scope: nothing on this stack is dropped once the process is gone
     crate::heap::kernel(|| {
         let (name, code) = PROCS
@@ -1391,12 +1404,10 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
             .map(|p| (p.name.clone(), p.g.space.as_ref().and_then(|s| read_user(s, f.rip, 8))))
             .unwrap_or_default();
         crate::kprintln!("[proc] {} (pid {}): {} {} {:#x}, {} {:#x} – {}", name, current(), crate::trap::name(v), crate::sprache::t("bei"), f.rip, crate::sprache::t("adresse"), cr2, crate::sprache::t("beendet"));
-        // an exception without a page: its error code and the instruction's bytes tell what the program did
         if v != 14 {
-            crate::kprintln!("[proc]   Fehlercode {:#x}, Befehl {:02x?}", f.err, code.unwrap_or_default());
+            crate::kprintln!("[proc]   {} {:#x}, {:02x?}", crate::sprache::t("code"), f.err, code.unwrap_or_default());
         }
     });
-    exit_current(sig as i32);
 }
 
 pub fn on_syscall(f: &mut TrapFrame) {

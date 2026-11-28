@@ -46,6 +46,7 @@ mod fdcalls;
 mod filemap;
 mod klog;
 mod mem;
+mod msg;
 mod msi;
 mod dhcp;
 mod net;

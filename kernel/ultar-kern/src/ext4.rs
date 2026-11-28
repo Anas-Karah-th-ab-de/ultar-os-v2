@@ -382,7 +382,7 @@ fn wr(disk: usize, lba: u64, data: &[u8]) -> Option<()> {
 
 pub type WResult<T> = core::result::Result<T, &'static str>;
 /// Error text of a full file system (the caller maps it to `ENOSPC`).
-pub const NO_SPACE: &str = "Datenträger voll";
+pub const NO_SPACE: &str = crate::msg::EXT4_NO_SPACE;
 
 impl Ext4 {
     fn sb(&self) -> Option<Vec<u8>> {
@@ -880,7 +880,7 @@ impl Ext4 {
         let per = self.leaf_capacity();
         let leaves = runs.len().div_ceil(per);
         if leaves > 4 {
-            return Err("Datei zu zerstückelt");
+            return Err(crate::msg::EXT4_FRAGMENTED);
         }
         let blocks: Vec<u64> = self.alloc_blocks(leaves as u64)?.iter().flat_map(|&(s, l)| s..s + l).collect();
         let sb = self.sb().ok_or("Lesefehler")?;
@@ -1038,7 +1038,7 @@ impl Ext4 {
     fn set_data(&self, ino: u64, data: &[u8]) -> WResult<()> {
         let mut raw = self.get_raw(ino)?;
         if le32(&raw, 32) & 0x1000_0000 != 0 {
-            return Err("Inline-Daten nicht unterstützt");
+            return Err(crate::msg::EXT4_INLINE);
         }
         let old = self.inode_blocks(&raw);
         let runs = match self.write_runs(data) {
@@ -1246,7 +1246,7 @@ impl Ext4 {
     pub fn write_file(&self, path: &str, data: &[u8]) -> WResult<()> {
         let (parent, name) = Self::split(path);
         if name.is_empty() || name.len() > 255 {
-            return Err("ungültiger Name");
+            return Err(crate::msg::EXT4_BAD_NAME);
         }
         let (dino, d) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
         if !d.is_dir() {
@@ -1277,7 +1277,7 @@ impl Ext4 {
     pub fn symlink(&self, path: &str, target: &str) -> WResult<()> {
         let (parent, name) = Self::split(path);
         if name.is_empty() || name.len() > 255 || target.is_empty() || target.len() >= self.bs as usize {
-            return Err("ungültiger Name");
+            return Err(crate::msg::EXT4_BAD_NAME);
         }
         let (dino, d) = self.lookup(parent).ok_or("Verzeichnis fehlt")?;
         if !d.is_dir() {

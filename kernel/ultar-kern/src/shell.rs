@@ -636,9 +636,9 @@ pub fn info() {
     kprintln!("Prozessorkerne: {on} von {all} aktiv");
     kprintln!("Laufzeit: {} ms", arch::uptime_ms());
     if crate::paging::win_window() {
-        kprintln!("[speicher] Fenster 0x7c000000-0x80000000 für feste Adressen (Wine, Windows-Programme): frei");
+        kprintln!("{}", crate::msg::WINDOW_OPEN);
     } else {
-        kprintln!("[speicher] Fenster 0x7c000000-0x80000000: Firmware oder Bildspeicher liegt dort – Programme mit festen Adressen dort (Wine) starten nicht");
+        kprintln!("{}", crate::msg::WINDOW_CLOSED);
     }
 }
 
