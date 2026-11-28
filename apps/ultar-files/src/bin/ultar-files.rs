@@ -117,6 +117,15 @@ fn report_folder(bus: &Bus, app: &App, title: &str, reported: &mut Option<String
     *reported = Some(uri);
 }
 
+/// The app's services on the bus.
+fn bus_ports(bus: Bus) -> Ports {
+    Ports {
+        launcher: Box::new(BusLauncher(bus.clone())),
+        foreign: Box::new(BusForeign::new(bus.clone())),
+        volumes: Box::new(BusVolumes::new(bus)),
+    }
+}
+
 fn run(o: Options) -> Result<(), String> {
     let socket = o.compositor.ok_or("compositor")?;
     let bus = Bus::connect(&o.bus.ok_or("bus")?, ClientOptions::named(APP_ID))
@@ -134,11 +143,7 @@ fn run(o: Options) -> Result<(), String> {
         Ui::new(env, InputMode::Pointer, Size::new(1.0, 1.0), tr).map_err(|e| e.to_string())?;
     let mut window = open_window(&socket, o.desktop, &title, ui)?;
     let mesh = bus.clone();
-    let ports = Ports {
-        launcher: Box::new(BusLauncher(bus.clone())),
-        foreign: Box::new(BusForeign::new(bus.clone())),
-        volumes: Box::new(BusVolumes::new(bus)),
-    };
+    let ports = bus_ports(bus);
     let mode = if o.desktop { Mode::Desk } else { Mode::Window };
     let placeholder = Ui::new(
         env,

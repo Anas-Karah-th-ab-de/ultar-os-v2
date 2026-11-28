@@ -1130,6 +1130,7 @@ pub fn switch_out(f: &TrapFrame, state: Option<State>) -> ! {
         let me = current();
         if let Some(p) = ps.iter_mut().find(|p| p.pid == me) {
             *p.frame = f.clone();
+            // SAFETY: reads this core's FS/GS base MSRs – the leaving thread's own values; no memory is touched.
             p.fs_base = unsafe { crate::paging::rdmsr(0xC000_0100) };
             p.gs_base = unsafe { crate::paging::rdmsr(0xC000_0102) };
             p.state = state.unwrap_or(State::Ready);
@@ -1316,6 +1317,7 @@ pub fn on_timer(f: &mut TrapFrame) {
 /// Ausnahme in einem Benutzerprogramm: Stapel wachsen lassen oder Prozess beenden
 pub fn on_fault(f: &mut TrapFrame, v: u64) {
     let cr2: u64;
+    // SAFETY: reads the faulting address of this core's last page fault; no memory is touched.
     unsafe { core::arch::asm!("mov {}, cr2", out(reg) cr2) };
     crate::heap::clear_refused();
     let Some(kernel_page) = window_fault(v, f, cr2) else { return };

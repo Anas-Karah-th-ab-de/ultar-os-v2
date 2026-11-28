@@ -1520,11 +1520,6 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "system/core/ultar-busd/src/service_files_tests.rs"
-count = 2
-
-[[entry]]
-rule = "size"
 path = "system/core/ultar-init/src/boot.rs"
 count = 2
 
@@ -1896,7 +1891,7 @@ count = 17
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/proc.rs"
-count = 24
+count = 21
 
 [[entry]]
 rule = "unsafe"
@@ -2858,5 +2853,3 @@ rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
 
-
-# servo-host is its own workspace and cannot use the HAL crate; it names the kernel's sound node once

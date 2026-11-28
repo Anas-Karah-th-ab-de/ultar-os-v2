@@ -162,10 +162,8 @@ pub struct State {
     pub error: Option<FsError>,
     /// Grid or list, sort key and direction.
     pub look: Look,
-    /// The search text.
-    pub query: String,
-    /// Names that match the search by name or content (`None`: no search).
-    pub hits: Option<Vec<String>>,
+    /// The search in the folder.
+    pub search: Search,
     /// Back/forward.
     pub history: History,
     /// The dialog shown.
@@ -179,6 +177,15 @@ pub struct State {
     /// An installation that goes on after its sheet was closed: the job and the file's name
     /// (its end is said in a notice).
     pub foreign_job: Option<(u64, String)>,
+}
+
+/// The search in the folder: the text and what matches it.
+#[derive(Debug, Default)]
+pub struct Search {
+    /// The search text.
+    pub query: String,
+    /// Names that match the search by name or content (`None`: no search).
+    pub hits: Option<Vec<String>>,
 }
 
 /// How the items are shown.
@@ -214,8 +221,7 @@ impl State {
                 view: ViewMode::Grid,
                 sort: (SortKey::Name, true),
             },
-            query: String::new(),
-            hits: None,
+            search: Search::default(),
             history: History::default(),
             dialog: None,
             job: None,
