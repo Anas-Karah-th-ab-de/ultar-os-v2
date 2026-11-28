@@ -28,13 +28,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use ultar_bus::messages::foreign::{
-    Choices, Failure, Inspect, InspectOutcome, Install, InstallFrom, InstallOutcome, List, Outcome,
-    Progress, Refusal, Remove, RuntimeState, Source, Step,
+    Choices, Failure, Inspect, InspectOutcome, Inspected, Install, InstallFrom, InstallOutcome,
+    List, Outcome, Progress, Refusal, Remove, RuntimeState, Source, Step,
 };
 use ultar_bus::messages::launcher::Role;
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
 use ultar_bus::{Broker, Call, Client, ClientOptions, FixedIdentity, Identity, Policy, Text};
 use ultar_launcher::service::{self, Admins};
+use ultar_launcher::Launcher;
 use ultar_service::{Lifecycle, StopCause};
 
 const JOB_WAIT: Duration = Duration::from_secs(600);
@@ -224,132 +225,16 @@ fn weston(program: &str, dir: &Path) -> (Child, PathBuf) {
     (child, sock)
 }
 
-#[test]
-fn an_android_app_goes_in_shows_its_window_in_its_cell_and_leaves_without_trace() {
-    let vars: Vec<Result<String, _>> = [
-        "ULTAR_FOREIGN_RUNTIME",
-        "ULTAR_FOREIGN_APKS",
-        "ULTAR_FOREIGN_APP",
-        "ULTAR_FOREIGN_BIN",
-        "ULTAR_FOREIGN_WESTON",
-        "ULTAR_FOREIGN_SHOT",
-        "ULTAR_FOREIGN_SHOT_OUT",
-    ]
-    .iter()
-    .map(std::env::var)
-    .collect();
-    let Ok(vars) = vars.into_iter().collect::<Result<Vec<String>, _>>() else {
-        eprintln!(
-            "skipped: the ULTAR_FOREIGN_* variables of tools/foreign/android-e2e.sh are not set"
-        );
-        return;
-    };
-    if !root() {
-        eprintln!("skipped: real cells need root");
-        return;
-    }
-    let [area, apks, app, bin, weston_program, shot, shot_out] = vars.as_slice() else {
-        unreachable!()
-    };
-    let mut parts = app.splitn(3, ' ');
-    let (package, id, label) = (
-        parts.next().unwrap().to_owned(),
-        parts.next().unwrap().to_owned(),
-        parts.next().unwrap().to_owned(),
-    );
-    let mut world = World::new("android");
-    let foreign_root = world.path("foreign");
-    let runtime = foreign_root.join("linux");
-    std::fs::create_dir_all(&foreign_root).unwrap();
-    assert!(Command::new("cp")
-        .args(["-a", area])
-        .arg(&runtime)
-        .status()
-        .unwrap()
-        .success());
-    let downloads = world.path("areas/downloads");
-    std::fs::create_dir_all(&downloads).unwrap();
-    for f in ["app", "arm", "tampered", "other", "old", "unsigned"] {
-        std::fs::copy(
-            Path::new(apks).join(format!("{f}.apk")),
-            downloads.join(format!("{f}.apk")),
-        )
-        .unwrap();
-    }
-    std::fs::write(world.path("secret"), b"host secret").unwrap();
-    let (mut compositor, wayland) = weston(weston_program, &world.path("share/wl"));
-    let bridge = world.path("bridge");
-    std::fs::create_dir_all(&bridge).unwrap();
-    std::fs::write(
-        bridge.join("ultar-wayland"),
-        probe_script(&world, &wayland, &package),
-    )
-    .unwrap();
-    std::fs::set_permissions(
-        bridge.join("ultar-wayland"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .unwrap();
-    let tree = world.fake_group_tree();
-    let dir = tree.join("apps").join(&id);
-    std::fs::create_dir_all(&dir).unwrap();
-    for file in ["cgroup.procs", "memory.max", "pids.max"] {
-        std::fs::write(dir.join(file), b"").unwrap();
-    }
-    let output = Collector::listen(&world.path("out.sock"));
+#[path = "foreign_android_e2e/setup.rs"]
+mod setup;
+use setup::{set_up, variables, Env};
 
-    let _broker = broker(&world);
-    let config = format!(
-        "{}foreign_runtime = \"{}\"\nforeign_bridge = \"{}\"\n",
-        world.config_text(&[], Some(&tree)),
-        runtime.display(),
-        bridge.display()
-    );
-    let launcher = world.open(&config);
-    let admins = Arc::new(Mutex::new(Admins::load(Some(&shipped_policy()))));
-    let life = Lifecycle::new();
-    let serving = {
-        let (launcher, life, socket) = (
-            Arc::clone(&launcher),
-            life.clone(),
-            socket(&world, "system.launcher"),
-        );
-        std::thread::spawn(move || service::serve(socket, launcher, admins, life))
-    };
-    let stop = Arc::new(AtomicBool::new(false));
-    let (authorize, asked) = dialog(&world, Arc::clone(&stop));
-    let mut service = Command::new(bin)
-        .arg("--bus")
-        .arg(socket(&world, "system.foreign"))
-        .arg("--root")
-        .arg(&foreign_root)
-        .arg("--sources")
-        .arg(world.path("areas"))
-        .arg("--allow-root")
-        .stdin(Stdio::null())
-        .spawn()
-        .unwrap();
-    let files = client(&world, "app.files");
-    let settings = client(&world, "app.settings");
-    let progress = files.subscribe::<Progress>().unwrap();
-    assert!(common::wait_until_ok(|| settings
-        .call(&RuntimeState {}, Duration::from_secs(1))
-        .is_ok_and(|r| r.installed)));
-    let path = |name: &str| downloads.join(name).display().to_string();
-    let install = |name: &str| Install {
-        from: InstallFrom::File(path(name)),
-        choices: Choices::default(),
-    };
-    let inspect = |name: &str| match call(&files, &Inspect { path: path(name) }).outcome {
-        InspectOutcome::Found(i) => i,
-        other => panic!("{name}: {other:?}"),
-    };
-
-    // 1. read in the inspection cell: what it is, who signed it, what it never gets
-    let i = inspect("app.apk");
+/// 1. read in the inspection cell: what it is, who signed it, what it never gets
+fn inspected(env: &Env) {
+    let i = env.inspect("app.apk");
     assert_eq!(
         (i.source, i.name.as_str()),
-        (Source::Apk, label.as_str()),
+        (Source::Apk, env.app.label.as_str()),
         "{i:?}"
     );
     assert!(i.installable && !i.verified && i.refusal.is_none(), "{i:?}");
@@ -360,54 +245,52 @@ fn an_android_app_goes_in_shows_its_window_in_its_cell_and_leaves_without_trace(
         "FOREIGN-ANDROID: inspected ok ({} {}, signer {} \"{}\" unverified, network suggested: {:?}, never granted: {:?})",
         i.name, i.version, fingerprint, signer, i.suggested.network, i.not_granted
     );
+}
 
-    // 2. refused before anything happens
+/// 2. refused before anything happens; 3. "cancelled" installs nothing
+fn refusals(env: &Env) {
     for (file, refusal) in [
         ("arm", Refusal::NeedsArm),
         ("tampered", Refusal::BadSignature),
         ("old", Refusal::OldSignature),
         ("unsigned", Refusal::Unsigned),
     ] {
-        let r = inspect(&format!("{file}.apk"));
+        let r = env.inspect(&format!("{file}.apk"));
         assert_eq!(r.refusal, Some(refusal), "{file}: {r:?}");
         assert!(!r.installable, "{file}");
-        let job = started(call(&files, &install(&format!("{file}.apk"))).outcome);
-        assert_eq!(
-            end_of(&progress, job).step,
-            Step::Failed(Failure::Damaged),
-            "{file}"
-        );
+        let job = env.install(&format!("{file}.apk"));
+        assert_eq!(env.end(job).step, Step::Failed(Failure::Damaged), "{file}");
     }
-    assert!(
-        asked.lock().unwrap().is_empty(),
-        "a refused file asks nobody"
-    );
-    assert!(!runtime.join(APPS).join(&package).exists());
+    assert_eq!(env.asked(), 0, "a refused file asks nobody");
+    assert!(!env.placed().exists());
     println!("FOREIGN-ANDROID: refusals ok (ARM only, changed, JAR signing only, unsigned)");
 
-    // 3. "cancelled" installs nothing
-    let job = started(call(&files, &install("app.apk")).outcome);
-    assert_eq!(end_of(&progress, job).step, Step::Cancelled);
-    assert!(!runtime.join(APPS).join(&package).exists());
-    assert_eq!(asked.lock().unwrap()[0].key, "foreign.confirm.install");
+    let job = env.install("app.apk");
+    assert_eq!(env.end(job).step, Step::Cancelled);
+    assert!(!env.placed().exists());
+    assert_eq!(
+        env.run.asked.lock().unwrap()[0].key,
+        "foreign.confirm.install"
+    );
     println!("FOREIGN-ANDROID: cancelled ok");
+}
 
-    // 4. confirmed: placed read-only in the area, registered as app.foreign
-    authorize.store(true, Ordering::SeqCst);
-    let job = started(call(&files, &install("app.apk")).outcome);
-    let done = end_of(&progress, job);
+/// 4. confirmed: placed read-only in the area, registered as app.foreign; the app's uid
+fn installed(env: &Env) -> u32 {
+    env.run.authorize.store(true, Ordering::SeqCst);
+    let done = env.end(env.install("app.apk"));
     assert_eq!(done.step, Step::Done, "{done:?}");
-    assert_eq!(done.apps, vec![id.clone()]);
-    let placed = runtime.join(APPS).join(&package).join("base.apk");
-    assert_eq!(sha256(&placed), sha256(&downloads.join("app.apk")));
+    assert_eq!(done.apps, vec![env.app.id.clone()]);
+    let placed = env.placed().join("base.apk");
+    assert_eq!(sha256(&placed), sha256(&env.at.downloads.join("app.apk")));
     let meta = std::fs::metadata(&placed).unwrap();
     assert_eq!(meta.permissions().mode() & 0o7777, 0o644);
     assert_eq!(std::os::unix::fs::MetadataExt::uid(&meta), 0);
-    let listed = launcher.list();
-    let entry = listed.iter().find(|a| a.app == id).unwrap();
+    let listed = env.run.launcher.list();
+    let entry = listed.iter().find(|a| a.app == env.app.id).unwrap();
     assert_eq!(entry.profile, "app.foreign");
     let uid = entry.uid;
-    let apps = call(&settings, &List {}).apps;
+    let apps = call(&env.settings, &List {}).apps;
     assert_eq!(apps.len(), 1);
     assert_eq!(
         apps[0].choices,
@@ -415,138 +298,144 @@ fn an_android_app_goes_in_shows_its_window_in_its_cell_and_leaves_without_trace(
         "nothing granted unasked"
     );
     assert!(Path::new(&apps[0].icon).is_file(), "{:?}", apps[0]);
-    println!("FOREIGN-ANDROID: installed ok ({id}, uid {uid})");
+    println!("FOREIGN-ANDROID: installed ok ({}, uid {uid})", env.app.id);
+    uid
+}
 
-    // 5. in its cell, with its window
-    launcher.start(&id, Role::Ui, None).unwrap();
-    let home = world.path(&format!("appdata/{id}"));
-    let probe = wait_file(&home.join("probe.txt"), "end ok");
-    assert!(
-        line(&probe, "args").starts_with(&format!(
-            "-- /opt/ultar-android/bin/ultar-apk-run {package} "
-        )),
-        "{probe}"
+/// 5. in its cell: what the probe in place of the bridge saw
+fn in_its_cell(env: &Env, uid: u32) {
+    env.run.launcher.start(&env.app.id, Role::Ui, None).unwrap();
+    let probe = wait_file(&env.home().join("probe.txt"), "end ok");
+    let run = format!(
+        "-- /opt/ultar-android/bin/ultar-apk-run {} ",
+        env.app.package
     );
+    assert!(line(&probe, "args").starts_with(&run), "{probe}");
     assert_eq!(line(&probe, "uid"), uid.to_string());
     assert_eq!(line(&probe, "write-area"), "done", "{probe}");
     assert_eq!(line(&probe, "host-secret"), "hidden");
-    assert_eq!(
-        line(&probe, "net").trim(),
-        "lo",
-        "no network without the permission"
-    );
+    let net = line(&probe, "net").trim();
+    assert_eq!(net, "lo", "no network without the permission");
     assert_eq!(line(&probe, "caps"), "0000000000000000");
     assert_eq!(line(&probe, "nnp"), "1");
-    assert_eq!(
-        line(&probe, "home-exec"),
-        "refused",
-        "the app's data is not executable"
-    );
+    let exec = line(&probe, "home-exec");
+    assert_eq!(exec, "refused", "the app's data is not executable");
     let devices: Vec<&str> = line(&probe, "devices").split_whitespace().collect();
+    let allowed = ["null", "zero", "full", "random", "urandom", "tty"];
+    assert!(devices.iter().all(|d| allowed.contains(d)), "{devices:?}");
+    let ids = line(&probe, "id-files");
     assert!(
-        devices
-            .iter()
-            .all(|d| ["null", "zero", "full", "random", "urandom", "tty"].contains(d)),
-        "{devices:?}"
-    );
-    assert!(
-        !line(&probe, "id-files").contains("=33"),
+        !ids.contains("=33"),
         "no machine identity in the area: {probe}"
     );
+}
+
+/// 5. … with its window on the display; native code stays in the area
+fn window(env: &Env) {
+    let d = &env.display;
     let deadline = Instant::now() + WINDOW_WAIT;
     let shown = loop {
-        let ok = Command::new(shot)
-            .arg(&wayland)
-            .arg(shot_out)
+        let ok = Command::new(&d.shot)
+            .arg(&d.wayland)
+            .arg(&d.shot_out)
             .status()
             .is_ok_and(|s| s.success());
-        if ok {
-            break true;
-        }
-        if Instant::now() > deadline {
-            break false;
+        if ok || Instant::now() > deadline {
+            break ok;
         }
         std::thread::sleep(Duration::from_secs(5));
     };
-    let log = std::fs::read_to_string(home.join("app.log")).unwrap_or_default();
+    let home = env.home();
     if !shown {
-        eprintln!("--- app.log\n{log}\n--- launcher\n{:?}", output.of(&id));
+        let log = std::fs::read_to_string(home.join("app.log")).unwrap_or_default();
+        let launcher = env.run.output.of(&env.app.id);
+        eprintln!("--- app.log\n{log}\n--- launcher\n{launcher:?}");
     }
     assert!(shown, "no window of the app on the display");
-    // native code stays in the area: the data has only a link to it
-    let lib = home.join("android/base.apk_/lib");
+    // the data has only a link to the native code
     assert_eq!(
-        std::fs::read_link(&lib).unwrap(),
-        Path::new("/").join(APPS).join(&package).join("lib")
+        std::fs::read_link(home.join("android/base.apk_/lib")).unwrap(),
+        Path::new("/").join(APPS).join(&env.app.package).join("lib")
     );
-    println!("FOREIGN-ANDROID: window ok ({shot_out})");
-    let _ = launcher.stop(&id, Role::Ui);
+    println!("FOREIGN-ANDROID: window ok ({})", d.shot_out);
+    let _ = env.run.launcher.stop(&env.app.id, Role::Ui);
+}
 
-    // 6. an update from another signer is refused before anyone is asked
-    let before = asked.lock().unwrap().len();
-    let job = started(call(&files, &install("other.apk")).outcome);
-    assert_eq!(
-        end_of(&progress, job).step,
-        Step::Failed(Failure::SignerChanged)
-    );
-    assert_eq!(asked.lock().unwrap().len(), before);
-    assert_eq!(sha256(&placed), sha256(&downloads.join("app.apk")));
-    // the same signer again is fine
-    let job = started(call(&files, &install("app.apk")).outcome);
-    let done = end_of(&progress, job);
+/// 6. an update from another signer is refused before anyone is asked; the same signer is fine
+fn update_rules(env: &Env) {
+    let before = env.asked();
+    let job = env.install("other.apk");
+    assert_eq!(env.end(job).step, Step::Failed(Failure::SignerChanged));
+    assert_eq!(env.asked(), before);
+    let placed = env.placed().join("base.apk");
+    assert_eq!(sha256(&placed), sha256(&env.at.downloads.join("app.apk")));
+    let done = env.end(env.install("app.apk"));
     assert_eq!(done.step, Step::Done, "{done:?}");
-    assert_eq!(
-        done.apps,
-        vec![id.clone()],
-        "the same app, updated in place"
-    );
+    let same = vec![env.app.id.clone()];
+    assert_eq!(done.apps, same, "the same app, updated in place");
     println!("FOREIGN-ANDROID: update rules ok");
+}
 
-    // 7. removal leaves nothing behind
+/// 7. removal leaves nothing behind
+fn removal(env: &Env) {
+    let id = env.app.id.clone();
     let removed = call(
-        &settings,
+        &env.settings,
         &Remove {
-            id: id.clone(),
+            id,
             keep_data: false,
         },
     );
     assert_eq!(removed.outcome, Outcome::Done);
-    assert!(common::wait_until_ok(
-        || !call(&settings, &RuntimeState {}).busy
-    ));
-    assert!(common::wait_until_ok(|| !runtime
-        .join(APPS)
-        .join(&package)
-        .exists()));
-    assert!(launcher
-        .list()
-        .iter()
-        .all(|a| !a.app.starts_with("foreign.")));
-    assert!(call(&settings, &List {}).apps.is_empty());
-    assert!(!home.exists());
+    assert!(common::wait_until_ok(|| !call(
+        &env.settings,
+        &RuntimeState {}
+    )
+    .busy));
+    assert!(common::wait_until_ok(|| !env.placed().exists()));
+    let listed = env.run.launcher.list();
+    assert!(listed.iter().all(|a| !a.app.starts_with("foreign.")));
+    assert!(call(&env.settings, &List {}).apps.is_empty());
+    assert!(!env.home().exists());
+    let empty = |d: &Path| std::fs::read_dir(d).unwrap().count() == 0;
     for d in ["icons", "inbox"] {
-        assert_eq!(
-            std::fs::read_dir(foreign_root.join(d)).unwrap().count(),
-            0,
-            "{d}"
-        );
+        assert!(empty(&env.at.foreign_root.join(d)), "{d}");
     }
-    assert_eq!(
-        std::fs::read_dir(runtime.join(APPS)).unwrap().count(),
-        0,
-        "no app left in the area"
-    );
+    assert!(empty(&env.at.runtime.join(APPS)), "no app left in the area");
     println!("FOREIGN-ANDROID: removal ok");
+}
 
+fn shut_down(env: Env) {
+    let Env {
+        mut display,
+        mut run,
+        ..
+    } = env;
     let _ = Command::new("kill")
-        .args(["-TERM", &service.id().to_string()])
+        .args(["-TERM", &run.foreign.id().to_string()])
         .status();
-    assert_eq!(service.wait().unwrap().code(), Some(0));
-    let _ = compositor.kill();
-    let _ = compositor.wait();
-    stop.store(true, Ordering::SeqCst);
-    life.request_stop(StopCause::Request);
-    drop(_broker);
-    serving.join().unwrap();
+    assert_eq!(run.foreign.wait().unwrap().code(), Some(0));
+    let _ = display.compositor.kill();
+    let _ = display.compositor.wait();
+    run.stop.store(true, Ordering::SeqCst);
+    run.life.request_stop(StopCause::Request);
+    drop(run.broker);
+    run.serving.join().unwrap();
+}
+
+#[test]
+fn an_android_app_goes_in_shows_its_window_in_its_cell_and_leaves_without_trace() {
+    let Some(vars) = variables() else {
+        return;
+    };
+    let env = set_up(&vars);
+    inspected(&env);
+    refusals(&env);
+    let uid = installed(&env);
+    in_its_cell(&env, uid);
+    window(&env);
+    update_rules(&env);
+    removal(&env);
+    shut_down(env);
     println!("FOREIGN-ANDROID-E2E: ALLES OK");
 }

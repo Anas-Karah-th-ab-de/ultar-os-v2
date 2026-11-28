@@ -150,11 +150,22 @@ pub fn mount_ptys(dev: &Path) -> Result<(), Errno> {
     let (pts, ptmx) = (dev.join("pts"), dev.join("ptmx"));
     std::fs::create_dir_all(&pts).map_err(|_| Errno::from(rustix::io::Errno::IO))?;
     let flags = MountFlags::NOSUID | MountFlags::NOEXEC;
-    if mount("devpts", &pts, "devpts", flags, Some(c"newinstance,ptmxmode=0666,mode=0620")).is_ok() {
-        return std::os::unix::fs::symlink("pts/ptmx", &ptmx).map_err(|_| Errno::from(rustix::io::Errno::IO));
+    if mount(
+        "devpts",
+        &pts,
+        "devpts",
+        flags,
+        Some(c"newinstance,ptmxmode=0666,mode=0620"),
+    )
+    .is_ok()
+    {
+        return std::os::unix::fs::symlink("pts/ptmx", &ptmx)
+            .map_err(|_| Errno::from(rustix::io::Errno::IO));
     }
     let (host_ptmx, host_pts) = (Path::new(DEV).join("ptmx"), Path::new(DEV).join("pts"));
-    if std::fs::symlink_metadata(&host_ptmx).is_err() || std::fs::symlink_metadata(&host_pts).is_err() {
+    if std::fs::symlink_metadata(&host_ptmx).is_err()
+        || std::fs::symlink_metadata(&host_pts).is_err()
+    {
         return Ok(());
     }
     std::fs::File::create(&ptmx).map_err(|_| Errno::from(rustix::io::Errno::IO))?;

@@ -151,14 +151,7 @@ pub fn inspect(ctx: &Ctx, path: &str, job: u64) -> InspectOutcome {
     }
     let runtime = ctx.layout.runtime_installed();
     if source == Source::Apk && runtime {
-        return match crate::apkjobs::read(ctx, opened, job) {
-            Ok(read) => InspectOutcome::Found(crate::apkjobs::inspected(
-                &read,
-                size,
-                ctx.layout.android_installed(),
-            )),
-            Err(_) => InspectOutcome::Unreadable,
-        };
+        return crate::apkjobs::inspect(ctx, opened, size, job);
     }
     let (mut name, mut version, mut publisher) = (detect::stem(file), String::new(), String::new());
     let mut installable = source.installable() && runtime;

@@ -34,11 +34,19 @@ fn world_with(installed: bool) -> ForeignWorld {
     ForeignWorld {
         runtime: RuntimeStateReply {
             installed,
-            version: if installed { "26.04-1".into() } else { String::new() },
+            version: if installed {
+                "26.04-1".into()
+            } else {
+                String::new()
+            },
             size_bytes: 812_000_000,
             busy: false,
         },
-        apps: if installed { vec![mousepad()] } else { Vec::new() },
+        apps: if installed {
+            vec![mousepad()]
+        } else {
+            Vec::new()
+        },
         asking: Some(7),
         ..ForeignWorld::default()
     }
@@ -78,7 +86,10 @@ fn without_the_service_or_the_area_the_page_says_so() {
     assert!(app.state.status.foreign.error.is_some());
     let (world, mut app) = open(Lang::En, ThemeKind::Dark, Some(world_with(false)));
     // the area is installed from the component (a drive or the Store's downloads)
-    assert!(app.view.node(Act::ForeignUpdate).is_some(), "install the component");
+    assert!(
+        app.view.node(Act::ForeignUpdate).is_some(),
+        "install the component"
+    );
     assert!(app.view.node(Act::ForeignApp(0)).is_none());
     // the service answers "missing" too if asked
     assert!(!app.state.status.foreign.runtime.as_ref().unwrap().installed);
@@ -94,11 +105,22 @@ fn granting_more_asks_and_taking_back_applies_at_once() {
     let (world, mut app) = open(Lang::En, ThemeKind::Dark, Some(world_with(true)));
     press(&mut app, Act::ForeignApp(0));
     assert_eq!(app.state.sub, SubPage::ForeignApp);
-    assert!(app.view.node(Act::ForeignLan).is_none(), "no LAN without internet");
+    assert!(
+        app.view.node(Act::ForeignLan).is_none(),
+        "no LAN without internet"
+    );
     press(&mut app, Act::ForeignInternet);
     assert!(last(&world).starts_with("foreign.set_choices foreign.deb-mousepad"));
-    assert_eq!(app.state.status.foreign.jobs, [7], "waits for the administrator");
-    assert_eq!(choices(&world).network, NetworkChoice::None, "not before it is confirmed");
+    assert_eq!(
+        app.state.status.foreign.jobs,
+        [7],
+        "waits for the administrator"
+    );
+    assert_eq!(
+        choices(&world).network,
+        NetworkChoice::None,
+        "not before it is confirmed"
+    );
     // the administrator confirmed: the service changed it and says the job is done
     {
         let mut w = world.borrow_mut();
@@ -113,7 +135,10 @@ fn granting_more_asks_and_taking_back_applies_at_once() {
     }
     app.poll().unwrap();
     assert!(app.state.status.foreign.jobs.is_empty());
-    assert!(app.view.node(Act::ForeignLan).is_some(), "now the LAN switch");
+    assert!(
+        app.view.node(Act::ForeignLan).is_some(),
+        "now the LAN switch"
+    );
     // taking back needs no confirmation
     world.borrow_mut().system.foreign.as_mut().unwrap().asking = None;
     press(&mut app, Act::ForeignInternet);
@@ -134,9 +159,16 @@ fn removing_asks_and_can_keep_the_data() {
     let purpose = app.state.dialog.as_ref().map(|d| d.purpose);
     assert_eq!(purpose, Some(DialogPurpose::ForeignRemove));
     press(&mut app, Act::DialogOk);
-    assert_eq!(last(&world), "foreign.remove foreign.deb-mousepad keep=true");
+    assert_eq!(
+        last(&world),
+        "foreign.remove foreign.deb-mousepad keep=true"
+    );
     assert!(app.state.dialog.is_none());
-    assert_eq!(app.state.sub, SubPage::None, "the page of a removed app closes");
+    assert_eq!(
+        app.state.sub,
+        SubPage::None,
+        "the page of a removed app closes"
+    );
     assert!(app.view.node(Act::ForeignApp(0)).is_none());
 }
 
@@ -183,6 +215,9 @@ fn the_pages_in_arabic_and_english_dark_and_light() {
 fn save(app: &mut App, name: &str) {
     app.ui.layout();
     if let Some(dir) = std::env::var_os("ULTAR_SETTINGS_SHOTS") {
-        write_png(&std::path::Path::new(&dir).join(format!("{name}.png")), &mut app.ui);
+        write_png(
+            &std::path::Path::new(&dir).join(format!("{name}.png")),
+            &mut app.ui,
+        );
     }
 }

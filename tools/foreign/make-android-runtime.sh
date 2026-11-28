@@ -233,7 +233,7 @@ cat >"$P/DEBIAN/control" <<CONTROL
 Package: ultar-android-runtime
 Version: $VERSION
 Architecture: amd64
-Maintainer: KM Code Craft <os@code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Installed-Size: $size_kb
 Depends: $depends
 Description: Android apps for the Ultar Linux area (Android Translation Layer)

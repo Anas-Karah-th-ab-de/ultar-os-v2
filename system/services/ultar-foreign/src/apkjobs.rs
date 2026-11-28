@@ -17,7 +17,8 @@ use crate::state::{AppRecord, State};
 use std::path::PathBuf;
 use std::time::Duration;
 use ultar_bus::messages::foreign::{
-    Choices, Failure, Inspected, NetworkChoice, Refusal, Source, Step, ANDROID_NOT_GRANTED,
+    Choices, Failure, InspectOutcome, Inspected, NetworkChoice, Refusal, Source, Step,
+    ANDROID_NOT_GRANTED,
 };
 use ultar_bus::Client;
 
@@ -87,6 +88,14 @@ fn suggested(report: &Report) -> Choices {
             NetworkChoice::None
         },
         ..Choices::default()
+    }
+}
+
+/// `foreign.inspect` of an APK: read in the inspection cell.
+pub fn inspect(ctx: &Ctx, opened: crate::detect::Opened, size: u64, job: u64) -> InspectOutcome {
+    match read(ctx, opened, job) {
+        Ok(read) => InspectOutcome::Found(inspected(&read, size, ctx.layout.android_installed())),
+        Err(_) => InspectOutcome::Unreadable,
     }
 }
 

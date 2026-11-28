@@ -6,8 +6,6 @@
 //! apk-variant tamper IN OUT ENTRY    one byte of ENTRY's data changed
 //! ```
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use ultar_foreign::apk::testsign;
 
 fn main() {
@@ -16,12 +14,19 @@ fn main() {
         eprintln!("apk-variant resign|tamper IN OUT SIGNER|ENTRY");
         std::process::exit(2);
     };
-    let apk = std::fs::read(input).expect("read IN");
-    let out = match what.as_str() {
+    if let Err(e) = variant(what, input, output, extra) {
+        eprintln!("apk-variant: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn variant(what: &str, input: &str, output: &str, extra: &str) -> Result<(), String> {
+    let apk = std::fs::read(input).map_err(|e| format!("read {input}: {e}"))?;
+    let out = match what {
         "resign" => testsign::resign(&apk, extra),
         "tamper" => testsign::tamper(&apk, extra),
         _ => None,
     }
-    .expect("no variant");
-    std::fs::write(output, out).expect("write OUT");
+    .ok_or("no such variant")?;
+    std::fs::write(output, out).map_err(|e| format!("write {output}: {e}"))
 }

@@ -7,8 +7,8 @@ use super::fake::Shared;
 use super::{PortError, PortResult};
 use std::time::Duration;
 use ultar_bus::messages::foreign::{
-    Changed, Choices, ForeignApp, InstallOutcome, List, Outcome, Progress, Remove,
-    RuntimeState, RuntimeStateReply, RuntimeUpdate, SetChoices,
+    Changed, Choices, ForeignApp, InstallOutcome, List, Outcome, Progress, Remove, RuntimeState,
+    RuntimeStateReply, RuntimeUpdate, SetChoices,
 };
 use ultar_bus::{Client, Text, TypedSubscription};
 
@@ -140,13 +140,21 @@ impl FakeForeign {
 impl ForeignPort for FakeForeign {
     fn runtime(&mut self) -> PortResult<RuntimeStateReply> {
         let world = self.0.borrow();
-        let f = world.system.foreign.as_ref().ok_or(PortError::Unavailable)?;
+        let f = world
+            .system
+            .foreign
+            .as_ref()
+            .ok_or(PortError::Unavailable)?;
         Ok(f.runtime.clone())
     }
 
     fn list(&mut self) -> PortResult<Vec<ForeignApp>> {
         let world = self.0.borrow();
-        let f = world.system.foreign.as_ref().ok_or(PortError::Unavailable)?;
+        let f = world
+            .system
+            .foreign
+            .as_ref()
+            .ok_or(PortError::Unavailable)?;
         Ok(f.apps.clone())
     }
 

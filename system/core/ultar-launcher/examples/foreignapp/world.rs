@@ -156,10 +156,13 @@ fn layout(bin: &Path) -> std::io::Result<()> {
 }
 
 fn broker() -> Result<Broker, String> {
-    let policy = Policy::load(Path::new(&format!("{WORK}/policy.toml"))).map_err(|e| format!("{e:?}"))?;
+    let policy =
+        Policy::load(Path::new(&format!("{WORK}/policy.toml"))).map_err(|e| format!("{e:?}"))?;
     let mut builder = Broker::builder(policy);
     for identity in IDENTITIES {
-        let fixed = Arc::new(FixedIdentity::new(Identity::new(identity).map_err(|e| format!("{e:?}"))?));
+        let fixed = Arc::new(FixedIdentity::new(
+            Identity::new(identity).map_err(|e| format!("{e:?}"))?,
+        ));
         builder = builder.listen(&socket(identity), fixed);
     }
     builder.start().map_err(|e| format!("{e:?}"))
@@ -168,8 +171,13 @@ fn broker() -> Result<Broker, String> {
 fn open_launcher(bin: &Path, groups: bool) -> Result<Arc<Launcher>, String> {
     let config = Config::parse(&config_text(groups)).map_err(|e| format!("config {e:?}"))?;
     let helper = bin.join("ultar-launcher");
-    let platform = Platform::detect(&helper, &config.paths.cell_root, config.paths.group_root.as_deref());
-    let launcher = Launcher::open(config, platform, helper, Logger::discard()).map_err(|e| format!("launcher {e:?}"))?;
+    let platform = Platform::detect(
+        &helper,
+        &config.paths.cell_root,
+        config.paths.group_root.as_deref(),
+    );
+    let launcher = Launcher::open(config, platform, helper, Logger::discard())
+        .map_err(|e| format!("launcher {e:?}"))?;
     let timer = Arc::clone(&launcher);
     std::thread::spawn(move || timer.run_timer());
     Ok(launcher)
@@ -177,9 +185,14 @@ fn open_launcher(bin: &Path, groups: bool) -> Result<Arc<Launcher>, String> {
 
 /// The system dialog: every question is answered "authorized" and counted.
 fn dialog(stop: Arc<AtomicBool>, asked: Arc<AtomicUsize>) -> Result<(), String> {
-    let client = Client::connect(&socket("system.sysdialog"), ClientOptions::named("system.sysdialog"))
+    let client = Client::connect(
+        &socket("system.sysdialog"),
+        ClientOptions::named("system.sysdialog"),
+    )
+    .map_err(|e| format!("sysdialog {e:?}"))?;
+    let endpoint = client
+        .register("sysdialog")
         .map_err(|e| format!("sysdialog {e:?}"))?;
-    let endpoint = client.register("sysdialog").map_err(|e| format!("sysdialog {e:?}"))?;
     std::thread::spawn(move || {
         let _keep = client;
         while !stop.load(Ordering::SeqCst) {
@@ -215,30 +228,57 @@ impl World {
         let broker = broker()?;
         let launcher = open_launcher(&args.bin, args.groups)?;
         let life = Lifecycle::new();
-        let admins = Arc::new(Mutex::new(Admins::load(Some(Path::new(&format!("{WORK}/policy.toml"))))));
+        let admins = Arc::new(Mutex::new(Admins::load(Some(Path::new(&format!(
+            "{WORK}/policy.toml"
+        ))))));
         {
             let (launcher, life) = (Arc::clone(&launcher), life.clone());
-            std::thread::spawn(move || service::serve(socket("system.launcher"), launcher, admins, life));
+            std::thread::spawn(move || {
+                service::serve(socket("system.launcher"), launcher, admins, life)
+            });
         }
-        let (stop_dialog, asked) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicUsize::new(0)));
+        let (stop_dialog, asked) = (
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicUsize::new(0)),
+        );
         dialog(Arc::clone(&stop_dialog), Arc::clone(&asked))?;
         let rights = format!("{WORK}/share/compositor-apps.toml");
         let socket_path = format!("{UI_DIR}/compositor.sock");
         let compositor = spawn(
             &args.bin.join("ultar-compositor"),
             &[
-                "--socket", &socket_path, "--allow-root", "--lang", "ar", "--no-cursor",
-                "--app-rights", &rights, "--app-uids", "20000-20009", "--app-rights-owner", "0",
+                "--socket",
+                &socket_path,
+                "--allow-root",
+                "--lang",
+                "ar",
+                "--no-cursor",
+                "--app-rights",
+                &rights,
+                "--app-uids",
+                "20000-20009",
+                "--app-rights-owner",
+                "0",
             ],
         )
         .map_err(|e| format!("compositor {e}"))?;
-        if !poll(Duration::from_secs(120), || Path::new(&socket_path).exists()) {
+        if !poll(Duration::from_secs(120), || {
+            Path::new(&socket_path).exists()
+        }) {
             return Err("the compositor has no socket".into());
         }
         let bus = socket("system.foreign").display().to_string();
         let service = spawn(
             &args.bin.join("ultar-foreign"),
-            &["--bus", &bus, "--root", FOREIGN_ROOT, "--sources", SOURCES, "--allow-root"],
+            &[
+                "--bus",
+                &bus,
+                "--root",
+                FOREIGN_ROOT,
+                "--sources",
+                SOURCES,
+                "--allow-root",
+            ],
         )
         .map_err(|e| format!("ultar-foreign {e}"))?;
         Ok(Self {
@@ -282,7 +322,10 @@ impl World {
         // the app's group and its programs by name (a kernel whose group file stays empty)
         let mut pids = named(&["mousepad", "ultar-wayland"]);
         if self.groups {
-            let procs = Path::new(ultar_sys::machine::GROUP_ROOT).join("apps").join(APP).join("cgroup.procs");
+            let procs = Path::new(ultar_sys::machine::GROUP_ROOT)
+                .join("apps")
+                .join(APP)
+                .join("cgroup.procs");
             pids.extend(
                 std::fs::read_to_string(procs)
                     .unwrap_or_default()
