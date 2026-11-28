@@ -20,17 +20,45 @@ use ultar_foreign::cellrun::{self, CellJob, Mode, SetupStep, INBOX_IN_CELL};
 use ultar_sys::cell::{self as sys_cell, BindMode, Namespaces};
 
 /// The raw checks, each in a child (`--check NAME`): name and what it needs.
-const RAW: [(&str, &str); 10] = [
+const RAW: [(&str, &str); 14] = [
     ("namespaces", "mount and pid namespaces"),
-    ("network-namespace", "a cell without network (own network namespace)"),
-    ("file-bind", "binding a single device node (/dev/null into the cell)"),
+    (
+        "network-namespace",
+        "a cell without network (own network namespace)",
+    ),
+    (
+        "file-bind",
+        "binding a single device node (/dev/null into the cell)",
+    ),
     ("bind-read-only", "a read-only bind of the area"),
-    ("remount-nosuid", "remount of a bind without set-id and devices"),
-    ("parent-death-signal", "the cell ends with its parent (PR_SET_PDEATHSIG)"),
+    (
+        "remount-nosuid",
+        "remount of a bind without set-id and devices",
+    ),
+    (
+        "parent-death-signal",
+        "the cell ends with its parent (PR_SET_PDEATHSIG)",
+    ),
     ("no-new-privileges", "PR_SET_NO_NEW_PRIVS"),
-    ("switch-to-nobody", "setresuid/setresgid to nobody (inspection cell)"),
-    ("root-writes-area", "root of the cell without rights writes the area's root-owned files"),
-    ("root-chown", "root of the cell without rights gives files to another owner (dpkg, apt's _apt)"),
+    (
+        "switch-to-nobody",
+        "setresuid/setresgid to nobody (inspection cell)",
+    ),
+    (
+        "root-writes-area",
+        "root of the cell without rights writes the area's root-owned files",
+    ),
+    (
+        "root-chown",
+        "root of the cell without rights gives files to another owner (dpkg, apt's _apt)",
+    ),
+    ("tmpfs", "tmpfs for /run and /tmp"),
+    ("proc-mount", "an own /proc"),
+    ("pivot-root", "the root switch into the cell's view"),
+    (
+        "ubuntu-programs",
+        "the area's Ubuntu programs (glibc, ld.so) under the Linux ABI",
+    ),
 ];
 
 fn raw(name: &str, area: &Path) -> Result<(), String> {
@@ -62,8 +90,12 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
             private()?;
             let node = scratch.join("null");
             std::fs::File::create(&node).map_err(|e| e.to_string())?;
-            sys_cell::bind(&Path::new(sys_cell::DEV).join("null"), &node, BindMode::Device)
-                .map_err(errno)
+            sys_cell::bind(
+                &Path::new(sys_cell::DEV).join("null"),
+                &node,
+                BindMode::Device,
+            )
+            .map_err(errno)
         }
         "bind-read-only" => {
             private()?;
@@ -77,8 +109,12 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
             use rustix::mount::{mount_bind, mount_remount, MountFlags};
             private()?;
             mount_bind(&scratch, &scratch).map_err(|e| format!("bind {e:?}"))?;
-            mount_remount(&scratch, MountFlags::BIND | MountFlags::NOSUID | MountFlags::NODEV, "")
-                .map_err(|e| format!("remount {e:?}"))
+            mount_remount(
+                &scratch,
+                MountFlags::BIND | MountFlags::NOSUID | MountFlags::NODEV,
+                "",
+            )
+            .map_err(|e| format!("remount {e:?}"))
         }
         "parent-death-signal" => sys_cell::kill_with_parent().map_err(errno),
         "no-new-privileges" => ultar_sys::set_no_new_privileges().map_err(errno),
@@ -110,6 +146,43 @@ fn raw(name: &str, area: &Path) -> Result<(), String> {
             let _ = std::fs::remove_file(&file);
             result
         }
+        "tmpfs" => {
+            private()?;
+            sys_cell::mount_tmpfs(&scratch, "size=65536,mode=0755").map_err(errno)
+        }
+        "proc-mount" => {
+            private()?;
+            sys_cell::mount_proc(&scratch).map_err(errno)
+        }
+        "pivot-root" => {
+            private()?;
+            let new = scratch.join("new");
+            std::fs::create_dir_all(new.join("old")).map_err(|e| e.to_string())?;
+            sys_cell::bind(&new, &new, BindMode::ReadOnly).map_err(|e| format!("bind {e:?}"))?;
+            sys_cell::pivot_root(&new, &new.join("old")).map_err(|e| format!("pivot {e:?}"))?;
+            sys_cell::detach(Path::new("/old")).map_err(|e| format!("detach {e:?}"))
+        }
+        "ubuntu-programs" => {
+            std::os::unix::fs::chroot(area).map_err(|e| format!("chroot {e}"))?;
+            std::env::set_current_dir("/").map_err(|e| e.to_string())?;
+            for program in [
+                ["/usr/bin/dpkg-deb", "--version"],
+                ["/usr/bin/apt-get", "--version"],
+            ] {
+                let out = Command::new(program[0])
+                    .arg(program[1])
+                    .env_clear()
+                    .env("PATH", "/usr/bin:/bin")
+                    // the area has no /dev (the cells bring their own): no /dev/null here
+                    .stdin(std::process::Stdio::piped())
+                    .output()
+                    .map_err(|e| format!("{}: {e}", program[0]))?;
+                if !out.status.success() {
+                    return Err(format!("{}: {:?}", program[0], out.status.code()));
+                }
+            }
+            Ok(())
+        }
         _ => Err("unknown check".into()),
     }
 }
@@ -119,7 +192,13 @@ fn arg(words: &[String], name: &str) -> Option<String> {
     words.get(at + 1).cloned()
 }
 
-fn cell(helper: &Path, mode: Mode, area: &Path, inbox: Option<PathBuf>, program: &[&str]) -> Result<String, String> {
+fn cell(
+    helper: &Path,
+    mode: Mode,
+    area: &Path,
+    inbox: Option<PathBuf>,
+    program: &[&str],
+) -> Result<String, String> {
     let job = CellJob {
         mode,
         runtime: area.to_path_buf(),
@@ -150,7 +229,8 @@ fn main() {
             }
         });
     }
-    let helper = PathBuf::from(arg(&words, "--helper").unwrap_or_else(|| "/bin/ultar-foreign".into()));
+    let helper =
+        PathBuf::from(arg(&words, "--helper").unwrap_or_else(|| "/bin/ultar-foreign".into()));
     let me = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("/bin/foreigntest"));
     let mut missing: Vec<String> = Vec::new();
     let mut report = |name: &str, result: Result<(), String>| match result {
@@ -167,7 +247,10 @@ fn main() {
             .output();
         let result = match out {
             Ok(o) if o.status.success() => Ok(()),
-            Ok(o) => Err(format!("({what}): {}", String::from_utf8_lossy(&o.stderr).trim())),
+            Ok(o) => Err(format!(
+                "({what}): {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            )),
             Err(e) => Err(format!("({what}): {e}")),
         };
         report(name, result);
@@ -178,17 +261,33 @@ fn main() {
         Err("(internet only for an app with network: the kernel call of stage P0 does not exist yet)".into()),
     );
     // the service's cells with the area's Ubuntu programs
-    let inspected = cell(&helper, Mode::Inspect, &area, None, &["/usr/bin/dpkg-deb", "--version"]);
+    let inspected = cell(
+        &helper,
+        Mode::Inspect,
+        &area,
+        None,
+        &["/usr/bin/dpkg-deb", "--version"],
+    );
     report(
         "inspection-cell",
-        inspected.and_then(|o| if o.contains("dpkg-deb") { Ok(()) } else { Err(o) }),
+        inspected.and_then(|o| {
+            if o.contains("dpkg-deb") {
+                Ok(())
+            } else {
+                Err(o)
+            }
+        }),
     );
     let installed = cell(
         &helper,
         Mode::Install,
         &area,
         None,
-        &["/bin/sh", "-c", "touch /var/lib/dpkg/ultar-w && rm /var/lib/dpkg/ultar-w && dpkg --version"],
+        &[
+            "/bin/sh",
+            "-c",
+            "touch /var/lib/dpkg/ultar-w && rm /var/lib/dpkg/ultar-w && dpkg --version",
+        ],
     );
     report(
         "installation-cell",
@@ -200,17 +299,35 @@ fn main() {
         std::fs::create_dir_all(&inbox).unwrap();
         std::fs::copy(&deb, inbox.join("package.deb")).unwrap();
         let target = format!("{INBOX_IN_CELL}/package.deb");
-        let fields = cell(&helper, Mode::Inspect, &area, Some(inbox.clone()), &["/usr/bin/dpkg-deb", "--field", &target, "Package"]);
+        let fields = cell(
+            &helper,
+            Mode::Inspect,
+            &area,
+            Some(inbox.clone()),
+            &["/usr/bin/dpkg-deb", "--field", &target, "Package"],
+        );
         report("package-fields", fields.map(|_| ()));
         let apt = cell(
             &helper,
             Mode::Install,
             &area,
             Some(inbox.clone()),
-            &["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", &target],
+            &[
+                "/usr/bin/apt-get",
+                "install",
+                "-y",
+                "--no-install-recommends",
+                &target,
+            ],
         );
         report("package-install", apt.map(|_| ()));
-        let _ = cell(&helper, Mode::Install, &area, None, &["/usr/bin/dpkg", "--purge", "mousepad"]);
+        let _ = cell(
+            &helper,
+            Mode::Install,
+            &area,
+            None,
+            &["/usr/bin/dpkg", "--purge", "mousepad"],
+        );
     }
     if missing.is_empty() {
         println!("FOREIGN: ALLES OK");

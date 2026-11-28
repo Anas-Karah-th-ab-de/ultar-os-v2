@@ -88,7 +88,9 @@ impl SetupStep {
 
     /// The step an exit code names.
     pub fn of_code(code: i32) -> Option<Self> {
-        Self::ALL.into_iter().find(|s| SETUP_STEP + *s as i32 == code)
+        Self::ALL
+            .into_iter()
+            .find(|s| SETUP_STEP + *s as i32 == code)
     }
 
     const fn code(self) -> i32 {
@@ -365,9 +367,8 @@ fn confine(mode: Mode) -> Result<(), SetupStep> {
     use SetupStep as S;
     match mode {
         Mode::Install => cut_capabilities(install_caps()).map_err(|()| S::Capabilities)?,
-        Mode::Inspect => {
-            cut_capabilities(rustix::thread::CapabilitySet::empty()).map_err(|()| S::Capabilities)?
-        }
+        Mode::Inspect => cut_capabilities(rustix::thread::CapabilitySet::empty())
+            .map_err(|()| S::Capabilities)?,
     }
     // inspection: nobody; installation: root of the cell (the area's files belong to
     // root; without any kernel right root passes no permission check of the Ultar kernel)
