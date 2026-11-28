@@ -245,6 +245,8 @@ pub(crate) fn prepare(
         program,
     };
     let mut env = environment(id, role, if cell { None } else { Some(&data) }, opening);
+    // the person's language, theme, accent and text size
+    env.extend(core.look.env());
     if let Some(dir) = bus {
         env.push((
             BUS_ENV.to_owned(),

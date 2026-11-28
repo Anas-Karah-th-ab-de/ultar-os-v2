@@ -175,13 +175,11 @@ fn run(o: Options) -> Result<(), String> {
     if let Some(path) = o.bus.clone() {
         bus_thread(path, tx);
     }
+    // the person's theme, handed over by the app launcher (`--light` wins)
+    let session = ultar_ui::paint::PaintEnv::new(o.lang, ThemeKind::Dark).with_session(o.light);
     let look = Look {
         lang: o.lang,
-        theme: if o.light {
-            ThemeKind::Light
-        } else {
-            ThemeKind::Dark
-        },
+        theme: session.theme,
         mode: InputMode::Pointer,
         size: Size {
             w: 1024.0,

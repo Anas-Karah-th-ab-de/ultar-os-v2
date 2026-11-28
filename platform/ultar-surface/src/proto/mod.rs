@@ -41,6 +41,6 @@ pub use shell::{
 };
 pub use types::*;
 pub use visual::{
-    ColourFilter, DEFAULT_ZOOM_PERCENT, MAX_FLASH_MS, MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT,
+    ColourFilter, LookLang, DEFAULT_ZOOM_PERCENT, MAX_FLASH_MS, MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT,
 };
 pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

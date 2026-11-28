@@ -75,16 +75,40 @@ pub fn build(
     let mut view = View::new(ui);
     let tiles = d.bar_apps();
     let side = ((width - 2.0 * Space::S12.points() - centre_width(tiles.len())) / 2.0).max(0.0);
-    start_group(&mut view, row, d, side)?;
-    centre_group(&mut view, row, d, &tiles, tr)?;
+    if d.prefs.icons_start {
+        // bar.icon_alignment = start: the tiles follow the start group, the rest is free.
+        start_group(&mut view, row, d, None)?;
+        centre_group(&mut view, row, d, &tiles, tr)?;
+        view.ui.add_sized(row, Flex::row(), Sizing::grow(1))?;
+    } else {
+        start_group(&mut view, row, d, Some(side))?;
+        centre_group(&mut view, row, d, &tiles, tr)?;
+    }
     end_group(&mut view, row, d, text, side)?;
     Ok(view)
 }
 
-fn start_group(view: &mut View, row: NodeId, d: &Desktop, side: f32) -> Result<(), UiError> {
-    let group = view
-        .ui
-        .add_sized(row, Flex::row().gap(GAP), Sizing::width(side))?;
+/// The trash and the drives (each only while Settings shows it: `bar.show_trash`,
+/// `bar.show_volumes`); `side`: the group's fixed width, or its own width.
+fn start_group(
+    view: &mut View,
+    row: NodeId,
+    d: &Desktop,
+    side: Option<f32>,
+) -> Result<(), UiError> {
+    let sizing = side.map_or(Sizing::AUTO, Sizing::width);
+    let group = view.ui.add_sized(row, Flex::row().gap(GAP), sizing)?;
+    if side.is_none() {
+        view.ui
+            .add_sized(row, Flex::row(), Sizing::width(GAP.points()))?;
+    }
+    if !d.prefs.show_trash {
+        return if d.prefs.show_volumes {
+            drives(view, group, d)
+        } else {
+            Ok(())
+        };
+    }
     let trash = Brick::new(
         BrickKind::Tile {
             icon: IconId::Bin,
@@ -95,7 +119,10 @@ fn start_group(view: &mut View, row: NodeId, d: &Desktop, side: f32) -> Result<(
     );
     let id = view.ui.add(group, trash)?;
     view.mark(id, Target::Trash);
-    drives(view, group, d)
+    if d.prefs.show_volumes {
+        drives(view, group, d)?;
+    }
+    Ok(())
 }
 
 /// shell.drive: a tile per mounted removable drive (`volumes.state`); a click opens it in
@@ -216,6 +243,15 @@ fn end_group(
     );
     let id = view.ui.add(group, status)?;
     view.mark(id, Target::Status);
+    // power.show_battery_percent: the level beside the icons (a click opens the same sheet).
+    if let (true, Some((level, _))) = (d.prefs.battery_percent, d.values.battery) {
+        let chip = Brick::new(
+            BrickKind::Chip,
+            Label::key_with("desk.bar.battery", &[("level", &level.to_string())]),
+        );
+        let id = view.ui.add(group, chip)?;
+        view.mark(id, Target::Status);
+    }
     let clock = Brick::new(
         BrickKind::Clock {
             date: Label::data(&text.date),

@@ -25,8 +25,17 @@ fn the_shipped_definition_parses_with_valid_bounds() {
         801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833,
         834, 835, 837,
     ];
-    assert_eq!(args.listeners.len(), WRITERS.len() + 2);
+    // Root-only writers (mode 0600, no group): the update service.
+    const ROOT_WRITERS: [&str; 1] = ["system.updated"];
+    assert_eq!(args.listeners.len(), WRITERS.len() + ROOT_WRITERS.len() + 2);
     let (output, writers): (Vec<_>, Vec<_>) = args.listeners.iter().partition(|l| l.output);
+    let (root, writers): (Vec<_>, Vec<_>) = writers
+        .into_iter()
+        .partition(|l| l.name.as_deref().is_some_and(|n| ROOT_WRITERS.contains(&n)));
+    assert_eq!(root.len(), ROOT_WRITERS.len());
+    for listener in &root {
+        assert_eq!((listener.mode, listener.group), (Some(0o600), None));
+    }
     for listener in &writers {
         // Fixed names (one socket per writer), open to the writer's group only.
         assert!(listener

@@ -192,7 +192,21 @@ impl Shell {
 
     /// Now in local time (the start of the epoch if the clock is off the calendar).
     pub fn local_time(&self) -> Option<LocalTime> {
-        LocalTime::at(self.clock.now_ms(), self.clock.offset_s())
+        LocalTime::at(self.clock.now_ms(), self.offset_s())
+    }
+
+    /// Offset of the local time: the time zone of the settings (`datetime.timezone.name`),
+    /// the clock's own until the service said.
+    pub fn offset_s(&self) -> i32 {
+        self.d
+            .prefs
+            .offset_s(self.clock.now_ms(), self.clock.offset_s())
+    }
+
+    /// Switches every text to `lang` (`region.language` changed while the shell runs).
+    pub fn set_lang(&mut self, lang: ultar_i18n::Lang) {
+        self.d.lang = lang;
+        self.tr = crate::i18n::translator_or_keys(lang);
     }
 
     /// Opens `open`, or closes it when it is open already (a second click closes, §13).

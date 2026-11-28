@@ -242,6 +242,8 @@ struct Loop<'a> {
     input: crate::input::InputSettings,
     /// The accessibility view settings (magnifier, colour filter).
     visual: crate::visual::VisualSettings,
+    /// The language and theme of the title bars.
+    look: crate::look::LookSettings,
     /// The input settings were read from the settings service.
     input_read: bool,
 }
@@ -256,6 +258,7 @@ impl<'a> Loop<'a> {
             detecting: Vec::new(),
             input: crate::input::InputSettings::default(),
             visual: crate::visual::VisualSettings::default(),
+            look: crate::look::LookSettings::default(),
             input_read: false,
         }
     }
@@ -309,6 +312,7 @@ impl<'a> Loop<'a> {
         for (key, value) in items.unwrap_or_default() {
             changed |= self.input.on_changed(&key, &value);
             changed |= self.visual.on_changed(&key, &value);
+            changed |= self.look.on_changed(&key, &value);
         }
         changed
     }
@@ -318,6 +322,9 @@ impl<'a> Loop<'a> {
             ports.compositor.send(request);
         }
         for request in self.visual.requests() {
+            ports.compositor.send(request);
+        }
+        for request in self.look.requests() {
             ports.compositor.send(request);
         }
     }
@@ -338,7 +345,8 @@ impl<'a> Loop<'a> {
                 let late = !self.input_read && self.read_input(ports);
                 let input = self.input.on_changed(&c.key, &c.value);
                 let visual = self.visual.on_changed(&c.key, &c.value);
-                if input || visual || late {
+                let look = self.look.on_changed(&c.key, &c.value);
+                if input || visual || look || late {
                     self.send_input(ports);
                 }
                 self.core.on_announced(&c.key, c.value, now)

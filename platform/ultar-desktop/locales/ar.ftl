@@ -23,6 +23,7 @@ desk.apps.search = ابحث في التطبيقات
 desk.apps.title = كل التطبيقات
 desk.apps.uninstall = إزالة التطبيق…
 desk.bar.apps = كل التطبيقات
+desk.bar.battery = {level}%
 desk.bar.clock = التقويم والإشعارات: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = نظرة عامة

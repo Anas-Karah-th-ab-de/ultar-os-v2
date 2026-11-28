@@ -50,6 +50,8 @@ mod parser;
 pub mod pattern;
 pub mod plural;
 pub mod translator;
+#[cfg(feature = "std")]
+pub mod tz;
 pub mod units;
 
 pub use arabic::normalize_for_search;

@@ -1,6 +1,6 @@
 [package]
 name = "ultar-kern"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 description = "Ultar-Kern – eigener Rust-Kernel von KM Code Craft (UEFI, eigene Treiber, Treiber-Werkstatt)"
 license = "Proprietary"
@@ -29,7 +29,8 @@ ultar-intel-gt = { path = "../../drivers/kernel/intel-gt" }
 # Intel NPU logic (identification, PLL work point, power sequences, firmware container)
 ultar-intel-npu = { path = "../../drivers/kernel/intel-npu" }
 # product and company identity: names, brand texts (one no_std source for every program)
-ultar-brand = { path = "../../system/core/ultar-brand" }
+# with the company logo bitmap (boot picture, installer welcome)
+ultar-brand = { path = "../../system/core/ultar-brand", features = ["bitmaps"] }
 # data partition decryption (crypt.rs): reviewed RustCrypto ciphers, software AES (aes_force_soft)
 aes = { version = "0.8", default-features = false, features = ["zeroize"] }
 xts-mode = { version = "0.5", default-features = false }

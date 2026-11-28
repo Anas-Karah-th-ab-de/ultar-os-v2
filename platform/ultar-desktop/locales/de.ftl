@@ -23,6 +23,7 @@ desk.apps.search = Apps suchen
 desk.apps.title = Alle Apps
 desk.apps.uninstall = App entfernen …
 desk.bar.apps = Alle Apps
+desk.bar.battery = {level} %
 desk.bar.clock = Kalender und Benachrichtigungen: {date} {time}
 desk.bar.date = {weekday} {day}. {month}
 desk.bar.overview = Übersicht
