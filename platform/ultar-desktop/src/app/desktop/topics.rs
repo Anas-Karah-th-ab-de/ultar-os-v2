@@ -8,8 +8,8 @@ use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::calendar::Changed as CalendarChanged;
 use ultar_bus::messages::media::MediaState;
 use ultar_bus::messages::mesh::{HandoffProgress, MeshState};
-use ultar_bus::messages::mesh_received::FileReceived;
 use ultar_bus::messages::mesh_calls::{CallIncoming, CallProgress, MeshCallState};
+use ultar_bus::messages::mesh_received::FileReceived;
 use ultar_bus::messages::net::{NetState, WifiLink};
 use ultar_bus::messages::notify::Dismissed;
 use ultar_bus::messages::power::PowerActions;
@@ -100,7 +100,7 @@ impl ServiceTopics {
 
     /// Takes what arrived; returns whether anything changed and whether the shown calendar
     /// day must be asked for again (`calendar.changed`).
-    pub fn poll(&self, d: &mut Desktop) -> (bool, bool) {
+    pub fn poll(&self, d: &mut Desktop, now: u64) -> (bool, bool) {
         let svc = &mut d.svc;
         let mut any = drain(&self.power, |m| svc.power = Some(m));
         any |= drain(&self.session, |m| svc.session = Some(m));
