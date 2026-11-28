@@ -140,13 +140,13 @@ gültig. `docs/LIVE-VOLLENDUNG.md` und `docs/OFFEN-PLAN.md` sind bereits auf 28.
 ## Echte offene Punkte nach Priorität
 
 **P0 (sperrt Einsatz/Sicherheit):**
-1. RNDIS-Empfang + „ssh über USB-C" Ende-zu-Ende – `drivers/kernel/…/gen_xhci/rndis.rs`, `system/services/ultar-sshd` *(in Arbeit)*.
+1. ~~RNDIS-Empfang + SSH über USB-C~~ – **erledigt 28.11.2026**: SSH auf den Ultar-Kern e2e (`ssh-e2e.sh`, `SSH: ALLES OK`), RNDIS-Empfang (Ursache: eigener 28-Byte-SET), Abziehen/Anstecken (`usb-net-e2e.sh`). Offen: Empfangstempo TCP (~0,3 MB/s, `docs/integration/ssh.md`), CDC-ECM an echtem Dongle.
 2. Start direkt auf dem Beelink (S9) – Freigabe; schaltet NVMe/VT-d/BT/WLAN/Xe auf echter HW frei.
-3. Verschlüsselung im Installer (LUKS2/XTS oder TPM) – Inhaber-Entscheidung.
+3. ~~Verschlüsselung im Installer~~ – LUKS2 (aes-xts-plain64) im Kern + Installer, am 28.11.2026 in einem anderen Chat auf `main` gebracht.
 
 **P1 (nötig für den Betrieb):**
 4. R1 Root-Dienste aufteilen (`net`, `netzregeln`, `drivers`, `seat`, `ril`) – `rootfs/etc/ultar/services/`.
-5. TLB-Shootdown für `mprotect`/`munmap` – `kernel/ultar-kern`.
+5. TLB-Shootdown für `mprotect`/`munmap` – `kernel/ultar-kern`. Entwurf + halbe Umsetzung auf Zweig `wip/tlb-shootdown` (nicht gebaut, nicht geprüft).
 6. ACPI-AML-Interpreter, Energie (HWP/C/RAPL), TPM 2.0 + Hardware-Wachhund.
 7. WLAN-Stack (W1–W4) + BT-Firmware-Download (Live, `docs/LIVE-VOLLENDUNG.md`).
 

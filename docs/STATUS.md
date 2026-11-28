@@ -2,6 +2,15 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Welle B (28.11.2026) – SSH auf den Ultar-Kern, USB-C-Netz, Doku-Abgleich
+
+| Baustein | Stand |
+|---|---|
+| **SSH auf den Ultar-Kern** | `ultar-sshd` (reines Rust) läuft auf dem eigenen Kern: Schlüssel-Anmeldung, Befehle, Exit-Code, scp/sftp, fremder Schlüssel und Kennwort abgewiesen, parallele Sitzungen – `ssh-e2e.sh` (`SSH: ALLES OK`) in `ci.sh`. Server-/Desktop-Ausgabe ohne OpenSSH aus dem Ubuntu-Bereich, ein Dienst (`entwickler`), Server standardmäßig an (nur mit Schlüssel); Web-Verwaltung schreibt Schlüssel dorthin, wo `ultar-sshd` liest. Offen: Empfangstempo ~0,3 MB/s (`docs/integration/ssh.md`) |
+| **USB-C-Netz** | RNDIS-Empfang behoben (Ursache: eigener RNDIS-`SET` mit 28 statt 32 Byte, nicht QEMU); DHCP, DNS, TCP, ping über `usb0`; Abziehen gibt Adresse und Standardroute ab, erneutes Anstecken (`usb1`) übernimmt sie – `usb-net-e2e.sh` in `ci.sh`. CDC-ECM-Treiber da, braucht einen echten Dongle |
+| Doku-Abgleich | `docs/review/ABGLEICH.md`: jeder offene Punkt gegen den Code geprüft; STATUS, OFFENE-BEFUNDE, DRIVER-TARGETS, PLAN berichtigt |
+| TLB-Abgleich | Entwurf + halbe Umsetzung auf `wip/tlb-shootdown`, nicht übernommen |
+
 ## Treiber-Welle A (28.11.2026) – Netzwerk-Fundament und DMA-Schutz
 
 | Baustein | Stand |
