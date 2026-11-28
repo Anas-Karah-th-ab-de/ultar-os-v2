@@ -614,9 +614,9 @@ fn a_linux_program_goes_in_runs_in_its_cell_and_leaves_without_trace() {
             },
         );
         assert_eq!(removed.outcome, Outcome::Done, "{id}");
-        assert!(common::wait_until_ok(|| call(&settings, &RuntimeState {})
-            .busy
-            == false));
+        assert!(common::wait_until_ok(
+            || !call(&settings, &RuntimeState {}).busy
+        ));
     }
     assert!(common::wait_until_ok(
         || !installed(&runtime, "mousepad") && !installed(&runtime, "ultar-evil")
