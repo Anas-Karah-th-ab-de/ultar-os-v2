@@ -111,6 +111,14 @@ else
   bad "scp 16 MiB sha256 differs"
 fi
 
+# receive-only (no disk): the same 16 MiB through the SSH data channel into `cat >/dev/null` –
+# separates the network receive path from a slow file write on the target.
+t3=$(date +%s.%N)
+"${SSH[@]}" 'cat > /dev/null' < "$WORK/up16.bin" 2>/dev/null
+t4=$(date +%s.%N)
+cat_s=$(awk "BEGIN{printf \"%.1f\", $t4-$t3}")
+echo "info  ssh receive-only 16 MiB (cat>/dev/null): ${cat_s}s"
+
 # d) sftp ls
 if printf 'ls /\nbye\n' | sftp -P "$PORT" -i "$KEY" -o IdentitiesOnly=yes \
      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes root@127.0.0.1 > "$WORK/sftp.out" 2>/dev/null; then
