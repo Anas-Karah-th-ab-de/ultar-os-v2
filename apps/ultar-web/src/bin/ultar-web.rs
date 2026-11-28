@@ -93,15 +93,22 @@ fn start_engine(
     // the engine's own folder: the only part of the profile its cell sees (not the Tor state)
     let engine_dir = profile.join("engine");
     std::fs::create_dir_all(&engine_dir)?;
-    let (cell, proxy, proxy_socket) = if a.no_cell {
-        (None, Some(tor.http_proxy_url()), None)
+    let (cell, proxy, proxy_socket, audio_socket) = if a.no_cell {
+        let sound = PathBuf::from(ultar_web::media::relay::AUDIO_SOCKET);
+        (None, Some(tor.http_proxy_url()), None, Some(sound))
     } else {
         let socket = ultar_web::cell::proxy_socket(&engine_dir);
         tor.unix_proxy(&socket)?;
+        // the page's sound: the cell sees only this socket, the browser forwards it to the
+        // sound server under its own user id
+        let sound = ultar_web::cell::audio_socket(&engine_dir);
+        let upstream = PathBuf::from(ultar_web::media::relay::AUDIO_SOCKET);
+        let sound = ultar_web::media::relay::spawn(&sound, upstream).map(|()| sound);
         (
             Some(CellSpec::page(&bundle, &engine_dir, downloads)?),
             None,
             Some(socket),
+            sound.ok(),
         )
     };
     let mut agent = ultar_brand::release::Line::<160>::new();
@@ -118,6 +125,7 @@ fn start_engine(
             .or_else(|| Some(bundle.join("share/ultar-web/filter.json")).filter(|p| p.is_file())),
         proxy,
         proxy_socket,
+        audio_socket,
     };
     Ok(RemoteEngine::start(&config)?)
 }

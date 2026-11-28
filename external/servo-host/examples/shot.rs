@@ -54,6 +54,7 @@ fn main() -> Result<(), Failure> {
         filter: None,
         proxy: Some(proxy.clone()),
         proxy_socket: None,
+        audio_socket: None,
     };
     if let Some(socket) = proxy.strip_prefix("unix:") {
         into_cell(&mut config, PathBuf::from(socket), &work)?;

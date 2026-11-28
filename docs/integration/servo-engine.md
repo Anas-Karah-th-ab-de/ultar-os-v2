@@ -120,9 +120,12 @@ vom Host gesetzt). Das Bündel, sein Bau und die Annahmen stehen in `servo-bundl
 3. **Ton und Video:** Merkmal `media` (GStreamer): die Tonsenke schreibt in einen Medien-Strom des
    Tonservers (`ultar-audiod`, Socket `--audio-socket`, Standard `/run/ultar/audio/app.browser.sock`;
    `src/pcm.rs`, `src/media/gst.rs`, Einheitentests mit einem Stand-in-Server grün). Der Host hat
-   kein Kernel-Recht `sound` mehr. Offen: der Socket muss in die Seitenzelle (`--audio-socket` liegt
-   unter einem Ordner der Zelle, geprüft in `cell::plan`); dass der Starter (Browser, Launcher) nur
-   diesen einen Socket in die Zelle legt und `--audio-socket` mitgibt, ist nicht verdrahtet.
+   kein Kernel-Recht `sound` mehr. Verdrahtet und bewiesen (Linux, 192.168.100.12): `ultar-web` gibt `--audio-socket` mit und legt
+   den Socket der Zelle (`audio.sock`) über ein Relay an `app.browser.sock`; `audiod` nimmt die Benutzer-ID
+   von `app.browser` vom Launcher. Test `ultar-audiod/tests/browser_sound.rs` mit dem echten Host:
+   `<audio>` einer Seite, ohne Zelle 24 s, 880 Hz Amplitude 0,500, Spitze 0,501; in der Seitenzelle
+   25 s, 880 Hz Amplitude 0,500, Spitze 0,501. Die Zelle braucht `XDG_CACHE_HOME=/tmp` (sonst
+   bricht der Download-Puffer von GStreamer ab). Kein Ton auf echter Karte gehört.
    Offen außerdem: GStreamer samt Plug-ins als eigene
    Pakete (Bündel hat noch kein `lib/gstreamer-1.0`), Ton auf dem Kern nicht gehört. YouTube & Co.
    brauchen MSE, das Servo nicht hat. Medien-Dokumente starten nicht von selbst (Klick auf Abspielen nötig).

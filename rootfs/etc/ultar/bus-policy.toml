@@ -306,7 +306,7 @@ register = ["audio"]
 publish  = ["audio.state", "audio.mic", "audio.mic_state"]
 # accessibility.mono_audio: both channels in every speaker (the sound server mixes them)
 subscribe = ["settings.changed"]
-call     = ["settings.get"]
+call     = ["settings.get", "launcher.list"]
 
 # System dialogs (815, shell work): offers `sysdialog` (permission and
 # administrator prompts; the services that ask translate nothing themselves)

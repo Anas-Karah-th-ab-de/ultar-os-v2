@@ -185,6 +185,31 @@ Die **Einstellung Mono** (`accessibility.mono_audio`, vorher der Schalter `/dev/
 calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher, für alle Ströme);
 `audiod` liest und abonniert sie über den Bus. Der Kernel-Schalter wird nicht mehr benutzt.
 
+## ALSA-Zugang auf Linux (`ultar-hal-linux`, `sound/pcm.rs`)
+
+* `--alsa-play /dev/snd/pcmC0D0p [--alsa-capture /dev/snd/pcmC0D0c]` statt `--device` (Ultar-Kern)
+  oder `--play-file` (Dateien). `AlsaDevice` (`src/device.rs`) ist ein `Device` wie die anderen.
+* `Pcm` (`ultar-hal-linux::sound::pcm`): ein Strom, 48 kHz, S16_LE, zwei Kanäle, verschachtelt,
+  nicht blockierend. Ein `HW_PARAMS`-Aufruf (Periode 480 Frames = 10 ms, Ring 1920 Frames, sonst
+  überlässt er es dem Treiber), die Samples laufen über `read(2)`/`write(2)`; Unter- und
+  Überläufe (`EPIPE`, `ESTRPIPE`) werden mit `PREPARE` behoben und gezählt (`xruns`).
+  `unsafe` nur in `sound/pcm_ioctl.rs` (vier Ioctls ohne Zeiger: `HW_PARAMS`, `DELAY`, `PREPARE`,
+  `DROP`), wie beim Steuerungscode in `sound/ioctl.rs`. Keine neue Abhängigkeit, kein `libasound`.
+* Beweise: Einheitentests (Ioctl-Nummern gegen `asound.h`, Aufbau der `snd_pcm_hw_params`, Treiber
+  mit anderer Rate wird abgewiesen, Datei/fehlender Knoten sind Fehler) und mit der echten Kernel-Karte
+  `snd-aloop` auf 192.168.100.12 (`ULTAR_ALSA_LOOP=<Kartennummer>`, sonst übersprungen):
+  `ultar-hal-linux/tests/pcm_loopback.rs`: 880 Hz hin und zurück, **881 Hz, Spitze 16383**, kein Xrun;
+  Unterlauf wird behoben (`xruns` = 1, danach nimmt der Strom wieder Samples), `flush` leert den Ring.
+  `ultar-audiod/tests/alsa_process.rs`: der **echte `ultar-audiod`-Prozess** mit `--alsa-play` und
+  `--alsa-capture` auf der Loopback-Karte: ein Medien-Client spielt 1 kHz, am anderen Ende der
+  Karte kommen **0,500** Amplitude an; ein Ton am anderen Ende der Mikrofon-Seite erreicht einen
+  aufnehmenden Client mit **0,500** (je 2 s gemessen). `snd-aloop` wurde nur auf .12 geladen und danach
+  wieder entladen.
+* Nicht bewiesen: eine echte Lautsprecher-/Mikrofon-Hardware (die Karten auf .12 wurden nicht
+  angefasst), andere Raten als 48 kHz (der Treiber muss 48 kHz stereo S16 anbieten, sonst
+  wird er abgewiesen; eine Umrechnung gibt es nicht), Hotplug (`audiod` öffnet die Karte neu, wenn sie weg war,
+  wie bei der Kernel-Karte).
+
 ## Tests (Beweise)
 
 * `stream` (6 + Kostenmessung): Hello/Antwort, Client, Rückstau.
@@ -195,6 +220,10 @@ calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher,
 * `tests/sound_process.rs`: der echte Prozess auf einer Fake-Karte; **Anruf, Medien und
   Sprachsteuerung gleichzeitig**, Rechte, Mikrofon-Zustand, Absenken gemessen mit einer
   Tonanalyse (−15,0 dB).
+* Engine und Mischer: `set_mono` (Kanäle in beiden Lautsprechern, wieder aus), die wachsende Vorlaufmenge
+  nach Unterläufen (+480 Frames je Unterlauf bis 3840), Aufnahme-Unterlauf (stille Karte erfindet nichts,
+  der Strom geht weiter) und -Überlauf (was sich in der Karte staute, während niemand aufnahm, wird
+  verworfen).
 * `ultar-voiced/tests/process.rs`: echte `ultar-voiced`- und `ultar-audiod`-Prozesse.
 * `ultar-call`, `ultar-mediad` (Stand-in-Server mit Hello und Antwort), `servo-host`, `ultar-web`:
   Strom-Sinks gegen einen Stand-in-Server; `ultar-init`: nur `audiod` hält `sound`.
@@ -218,15 +247,20 @@ calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher,
 
 1. **Echte Hardware.** Kein Ton wurde je auf einer echten Karte erzeugt, kein echtes Mikrofon
    aufgenommen; alles läuft mit einer Fake-Karte (Dateien) und echten Sockets/Bus/Prozessen.
-2. **Linux/ALSA-Knoten** (`NodeDevice` ist nur der Ultar-Knoten): ein ALSA-PCM-Zugang in
-   `ultar-hal-linux` ist **nicht gebaut**. Auf einem Linux-Entwicklungsrechner geht es nur mit
-   `--play-file`/`--capture-file`.
-3. **Browser-Zelle.** Die Seitenzelle bekommt den Socket nicht von selbst: der Browser/Launcher
-   muss `--audio-socket` mitgeben und genau diesen Socket in die Zelle legen (nicht das ganze
-   Verzeichnis, sonst sähe die Zelle die Sockets von `calld` und `mediad`); die Benutzer-ID von
-   `app.browser` vergibt der Launcher bei der Installation (App-IDs 20000-49999). **`app.browser`
-   fehlt deshalb in `--streams` von `audiod.toml`**, bis die ID aus dem Launcher/Bus verfügbar ist;
-   der Browser spielt bis dahin keinen Ton über den Server.
+2. **Linux/ALSA** (gebaut, siehe oben): bewiesen mit `snd-aloop`, nicht mit echter Hardware; die
+   Auswahl der Karte (`pcmC<N>D<M>`) steht in `audiod.toml` nicht fest, sie hängt von der Maschine ab.
+3. **Browser-Zelle (bewiesen auf Linux, nicht auf dem Ultar-Kern).** `app.browser:launcher` in
+   `--streams`: `audiod` fragt die Benutzer-ID der App beim Launcher (`launcher.list`, alle 60 s,
+   bis dahin alle 5 s); keine feste ID. `ultar-web` legt den Socket als `audio.sock` in den
+   Ordner der Seitenzelle und leitet ihn mit einem Relay (`media/relay.rs`) unter der Benutzer-ID
+   des Browsers an `app.browser.sock` weiter. Beweis: `tests/browser_sound.rs` (ignoriert ohne
+   `ULTAR_WEB_ENGINE`, `ULTAR_SOUND_PAGE`): der echte Servo-Host spielt das `<audio>` einer
+   Seite (880-Hz-WAV, Tor-Proxy-Port, `.onion`), `audiod` nimmt auf einer Fake-Karte auf. Auf
+   192.168.100.12 ohne Zelle: 24 s auf der Karte, 880 Hz Amplitude 0,500, Spitze 0,501; **in der
+   Seitenzelle** (eigene Namensräume, kein Netz): 25 s, 880 Hz Amplitude 0,500, Spitze 0,501.
+   Fund dabei: in der Zelle gibt es kein `/root/.cache`; GStreamers Download-Puffer brach ab, bis
+   `XDG_CACHE_HOME=/tmp` vor dem Start gesetzt wurde (`main.rs`). Offen: Pid-Namensraum der Zelle
+   auf dem Ultar-Kern (siehe oben).
 4. **Echo-Unterdrückung**: Grenzen oben; kein Test mit echtem Raum.
 5. **SIM-Sprachpfad**: weiterhin kein Modem-PCM-Pfad im System.
 6. Die Rechte `ring` für Klingeltöne: kein Dienst spielt zurzeit das Klingeln über den Server

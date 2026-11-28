@@ -6,13 +6,15 @@
 //! * [`FileDevice`]: two plain files, one that everything played is appended to and one
 //!   that is read as the microphone (a regular file at its end reads nothing, like a
 //!   microphone that is quiet). For development and the process tests; no card needed.
-//! * The Linux side (ALSA) is [`ultar_hal_linux::sound::pcm`]; the engine takes it
-//!   through the same trait ([`Device`]).
+//! * [`AlsaDevice`]: the ALSA streams of a Linux card ([`ultar_hal_linux::sound::pcm`]); the
+//!   engine takes every card through the same trait ([`Device`]).
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+use ultar_audio_stream::CARD_RATE;
+use ultar_hal_linux::sound::pcm::{Direction, Pcm};
 
 /// `O_NONBLOCK`.
 const NONBLOCK: i32 = 0o4000;
@@ -151,6 +153,46 @@ impl Device for FileDevice {
         }
         match self.capture.as_mut() {
             Some(f) => read_frames(f, &mut self.rcarry, out),
+            None => Ok(0),
+        }
+    }
+}
+
+/// The ALSA streams of a Linux card (`/dev/snd/pcmC<N>D<M>p` and `...c`).
+pub struct AlsaDevice {
+    play: Pcm,
+    capture: Option<Pcm>,
+}
+
+impl AlsaDevice {
+    /// Opens the playback stream and, when `capture` is given, the capture stream (both
+    /// 48 kHz, stereo, 16 bit).
+    pub fn open(play: &Path, capture: Option<&Path>) -> io::Result<Self> {
+        Ok(Self {
+            play: Pcm::open(play, Direction::Playback, CARD_RATE)?,
+            capture: capture
+                .map(|p| Pcm::open(p, Direction::Capture, CARD_RATE))
+                .transpose()?,
+        })
+    }
+
+    /// Under- and overruns recovered so far (playback, capture).
+    pub fn xruns(&self) -> (u64, u64) {
+        (
+            self.play.xruns(),
+            self.capture.as_ref().map_or(0, Pcm::xruns),
+        )
+    }
+}
+
+impl Device for AlsaDevice {
+    fn write(&mut self, samples: &[i16]) -> io::Result<usize> {
+        self.play.write(samples)
+    }
+
+    fn read(&mut self, out: &mut [i16]) -> io::Result<usize> {
+        match self.capture.as_mut() {
+            Some(c) => c.read(out),
             None => Ok(0),
         }
     }

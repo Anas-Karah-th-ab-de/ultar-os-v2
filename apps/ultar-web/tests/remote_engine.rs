@@ -144,6 +144,7 @@ fn a_missing_host_program_is_a_start_error() {
         filter: None,
         proxy: Some("http://u:p@127.0.0.1:9".into()),
         proxy_socket: None,
+        audio_socket: None,
     };
     assert!(config.args().iter().any(|a| a == "--no-cell"));
     let args = config.args();
@@ -173,6 +174,7 @@ fn a_cell_without_network_starts_the_host_with_its_socket_and_without_a_tcp_prox
         filter: None,
         proxy: None,
         proxy_socket: Some(ultar_web::cell::proxy_socket(engine)),
+        audio_socket: None,
     };
     let args: Vec<String> = config
         .args()

@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use ultar_bus::messages::audio::{
     AudioReply, AudioState, Outputs, OutputsReply, SetMute, SetOutput, SetVolume, SERVICE,
 };
+use ultar_bus::messages::launcher::List;
 use ultar_bus::messages::settings::{Changed, Get, SettingValue};
 use ultar_bus::messages::voice::{AudioDone, Capture, Play};
 use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
@@ -188,6 +189,16 @@ impl Service for AudioService {
     fn tick(&mut self, bus: &Bus<'_, Self>) {
         if let Some(s) = self.sound.as_mut() {
             s.expire(Instant::now());
+        }
+        let now = Instant::now();
+        if self.sound.as_ref().is_some_and(|s| s.apps_due(now)) {
+            // the apps' user ids (the browser's sound socket is the browser's, by user id)
+            if let Ok(reply) = bus.call(&List {}, Duration::from_millis(500)) {
+                if let Some(s) = self.sound.as_mut() {
+                    s.apps_listed(now, &reply.apps);
+                }
+            }
+            // no answer (the launcher is not up yet): asked again at the next tick
         }
         if !self.mono_known && self.sound.is_some() {
             // until the settings service answers, mono is off

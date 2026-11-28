@@ -54,11 +54,11 @@ impl Rig {
     }
 
     fn without_card(tag: &str, who: &[(&str, Rights)]) -> Rig {
-        Rig::build(tag, who, my_uid())
+        Rig::build(tag, who, known_uid(my_uid()), None)
     }
 
     /// The sockets belong to the identities of user `uid` (the peers are `my_uid()`).
-    fn build(tag: &str, who: &[(&str, Rights)], uid: u32) -> Rig {
+    fn build(tag: &str, who: &[(&str, Rights)], uid: Uid, app: Option<&str>) -> Rig {
         let dir = std::env::temp_dir().join(format!("audiod-eng-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -75,7 +75,8 @@ impl Rig {
                 path: dir.join(format!("{id}.sock")),
                 identity: (*id).to_owned(),
                 rights: *rights,
-                uid,
+                uid: uid.clone(),
+                app: app.map(str::to_owned),
                 mode: Some(0o666),
             })
             .collect();
@@ -339,7 +340,8 @@ fn a_peer_with_another_user_id_is_not_the_identity_and_is_closed() {
     let mut r = Rig::build(
         "otheruid",
         &[("system.calld", call_rights())],
-        my_uid().wrapping_add(1),
+        known_uid(my_uid().wrapping_add(1)),
+        None,
     );
     r.plug();
     assert!(
@@ -354,6 +356,34 @@ fn a_peer_with_another_user_id_is_not_the_identity_and_is_closed() {
     let call = Hello::new(Class::Call, Direction::Duplex, 16_000, 1);
     assert!(ok.connect("system.calld", call).is_ok());
     assert_eq!(ok.eng.stats().wrong_peer, 0);
+}
+
+#[test]
+fn an_app_is_let_in_only_when_the_launcher_has_told_its_user_id() {
+    let mut r = Rig::build(
+        "appuid",
+        &[("app.browser", play_rights())],
+        known_uid(NO_UID),
+        Some("browser"),
+    );
+    r.plug();
+    let slots = r.eng.app_slots();
+    assert_eq!(slots.len(), 1);
+    assert_eq!(slots[0].0, "browser");
+    assert!(
+        r.connect("app.browser", media()).is_err(),
+        "nobody is let in before the launcher answered"
+    );
+    assert_eq!(r.eng.stats().wrong_peer, 1);
+    slots[0]
+        .1
+        .store(my_uid(), std::sync::atomic::Ordering::Relaxed);
+    assert!(r.connect("app.browser", media()).is_ok());
+    // the app was removed: the launcher lists no user id any more
+    slots[0]
+        .1
+        .store(NO_UID, std::sync::atomic::Ordering::Relaxed);
+    assert!(r.connect("app.browser", media()).is_err());
 }
 
 #[test]

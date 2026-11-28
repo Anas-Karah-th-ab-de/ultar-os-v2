@@ -4,7 +4,6 @@
 //! round of everything and takes the time as an argument, so the tests drive it with a
 //! clock of their own.
 
-use crate::capture::mono_of;
 use crate::conn::{read_some, Conn, Greeted, Phase, Rights};
 use crate::device::Device;
 use crate::mix::Mix;
@@ -13,10 +12,14 @@ use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ultar_audio_stream::{Class, Status, CARD_RATE};
 use ultar_service::peercred::peer_credentials;
 use ultar_service::socket::{bind_listener_for, ensure_parent};
+
+mod record;
 
 /// Frames mixed at once (5 ms).
 pub const PERIOD: usize = 240;
@@ -47,16 +50,31 @@ pub struct ListenerSpec {
     /// The one user id that is this identity: the kernel's peer credentials of every
     /// connection must say it, otherwise the connection is closed. The socket itself may be
     /// open to everybody; being allowed to connect is not being the identity.
-    pub uid: u32,
+    pub uid: Uid,
+    /// The id of the app whose user id the launcher gives at run time (the identity is
+    /// `app.<id>`), if it is not known at start; the service fills `uid` when it knows it.
+    pub app: Option<String>,
     /// File mode of the socket.
     pub mode: Option<u32>,
+}
+
+/// A user id that may become known later (`NO_UID` until then: nobody is let in).
+pub type Uid = Arc<AtomicU32>;
+
+/// The user id nobody has.
+pub const NO_UID: u32 = u32::MAX;
+
+/// A user id that is known now.
+pub fn known_uid(uid: u32) -> Uid {
+    Arc::new(AtomicU32::new(uid))
 }
 
 struct Lis {
     listener: UnixListener,
     identity: String,
     rights: Rights,
-    uid: u32,
+    uid: Uid,
+    app: Option<String>,
 }
 
 /// What the engine tells the service around it.
@@ -158,6 +176,7 @@ impl Engine {
                     identity: s.identity,
                     rights: s.rights,
                     uid: s.uid,
+                    app: s.app,
                 }),
                 Err(_) => failed.push(s.identity),
             }
@@ -191,6 +210,14 @@ impl Engine {
             events: Vec::new(),
             stats: Stats::default(),
         })
+    }
+
+    /// The apps whose user id the launcher has to tell: `(app id, slot)`.
+    pub fn app_slots(&self) -> Vec<(String, Uid)> {
+        self.listeners
+            .iter()
+            .filter_map(|l| Some((l.app.clone()?, l.uid.clone())))
+            .collect()
     }
 
     /// Identities whose socket could not be made.
@@ -346,7 +373,8 @@ impl Engine {
             while let Ok((sock, _)) = l.listener.accept() {
                 // who is on the other end is what the kernel recorded at connect; a
                 // kernel that does not say refuses everybody (fail closed)
-                if !peer_credentials(&sock).is_ok_and(|c| c.uid == l.uid) {
+                let want = l.uid.load(Ordering::Relaxed);
+                if want == NO_UID || !peer_credentials(&sock).is_ok_and(|c| c.uid == want) {
                     self.stats.wrong_peer += 1;
                     continue;
                 }
@@ -485,70 +513,6 @@ impl Engine {
             self.lose_card(self.card.last.unwrap_or_else(Instant::now));
         }
         far
-    }
-
-    fn recorders(&self) -> impl Iterator<Item = &Conn> {
-        self.conns.iter().filter(|c| c.records())
-    }
-
-    fn record(&mut self, far: Vec<f32>) {
-        let any = self.recorders().next().is_some() || !self.echo.bus_users.is_empty();
-        if !any {
-            self.card.fresh = true;
-            return;
-        }
-        let mut lost = false;
-        let mut mic48 = Vec::new();
-        if let Some(dev) = self.card.device.as_mut() {
-            let mut buf = vec![0i16; 9600];
-            if self.card.fresh {
-                // what piled up while nobody listened is old: it is thrown away
-                for _ in 0..64 {
-                    if !matches!(dev.read(&mut buf), Ok(n) if n > 0) {
-                        break;
-                    }
-                }
-                self.card.fresh = false;
-            }
-            for _ in 0..4 {
-                match dev.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => mic48.extend(mono_of(&buf[..n])),
-                    Err(_) => {
-                        lost = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if lost {
-            self.lose_card(self.card.last.unwrap_or_else(Instant::now));
-            return;
-        }
-        let echo = self.recorders().any(|c| {
-            matches!(&c.phase, Phase::Open(o) if o.rec.as_ref().is_some_and(|r| r.wants_echo_path()))
-        });
-        let (mut m16, mut f16) = (Vec::new(), Vec::new());
-        if echo || !self.echo.bus_users.is_empty() {
-            self.echo.mic16.process(&mic48, &mut m16);
-        }
-        if echo {
-            self.echo.far16.process(&far, &mut f16);
-        }
-        for c in &mut self.conns {
-            if let Phase::Open(o) = &mut c.phase {
-                if let Some(rec) = o.rec.as_mut() {
-                    rec.feed(&mic48, &m16, &f16);
-                }
-            }
-        }
-        if !self.echo.bus_users.is_empty() {
-            self.echo.bus_acc.extend(to_i16(&m16));
-            while self.echo.bus_acc.len() >= CHUNK {
-                let chunk: Vec<i16> = self.echo.bus_acc.drain(..CHUNK).collect();
-                self.events.push(Event::Chunk(chunk));
-            }
-        }
     }
 
     fn finish(&mut self) {

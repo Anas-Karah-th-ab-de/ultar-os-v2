@@ -57,6 +57,9 @@ pub struct HostConfig {
     /// `cell::proxy_socket`). Used with a cell instead of `proxy`; the host's relay inside the
     /// cell leads Servo to it.
     pub proxy_socket: Option<PathBuf>,
+    /// The sound socket of the engine (`--audio-socket`): in a cell the relay's socket in the
+    /// engine's folder, without a cell the browser's stream socket of the sound server.
+    pub audio_socket: Option<PathBuf>,
 }
 
 /// The environment of the host (it starts with an empty one): the time zone every page sees
@@ -84,6 +87,10 @@ impl HostConfig {
         }
         if let Some(socket) = &self.proxy_socket {
             args.push("--proxy-socket".into());
+            args.push(socket.clone().into_os_string());
+        }
+        if let Some(socket) = &self.audio_socket {
+            args.push("--audio-socket".into());
             args.push(socket.clone().into_os_string());
         }
         match &self.cell {
