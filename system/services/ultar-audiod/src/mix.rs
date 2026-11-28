@@ -367,6 +367,55 @@ mod tests {
         assert!(!m.sounding());
     }
 
+    /// Frames it takes (pushed one by one) until the stream sounds again after it ran dry.
+    fn frames_until_it_sounds(m: &mut Mix) -> usize {
+        let mut pushed = 0;
+        loop {
+            m.push(1, &[(0.5, 0.5)]);
+            pushed += 1;
+            let mut out = [0.0f32; 2];
+            m.mix(&mut out);
+            if out[0] != 0.0 || pushed > 2 * MAX_PREFILL {
+                return pushed;
+            }
+        }
+    }
+
+    /// Plays the stream until it runs dry (one underrun more).
+    fn run_dry(m: &mut Mix) {
+        m.push(1, &vec![(0.5, 0.5); MAX_PREFILL + 100]);
+        run(m, 2 * MAX_PREFILL + 1200);
+    }
+
+    #[test]
+    fn every_underrun_makes_the_cushion_480_frames_bigger_up_to_the_most() {
+        let mut m = Mix::new();
+        m.add(1, Class::Media, 1000);
+        // a start needs the first cushion; the first sample sounds one frame later
+        let first = frames_until_it_sounds(&mut m);
+        assert!((PREFILL..=PREFILL + 2).contains(&first), "first {first}");
+        for n in 1..=8u64 {
+            run_dry(&mut m);
+            assert_eq!(m.underruns(1), n);
+            let want = (PREFILL + 480 * n as usize).min(MAX_PREFILL);
+            let got = frames_until_it_sounds(&mut m);
+            assert!(
+                (want..=want + 2).contains(&got),
+                "after {n}: {got}, want {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stream_that_ended_does_not_count_its_end_as_an_underrun() {
+        let mut m = Mix::new();
+        m.add(1, Class::Media, 1000);
+        m.push(1, &vec![(0.5, 0.5); 2000]);
+        m.end(1);
+        run(&mut m, 4000);
+        assert_eq!(m.underruns(1), 0);
+    }
+
     #[test]
     fn a_call_ducks_media_and_media_returns_afterwards() {
         let mut m = Mix::new();

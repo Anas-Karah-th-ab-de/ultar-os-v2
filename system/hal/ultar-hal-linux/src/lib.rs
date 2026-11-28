@@ -17,7 +17,8 @@
 //! | Virtual keyboards and mice (Linux only) | `dev/uinput` | [`uinput`] |
 //!
 //! `unsafe` is denied everywhere but in `sound/ioctl.rs` (four ALSA control ioctls on
-//! fixed-size buffers that hold no pointers), `bluetooth.rs` (the `sockaddr_hci` of the
+//! fixed-size buffers that hold no pointers), `sound/pcm_ioctl.rs` (four ALSA PCM ioctls, the
+//! samples go through `read` and `write`), `bluetooth.rs` (the `sockaddr_hci` of the
 //! user channel) and `uinput.rs` (five ioctls with integer or no arguments), each block
 //! with a `SAFETY` comment.
 //!
