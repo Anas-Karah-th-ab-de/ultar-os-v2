@@ -62,7 +62,9 @@ pub fn rights_of(policy: &Policy, identity: &str) -> Rights {
     }
 }
 
-/// The sockets of a list of identities: `identity` or `identity:gid`, below `dir`.
+/// The sockets of a list of identities: `identity` or `identity:uid`, below `dir`. The uid is
+/// the user the identity runs as (`rootfs/etc/ultar/ids.toml`); without one the identity is
+/// the service's own user (tests, development).
 pub fn listeners(
     dir: &std::path::Path,
     list: &str,
@@ -70,12 +72,12 @@ pub fn listeners(
 ) -> Result<Vec<ListenerSpec>, String> {
     let mut specs = Vec::new();
     for item in list.split(',').filter(|s| !s.is_empty()) {
-        let (identity, group) = match item.split_once(':') {
-            Some((i, g)) => (
+        let (identity, uid) = match item.split_once(':') {
+            Some((i, u)) => (
                 i,
-                Some(g.parse::<u32>().map_err(|_| format!("group of {item}"))?),
+                u.parse::<u32>().map_err(|_| format!("user id of {item}"))?,
             ),
-            None => (item, None),
+            None => (item, own_uid()?),
         };
         Identity::new(identity).map_err(|_| format!("identity {identity}"))?;
         if specs.iter().any(|s: &ListenerSpec| s.identity == identity) {
@@ -85,12 +87,20 @@ pub fn listeners(
             path: dir.join(format!("{identity}.sock")),
             identity: identity.to_owned(),
             rights: rights_of(policy, identity),
-            // the group of the program may connect, nobody else
-            mode: Some(0o660),
-            group,
+            uid,
+            // everybody may connect; the peer credentials decide who it is
+            mode: Some(0o666),
         });
     }
     Ok(specs)
+}
+
+/// The user id this process runs as, as the kernel reports it for a socket pair.
+fn own_uid() -> Result<u32, String> {
+    let (a, _b) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
+    ultar_service::peercred::peer_credentials(&a)
+        .map(|c| c.uid)
+        .map_err(|e| e.to_string())
 }
 
 /// The sound server inside the service.
@@ -325,8 +335,9 @@ call = ["audio.play", "audio.ring"]
         let dir = std::path::Path::new("/run/ultar/audio");
         let l = listeners(dir, "system.calld:829,app.web", &p).unwrap();
         assert_eq!(l.len(), 2);
-        assert_eq!(l[0].group, Some(829));
-        assert_eq!(l[0].mode, Some(0o660));
+        assert_eq!(l[0].uid, 829);
+        assert_ne!(l[1].uid, 829, "without a user id it is the service's own");
+        assert_eq!(l[0].mode, Some(0o666));
         assert_eq!(l[0].path, dir.join("system.calld.sock"));
         assert!(l[0].rights.call && !l[1].rights.call);
         assert!(listeners(dir, "system.calld,system.calld", &p).is_err());

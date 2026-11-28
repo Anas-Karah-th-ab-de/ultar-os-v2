@@ -15,6 +15,7 @@ use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use ultar_audio_stream::{Class, Status, CARD_RATE};
+use ultar_service::peercred::peer_credentials;
 use ultar_service::socket::{bind_listener_for, ensure_parent};
 
 /// Frames mixed at once (5 ms).
@@ -43,16 +44,19 @@ pub struct ListenerSpec {
     pub identity: String,
     /// What that identity may do.
     pub rights: Rights,
+    /// The one user id that is this identity: the kernel's peer credentials of every
+    /// connection must say it, otherwise the connection is closed. The socket itself may be
+    /// open to everybody; being allowed to connect is not being the identity.
+    pub uid: u32,
     /// File mode of the socket.
     pub mode: Option<u32>,
-    /// Group of the socket.
-    pub group: Option<u32>,
 }
 
 struct Lis {
     listener: UnixListener,
     identity: String,
     rights: Rights,
+    uid: u32,
 }
 
 /// What the engine tells the service around it.
@@ -80,6 +84,8 @@ pub struct Stats {
     pub opened: u64,
     /// Streams refused for a missing right.
     pub denied: u64,
+    /// Connections closed because the peer's user id is not the identity's.
+    pub wrong_peer: u64,
     /// Times the card was lost.
     pub card_lost: u64,
 }
@@ -130,9 +136,9 @@ impl Engine {
         let mut failed = Vec::new();
         for s in specs {
             ensure_parent(&s.path, 0o755)?;
-            // one socket that cannot be made (a group the service is not a member of) must
-            // not take the sound of everybody else with it: it is reported and left out
-            let bound = bind_listener_for(&s.path, s.mode, s.group)
+            // one socket that cannot be made must not take the sound of everybody else
+            // with it: it is reported and left out
+            let bound = bind_listener_for(&s.path, s.mode, None)
                 .map_err(|e| io::Error::other(e.to_string()))
                 .and_then(|l| l.set_nonblocking(true).map(|()| l));
             match bound {
@@ -140,6 +146,7 @@ impl Engine {
                     listener,
                     identity: s.identity,
                     rights: s.rights,
+                    uid: s.uid,
                 }),
                 Err(_) => failed.push(s.identity),
             }
@@ -322,6 +329,12 @@ impl Engine {
     fn accept(&mut self, now: Instant) {
         for l in &self.listeners {
             while let Ok((sock, _)) = l.listener.accept() {
+                // who is on the other end is what the kernel recorded at connect; a
+                // kernel that does not say refuses everybody (fail closed)
+                if !peer_credentials(&sock).is_ok_and(|c| c.uid == l.uid) {
+                    self.stats.wrong_peer += 1;
+                    continue;
+                }
                 if self.conns.len() >= MAX_CONNS || sock.set_nonblocking(true).is_err() {
                     continue;
                 }

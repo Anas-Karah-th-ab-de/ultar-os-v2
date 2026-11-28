@@ -19,11 +19,15 @@ und entfernt auf Wunsch das Echo. Kein anderer Dienst und keine App hält das Re
   der Karte wird auf 10 ms (480 Frames) gehalten; die Füllung wird aus Geschriebenem minus
   Verstrichenem geschätzt, weil der Kernel keine Füllstand-Abfrage hat (siehe „Lücken des Kerns“).
 
-## Strom-Protokoll (`system/services/ultar-audiod/stream`, Crate `ultar-audio-stream`)
+## Strom-Protokoll (`system/core/ultar-audio-stream`, Crate `ultar-audio-stream`)
 
 Ein Programm verbindet sich mit **seinem** Socket `<stream-dir>/<Identität>.sock`
 (`/run/ultar/audio/system.calld.sock`, …). Der Socket ist die Identität, wie bei den Bus-Sockets
-(der Ultar-Kern hat kein `SO_PEERCRED`); wer ihn öffnen darf, regelt Gruppe und Modus `0660`.
+nicht wie bei den Bus-Sockets: `audiod` besitzt die Sockets (Modus `0666`, jeder darf verbinden) und
+fragt beim `accept` die Peer-Credentials des Kernels (`SO_PEERCRED`, `ultar-service::peercred`).
+Die Benutzer-ID des Peers muss die des Sockets sein (`system.calld` = 829, `system.mediad` = 824,
+`rootfs/etc/ultar/ids.toml`), sonst wird die Verbindung ohne Antwort geschlossen
+(`Stats::wrong_peer`). Meldet der Kernel keine Credentials, wird jeder abgewiesen (fail closed).
 
 | Byte | Hello (16 Byte, vom Client) |
 |---|---|
@@ -53,10 +57,10 @@ was er verwirft.
 Ein `memfd`-Ring braucht `SCM_RIGHTS` (Deskriptor über den Socket reichen), `mmap` und damit
 `unsafe`-Code in jedem Client und im Server; die Dienste verbieten `unsafe`
 (`#![forbid(unsafe_code)]`). Der Gewinn wäre ein Kopiervorgang weniger. Gemessen
-(`stream/tests/cost.rs`, Debug-Übersetzung, ein Kern, Entwicklungsserver): zehn Sekunden
-48-kHz-Stereo über den Socket zu schieben und zu lesen kostet **__COST__ ms je Sekunde Ton**, also
-weit unter 1 % eines Kerns. Der Ring spart nichts, was zählt; der Socket gibt dazu kostenlos
-Rückdruck, Lebenszeichen (EOF) und die Identität über den Socket-Pfad.
+(`system/core/ultar-audio-stream/tests/cost.rs`, Release-Build, ein Kern, Entwicklungsserver):
+eine Sekunde 48-kHz-Stereo (1 920 000 Byte) über den Socket zu schieben und zu lesen kostet
+**0,10 ms je Sekunde Ton**, also weit unter 1 % eines Kerns. Der Ring spart nichts, was zählt;
+der Socket gibt dazu kostenlos Rückdruck, Lebenszeichen (EOF) und die Peer-Credentials.
 
 ## Mischer (`src/mix.rs`)
 
@@ -103,8 +107,10 @@ Beweis: `engine_tests::rights_decide_who_plays_what_and_who_records`,
 `tests/sound_process.rs` (echter Prozess: `app.nobody` verweigert in allen Fällen, Medien-Client
 kann nicht aufnehmen, Bus-Aufruf ohne Recht → `PermissionDenied`).
 
-Die Sockets gehören der Gruppe des Programms (`--streams system.calld:829,system.mediad:824,…`),
-Modus `0660`; `audiod` ist Mitglied dieser Gruppen (`audiod.toml`).
+`--streams system.calld:829,system.mediad:824` nennt zu jeder Identität die Benutzer-ID; `audiod`
+ist in **keiner** Gruppe der Clients (eine Gruppe von `calld`/`mediad` würde auch deren Bus- und
+Log-Sockets (`0660`) öffnen). Beweis: `engine_tests::a_peer_with_another_user_id_is_not_the_identity_and_is_closed`,
+`shipped_services::the_sound_server_knows_its_clients_by_user_id_and_shares_no_group_with_them`.
 
 ## Mikrofon über den Bus (für Sprachsteuerung)
 
@@ -195,7 +201,9 @@ calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher,
 
 ## Lücken des Kerns (nicht angefasst, `kernel/ultar-kern`)
 
-* `SO_PEERCRED`/Benutzer-IDs fehlen: die Identität eines Stroms ist der Socket, nicht der Peer.
+* `SO_PEERCRED`/Benutzer-IDs fehlen im Ultar-Kern (`sys_getsockopt` kennt nur `SO_ERROR`/`SO_TYPE`,
+  `getuid` ist immer 0): dort weist `audiod` **jeden** Strom-Client ab, bis der Kern die Credentials
+  liefert (siehe `ultar-service/src/peercred.rs`). Auf Linux gilt die Prüfung voll.
 * `/dev/ultar/pcm` hat **keine getrennten Raten** für Aufnahme und Wiedergabe und **keine
   Füllstand-Abfrage**; `audiod` schätzt den Füllstand und geht von 48 kHz in beide Richtungen aus.
   Eine Abfrage (`FIONREAD`-artig) und ein Zähler der gespielten Frames würden die Schätzung und
@@ -211,9 +219,10 @@ calld) wirkt jetzt im Mischer von `audiod` (beide Kanäle in jeden Lautsprecher,
    `--play-file`/`--capture-file`.
 3. **Browser-Zelle.** Die Seitenzelle bekommt den Socket nicht von selbst: der Browser/Launcher
    muss `--audio-socket` mitgeben und genau diesen Socket in die Zelle legen (nicht das ganze
-   Verzeichnis, sonst sähe die Zelle die Sockets von `calld` und `mediad`); die Gruppe von
-   `app.browser.sock` muss der Launcher bei der Installation setzen (App-IDs 20000–49999).
-   `audiod.toml` listet `app.browser` ohne Gruppe.
+   Verzeichnis, sonst sähe die Zelle die Sockets von `calld` und `mediad`); die Benutzer-ID von
+   `app.browser` vergibt der Launcher bei der Installation (App-IDs 20000-49999). **`app.browser`
+   fehlt deshalb in `--streams` von `audiod.toml`**, bis die ID aus dem Launcher/Bus verfügbar ist;
+   der Browser spielt bis dahin keinen Ton über den Server.
 4. **Echo-Unterdrückung**: Grenzen oben; kein Test mit echtem Raum.
 5. **SIM-Sprachpfad**: weiterhin kein Modem-PCM-Pfad im System.
 6. Die Rechte `ring` für Klingeltöne: kein Dienst spielt zurzeit das Klingeln über den Server

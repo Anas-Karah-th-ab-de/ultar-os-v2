@@ -7,7 +7,7 @@ description = "Call service of Ultar OS: Ultar-number voice and video calls end 
 [dependencies]
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-hal-system = { path = "../../hal/ultar-hal-system" }
-ultar-audio-stream = { path = "../ultar-audiod/stream" }
+ultar-audio-stream = { path = "../../core/ultar-audio-stream" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # End-to-end calls (src/e2e): pure Rust crypto, STUN/TURN, voice and picture codecs.

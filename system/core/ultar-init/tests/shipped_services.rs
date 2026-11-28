@@ -134,7 +134,7 @@ fn only_the_sound_server_keeps_the_sound_right() {
 }
 
 #[test]
-fn the_sound_server_gives_its_stream_sockets_to_the_groups_of_its_clients() {
+fn the_sound_server_knows_its_clients_by_user_id_and_shares_no_group_with_them() {
     let audiod = shipped()
         .into_iter()
         .find(|(_, _, spec)| spec.name == "audiod")
@@ -143,8 +143,17 @@ fn the_sound_server_gives_its_stream_sockets_to_the_groups_of_its_clients() {
     for client in ["calld:829", "mediad:824"] {
         assert!(text.contains(client), "no stream socket for {client}");
     }
+    // a group of calld or mediad would also open their bus and log sockets (0660): the
+    // sound server must not be a member of any client's group
+    for client_group in [829, 824] {
+        assert!(
+            !audiod.2.confinement.groups.contains(&client_group),
+            "audiod is in group {client_group}"
+        );
+    }
     assert!(
-        audiod.2.confinement.groups.contains(&829) && audiod.2.confinement.groups.contains(&824)
+        !text.contains("app.browser"),
+        "no user id for the browser yet"
     );
     assert!(text.contains("--device") && text.contains("/dev/ultar/pcm"));
 }

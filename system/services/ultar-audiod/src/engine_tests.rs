@@ -31,6 +31,12 @@ fn mic_rights() -> Rights {
     }
 }
 
+/// The user id the tests run as, as the kernel reports it for a socket pair.
+fn my_uid() -> u32 {
+    let (a, _b) = std::os::unix::net::UnixStream::pair().unwrap();
+    peer_credentials(&a).unwrap().uid
+}
+
 struct Rig {
     eng: Engine,
     card: Arc<Mutex<Card>>,
@@ -48,6 +54,11 @@ impl Rig {
     }
 
     fn without_card(tag: &str, who: &[(&str, Rights)]) -> Rig {
+        Rig::build(tag, who, my_uid())
+    }
+
+    /// The sockets belong to the identities of user `uid` (the peers are `my_uid()`).
+    fn build(tag: &str, who: &[(&str, Rights)], uid: u32) -> Rig {
         let dir = std::env::temp_dir().join(format!("audiod-eng-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -64,8 +75,8 @@ impl Rig {
                 path: dir.join(format!("{id}.sock")),
                 identity: (*id).to_owned(),
                 rights: *rights,
-                mode: Some(0o600),
-                group: None,
+                uid,
+                mode: Some(0o666),
             })
             .collect();
         Rig {
@@ -328,6 +339,29 @@ fn rights_decide_who_plays_what_and_who_records() {
     let mut reply = [0u8; 8];
     std::io::Read::read_exact(&mut s, &mut reply).unwrap();
     assert_eq!(Status::decode(&reply), Some(Status::BadHello));
+}
+
+#[test]
+fn a_peer_with_another_user_id_is_not_the_identity_and_is_closed() {
+    // the socket is open to everybody (0666), but it belongs to the identity of another user
+    let mut r = Rig::build(
+        "otheruid",
+        &[("system.calld", call_rights())],
+        my_uid().wrapping_add(1),
+    );
+    r.plug();
+    assert!(
+        r.connect("system.calld", media()).is_err(),
+        "not even a hello is answered"
+    );
+    assert_eq!(r.eng.stats().wrong_peer, 1);
+    assert_eq!(r.eng.stats().opened, 0);
+    assert_eq!(r.eng.streams(), 0);
+    // the right user is let in on the same kind of socket
+    let mut ok = Rig::new("sameuid", &[("system.calld", call_rights())]);
+    let call = Hello::new(Class::Call, Direction::Duplex, 16_000, 1);
+    assert!(ok.connect("system.calld", call).is_ok());
+    assert_eq!(ok.eng.stats().wrong_peer, 0);
 }
 
 #[test]
