@@ -72,6 +72,8 @@
 //! | `agent.activity` | topic | yes | what the helper did lately |
 //! | `agent.progress` | topic | – | each step of the request being answered |
 //! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
+//! | `voice.state` | topic | yes | voice control service (`ultar-voiced`, see [`voice`]) |
+//! | `voice.set_enabled` / `set_language` / `set_model` / `enroll` / `test` / `set_locked` | calls | – | voice control service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -111,6 +113,7 @@ mod settings_access;
 mod settings_ext;
 pub mod shell;
 pub mod sysdialog;
+pub mod voice;
 pub mod volumes;
 pub mod vpn;
 
@@ -243,6 +246,13 @@ mod tests {
         check_call::<super::power::Restart>();
         check_call::<super::power::PowerOff>();
         check_call::<super::init::Power>();
+        check_topic::<super::voice::VoiceState>();
+        check_call::<super::voice::SetEnabled>();
+        check_call::<super::voice::SetLanguage>();
+        check_call::<super::voice::SetModel>();
+        check_call::<super::voice::Enroll>();
+        check_call::<super::voice::Test>();
+        check_call::<super::voice::SetLocked>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

@@ -10,7 +10,8 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ultar_bus::messages::agent::{
-    AgentState, Answer, Area, Ask, ClearActivity, Cleared, Reach, ACT_KEY, MAX_REQUEST, SERVICE,
+    AgentState, Answer, Area, Ask, AskVoice, ClearActivity, Cleared, Reach, ACT_KEY, MAX_REQUEST,
+    SERVICE,
 };
 use ultar_bus::messages::llm::LlmState;
 use ultar_bus::messages::llm_cloud::CloudState;
@@ -32,7 +33,7 @@ pub struct AgentService {
     lenders: Vec<Lender>,
     last: Option<AgentState>,
     next: u64,
-    asking: BTreeMap<u64, (IncomingRequest, String)>,
+    asking: BTreeMap<u64, (IncomingRequest, String, bool)>,
     /// What the person closed.
     limits: Limits,
     reach: Option<Reach>,
@@ -180,7 +181,7 @@ impl AgentService {
         });
     }
 
-    fn ask(&mut self, request: IncomingRequest, text: String, bus: &Bus<'_, Self>) {
+    fn ask(&mut self, request: IncomingRequest, text: String, voice: bool, bus: &Bus<'_, Self>) {
         self.next += 1;
         let id = self.next;
         let brain = self.state().brain;
@@ -203,16 +204,16 @@ impl AgentService {
             })
         });
         if started {
-            self.asking.insert(id, (request, asked));
+            self.asking.insert(id, (request, asked, voice));
         } else {
             let _ = request.fail(ErrorCode::ServiceBusy);
         }
     }
 
     fn reply(&mut self, id: u64, answer: &Answer, bus: &Bus<'_, Self>) {
-        if let Some((request, asked)) = self.asking.remove(&id) {
+        if let Some((request, asked, voice)) = self.asking.remove(&id) {
             let _ = request.reply(answer);
-            self.log.note(&asked, answer, now());
+            self.log.note(&asked, answer, now(), voice);
             bus.retain(self.log.list());
         }
     }
@@ -251,13 +252,26 @@ impl Service for AgentService {
             let _ = request.reply(&Cleared { ok });
             return;
         }
+        // A spoken request is marked by voice; the typed request is not. Both answer the
+        // same way.
+        if request.method() == AskVoice::METHOD {
+            match request.decode::<AskVoice>() {
+                Ok(ask) if !ask.text.trim().is_empty() && ask.text.len() <= MAX_REQUEST => {
+                    self.ask(request, ask.text, true, bus);
+                }
+                _ => {
+                    let _ = request.fail(ErrorCode::BadPayload);
+                }
+            }
+            return;
+        }
         if request.method() != Ask::METHOD {
             let _ = request.fail(ErrorCode::UnknownMethod);
             return;
         }
         match request.decode::<Ask>() {
             Ok(ask) if !ask.text.trim().is_empty() && ask.text.len() <= MAX_REQUEST => {
-                self.ask(request, ask.text, bus);
+                self.ask(request, ask.text, false, bus);
             }
             _ => {
                 let _ = request.fail(ErrorCode::BadPayload);

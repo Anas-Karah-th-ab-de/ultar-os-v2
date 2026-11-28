@@ -59,10 +59,11 @@ impl Log {
     }
 
     /// Writes one answered request down.
-    pub fn note(&mut self, request: &str, answer: &Answer, now: u64) {
+    pub fn note(&mut self, request: &str, answer: &Answer, now: u64, by_voice: bool) {
         self.list.entries.push(Entry {
             at: now,
             request: request.to_owned(),
+            by_voice,
             brain: answer.brain.clone(),
             steps: answer.steps.clone(),
             said: answer.text.clone(),
@@ -116,7 +117,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut log = Log::open(Some(&dir));
         for at in 0..60 {
-            log.note("mute", &answered(), 1_000_000 + at);
+            log.note("mute", &answered(), 1_000_000 + at, false);
         }
         assert_eq!(log.list().entries.len(), MAX_ACTIVITY);
         assert!(log.lately().contains("mute"));
@@ -126,11 +127,11 @@ mod tests {
         // one day kept: what is older goes
         again.keep_days(1, 1_000_000 + 2 * DAY);
         assert!(again.list().entries.is_empty());
-        again.note("mute", &answered(), 5_000_000);
+        again.note("mute", &answered(), 5_000_000, true);
         again.keep_days(0, 5_000_000);
         assert!(again.list().entries.is_empty(), "0 days keeps nothing");
         again.keep_days(30, 5_000_000);
-        again.note("mute", &answered(), 5_000_000);
+        again.note("mute", &answered(), 5_000_000, true);
         assert!(again.clear());
         assert!(Log::open(Some(&dir)).list().entries.is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
