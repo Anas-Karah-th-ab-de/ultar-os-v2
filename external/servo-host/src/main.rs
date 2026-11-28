@@ -40,7 +40,16 @@ mod waker;
 use std::process::ExitCode;
 use ultar_web::privacy::persona::Persona;
 
+// the runtime bundle (environment of the libraries) and the sound card
+mod media;
+#[cfg(any(feature = "media", test))]
+mod pcm;
+mod runtime;
+
 fn main() -> ExitCode {
+    // before any thread: the bundle's fonts and Mesa drivers; then the sound sink (feature media)
+    runtime::setup();
+    media::install();
     let Some(args) = args::parse(std::env::args_os().skip(1)) else {
         eprintln!("ultar-web-engine: started with unknown options (only the browser starts it)");
         return ExitCode::from(2);
