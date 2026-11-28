@@ -1,18 +1,26 @@
 //! The bus side of the media service.
 
 use crate::session::Session;
+use crate::there::Sink;
+use crate::there_service::ThereRt;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::media::{
     Button, Command, MediaOutcome, MediaReply, Next, PlayPause, Previous, Release, Update, SERVICE,
 };
-use ultar_bus::{Call, ErrorCode, IncomingRequest};
+use ultar_bus::messages::mesh::MeshState;
+use ultar_bus::messages::mesh_media::{
+    MediaControl, MediaIncoming, MediaPcmIn, MediaProgress, SetThere, TherePause, TherePush,
+    ThereVolume,
+};
+use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_svckit::{Access, Bus, Service};
 
 /// The media service.
 pub struct MediaService {
-    session: Session,
-    access: Access,
+    pub(crate) session: Session,
+    pub(crate) access: Access,
     started: Instant,
+    pub(crate) there: ThereRt,
 }
 
 impl MediaService {
@@ -22,7 +30,15 @@ impl MediaService {
             session: Session::default(),
             access,
             started: Instant::now(),
+            there: ThereRt::new(None),
         }
+    }
+
+    /// Lets this device play the sound of another device's media session on `sink`
+    /// ("play there", the sink side).
+    pub fn with_sink(mut self, sink: Box<dyn Sink>) -> Self {
+        self.there = ThereRt::new(Some(sink));
+        self
     }
 
     fn now(&self) -> u64 {
@@ -50,12 +66,27 @@ impl Service for MediaService {
         SERVICE
     }
 
+    fn subscriptions(&self) -> Vec<&'static str> {
+        vec![
+            MeshState::TOPIC,
+            MediaIncoming::TOPIC,
+            MediaPcmIn::TOPIC,
+            MediaControl::TOPIC,
+            MediaProgress::TOPIC,
+        ]
+    }
+
     fn tick_every(&self) -> Option<Duration> {
         Some(Duration::from_secs(5))
     }
 
     fn start(&mut self, bus: &Bus<'_, Self>) {
         bus.retain(&self.session.state());
+        self.there_start(bus);
+    }
+
+    fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        self.there_event(&event, bus);
     }
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
@@ -73,6 +104,13 @@ impl Service for MediaService {
             m if m == PlayPause::METHOD => return self.button(request, Button::PlayPause, bus),
             m if m == Next::METHOD => return self.button(request, Button::Next, bus),
             m if m == Previous::METHOD => return self.button(request, Button::Previous, bus),
+            m if m == SetThere::METHOD
+                || m == ThereVolume::METHOD
+                || m == TherePause::METHOD
+                || m == TherePush::METHOD =>
+            {
+                return self.there_request(request, bus)
+            }
             _ => {
                 let _ = request.fail(ErrorCode::UnknownMethod);
                 return;

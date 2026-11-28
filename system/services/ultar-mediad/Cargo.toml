@@ -18,6 +18,8 @@ path = "src/bin/ultar-mediad.rs"
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
 ultar-svckit = { path = "../../core/ultar-svckit" }
+base64 = "0.22"
 
 [dev-dependencies]
+tempfile = "3"
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

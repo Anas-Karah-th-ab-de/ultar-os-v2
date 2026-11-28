@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 /// How far a notification may travel.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Privacy {
-    /// May be mirrored; calls, messages and texts are shown on a locked target without
-    /// their content (the default).
+    /// May be mirrored; a target that is locked (nobody signed in) shows only that
+    /// something arrived, without its content (the default).
     #[default]
     Normal,
-    /// May be mirrored, but a target that is locked shows it only after it is unlocked.
+    /// May be mirrored, but a target that is locked shows nothing at all.
     HideOnLocked,
     /// Never leaves this device (a password, a one-time code, anything sensitive).
     Private,
