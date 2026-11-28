@@ -433,6 +433,11 @@ fn the_assistant_reads_freely_and_writes_only_after_the_users_yes() {
     // one undo step
     c.undo();
     assert_eq!(c.book.sheet().get(2, 1), "");
+}
+
+#[test]
+fn the_assistant_refuses_a_bad_formula_and_adds_a_sheet_after_the_yes() {
+    let mut c = core();
     // a bad formula is refused before the user is asked
     let bad = Request::WriteRange {
         range: "A1".into(),

@@ -181,7 +181,7 @@ impl Workbook {
     }
 
     /// Copies the first column of the rectangle to the right over the others.
-    pub fn fill_right(&mut self, sheet: usize, r0: u32, c0: u32, r1: u32, c1: u32) { // physical
+    pub fn fill_across(&mut self, sheet: usize, r0: u32, c0: u32, r1: u32, c1: u32) {
         self.fill(sheet, (r0, c0, r1, c1), false);
     }
 
@@ -239,30 +239,7 @@ impl Workbook {
                 .collect();
             rows.push((r, k, cells));
         }
-        let rank = |v: &Value| match v {
-            Value::Num(_) => 0,
-            Value::Text(_) => 1,
-            Value::Bool(_) => 2,
-            Value::Err(_) => 3,
-            Value::Empty => 4,
-        };
-        rows.sort_by(|a, b| {
-            let (ra, rb) = (rank(&a.1), rank(&b.1));
-            if ra == 4 || rb == 4 {
-                return ra.cmp(&rb);
-            }
-            let ord = match (&a.1, &b.1) {
-                (Value::Num(x), Value::Num(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
-                (Value::Text(x), Value::Text(y)) => text(x, y),
-                (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-                _ => ra.cmp(&rb),
-            };
-            if ascending {
-                ord
-            } else {
-                ord.reverse()
-            }
-        });
+        rows.sort_by(|a, b| compare_values(&a.1, &b.1, ascending, text));
         let sh = &mut self.sheets[sheet];
         for r in r0..=r1 {
             for c in c0..=c1 {
@@ -363,4 +340,39 @@ pub fn parse_tsv(text: &str) -> Vec<Vec<String>> {
         rows.push(row);
     }
     rows
+}
+
+/// The place of a value in a sorted column: numbers, text, truth values, errors, empty.
+fn value_rank(v: &Value) -> u8 {
+    match v {
+        Value::Num(_) => 0,
+        Value::Text(_) => 1,
+        Value::Bool(_) => 2,
+        Value::Err(_) => 3,
+        Value::Empty => 4,
+    }
+}
+
+/// Orders two values for a sort; empty cells stay last in either direction.
+fn compare_values(
+    a: &Value,
+    b: &Value,
+    ascending: bool,
+    text: &dyn Fn(&str, &str) -> Ordering,
+) -> Ordering {
+    let (ra, rb) = (value_rank(a), value_rank(b));
+    if ra == 4 || rb == 4 {
+        return ra.cmp(&rb);
+    }
+    let ord = match (a, b) {
+        (Value::Num(x), Value::Num(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::Text(x), Value::Text(y)) => text(x, y),
+        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
+        _ => ra.cmp(&rb),
+    };
+    if ascending {
+        ord
+    } else {
+        ord.reverse()
+    }
 }

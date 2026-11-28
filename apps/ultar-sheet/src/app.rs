@@ -10,13 +10,10 @@ use crate::recover::Recovery;
 use std::path::PathBuf;
 use std::time::Instant;
 use ultar_ui::event::Modifiers;
-use ultar_ui::icon::IconId;
-use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
-use ultar_ui::tokens::{ColorRole, InputMode, SizeClass, Space};
+use ultar_ui::layout::{CrossAlign, Flex};
+use ultar_ui::tokens::{InputMode, SizeClass};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{
-    Button, ButtonVariant, Dialog, EmptyState, Label, PixelArea, Text, TextField,
-};
+use ultar_ui::widgets::Label;
 
 pub use crate::cmd::Cmd;
 
@@ -90,17 +87,42 @@ pub struct SheetApp {
     pub(crate) ask: Option<crate::ask::Ask>,
     pub(crate) state: State,
     pub(crate) tools_open: bool,
-    pub(crate) recovery: Recovery,
-    pub(crate) last_copy: Instant,
-    pub(crate) drag: crate::input::Drag,
-    pub(crate) mods: Modifiers,
-    pub(crate) last_click: Option<(Instant, (u32, u32))>,
     pub(crate) out: Vec<Out>,
-    pub(crate) title_version: u64,
     pub(crate) toggles: Vec<bool>,
-    pub(crate) agent_reply: Option<crate::agent::Reply>,
-    pub(crate) pending_spot: Option<crate::place::Spot>,
-    pub(crate) focus_find: bool,
+    pub(crate) pointer: Pointer,
+    pub(crate) upkeep: Upkeep,
+    pub(crate) waiting: Waiting,
+}
+
+/// The mouse and the modifier keys.
+pub(crate) struct Pointer {
+    /// What a press started and a move continues.
+    pub drag: crate::input::Drag,
+    /// The modifier keys held now.
+    pub mods: Modifiers,
+    /// The last click (for a double click).
+    pub last_click: Option<(Instant, (u32, u32))>,
+}
+
+/// What keeps the window's files and title up to date.
+pub(crate) struct Upkeep {
+    /// The copies for crash recovery.
+    pub recovery: Recovery,
+    /// When the last copy was written.
+    pub last_copy: Instant,
+    /// The workbook version the title shows.
+    pub title_version: u64,
+}
+
+/// Things that wait for the next tree or the next answer.
+#[derive(Default)]
+pub(crate) struct Waiting {
+    /// The answer to an assistant's request that waited for a question.
+    pub agent_reply: Option<crate::agent::Reply>,
+    /// The sheet and cell to go to when the file has been read.
+    pub spot: Option<crate::place::Spot>,
+    /// The find field gets the focus when the tree is built.
+    pub focus_find: bool,
 }
 
 /// Seconds between two copies for crash recovery.
@@ -122,17 +144,19 @@ impl SheetApp {
             ask: None,
             state: State::Ready,
             tools_open: false,
-            recovery,
-            last_copy: Instant::now(),
-            drag: crate::input::Drag::None,
-            mods: Modifiers::NONE,
-            last_click: None,
             out: Vec::new(),
-            title_version: 0,
             toggles: Vec::new(),
-            agent_reply: None,
-            pending_spot: None,
-            focus_find: false,
+            pointer: Pointer {
+                drag: crate::input::Drag::None,
+                mods: Modifiers::NONE,
+                last_click: None,
+            },
+            upkeep: Upkeep {
+                recovery,
+                last_copy: Instant::now(),
+                title_version: 0,
+            },
+            waiting: Waiting::default(),
         };
         app.rebuild().map_err(|e| format!("{e:?}"))?;
         let title = app.title();
@@ -238,11 +262,11 @@ impl SheetApp {
             Ok(o) => {
                 let book = Book::of(o.book, Some(path.clone()), o.format);
                 self.core = Core::new(book);
-                let dir = self.recovery.dir().to_owned();
-                self.recovery = Recovery::new(&dir, Some(&path));
+                let dir = self.upkeep.recovery.dir().to_owned();
+                self.upkeep.recovery = Recovery::new(&dir, Some(&path));
                 self.state = State::Ready;
                 self.ask = None;
-                if let Some(spot) = self.pending_spot.take() {
+                if let Some(spot) = self.waiting.spot.take() {
                     if let Some(i) = spot
                         .sheet
                         .as_deref()
@@ -259,7 +283,7 @@ impl SheetApp {
             Err(DocError::TooBig) => self.state = State::TooBig,
             Err(e) => self.state = State::Damaged(e),
         }
-        self.title_version = u64::MAX;
+        self.upkeep.title_version = u64::MAX;
         self.rebuild()
     }
 
@@ -293,10 +317,13 @@ impl SheetApp {
         }
         self.build_dialog()?;
         if self.ask.is_none() {
-            match (self.core.find.open && self.focus_find, self.nodes.find) {
+            match (
+                self.core.find.open && self.waiting.focus_find,
+                self.nodes.find,
+            ) {
                 (true, Some(f)) => {
                     let _ = self.ui.focus(f);
-                    self.focus_find = false;
+                    self.waiting.focus_find = false;
                 }
                 _ if self.core.find.open => {}
                 _ => self.focus_grid(),
@@ -304,313 +331,6 @@ impl SheetApp {
         }
         self.toggles = self.toggle_signature();
         self.refresh()
-    }
-
-    fn build_state(&mut self, state: &State) -> Result<(), UiError> {
-        let (icon, title, message) = match state {
-            State::Loading(name) => (IconId::Info, Label::key("sheet.loading"), Label::data(name)),
-            State::TooBig => (
-                IconId::Warning,
-                Label::key("sheet.too_big.title"),
-                Label::key_with(
-                    "sheet.too_big",
-                    &[("mb", &(crate::file::MAX_BYTES >> 20).to_string())],
-                ),
-            ),
-            State::Damaged(why) => {
-                let reason = self.t(why.key());
-                (
-                    IconId::Error,
-                    Label::key("sheet.damaged.title"),
-                    Label::key_with("sheet.damaged", &[("reason", &reason)]),
-                )
-            }
-            State::Ready => return Ok(()),
-        };
-        let root = self.ui.root();
-        self.ui.add_sized(
-            root,
-            EmptyState::new(icon, title).message(message),
-            Sizing::grow(1),
-        )?;
-        if !matches!(state, State::Loading(_)) {
-            let row = self.ui.add(
-                root,
-                Flex::row()
-                    .gap(Space::S8)
-                    .padding(Padding::all(Space::S12))
-                    .main(MainAlign::Center),
-            )?;
-            self.button(row, Cmd::New, "sheet.new", false, ButtonVariant::Primary)?;
-            self.button(row, Cmd::Open, "sheet.open", false, ButtonVariant::Plain)?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn button(
-        &mut self,
-        parent: NodeId,
-        cmd: Cmd,
-        key: &str,
-        on: bool,
-        variant: ButtonVariant,
-    ) -> Result<NodeId, UiError> {
-        let b = Button::new(Label::key(key)).variant(variant).toggled(on);
-        let id = self.ui.add(parent, b)?;
-        self.cmds.push((id, cmd));
-        Ok(id)
-    }
-
-    fn plain(&mut self, parent: NodeId, cmd: Cmd, key: &str, on: bool) -> Result<NodeId, UiError> {
-        self.button(parent, cmd, key, on, ButtonVariant::Plain)
-    }
-
-    fn bar(&mut self, parent: NodeId) -> Result<NodeId, UiError> {
-        self.ui.add(
-            parent,
-            Flex::row()
-                .wrap()
-                .gap(Space::S4)
-                .padding(Padding::symmetric(Space::S8, Space::S4))
-                .cross(CrossAlign::Center),
-        )
-    }
-
-    fn build_main(&mut self) -> Result<(), UiError> {
-        let root = self.ui.root();
-        let compact = self.ui.size_class() == SizeClass::Compact;
-        let st = self
-            .core
-            .book
-            .sheet()
-            .style(self.core.sel.active.0, self.core.sel.active.1);
-        let sh = self.core.book.sheet();
-        let (frozen_r, frozen_c, rtl) = (sh.frozen_rows > 0, sh.frozen_cols > 0, sh.rtl);
-        // first bar: the file and the history
-        let bar = self.bar(root)?;
-        self.button(bar, Cmd::Save, "sheet.save", false, ButtonVariant::Primary)?;
-        self.nodes.undo = Some(self.plain(bar, Cmd::Undo, "sheet.undo", false)?);
-        self.nodes.redo = Some(self.plain(bar, Cmd::Redo, "sheet.redo", false)?);
-        self.plain(bar, Cmd::Bold, "sheet.bold", st.bold)?;
-        if compact {
-            let open = self.tools_open;
-            self.plain(bar, Cmd::Tools, "sheet.tools", open)?;
-            if self.ui.input_mode() == InputMode::Touch {
-                let on = self.core.extend;
-                self.plain(bar, Cmd::Extend, "sheet.extend", on)?;
-            }
-        } else {
-            self.plain(bar, Cmd::New, "sheet.new", false)?;
-            self.plain(bar, Cmd::Open, "sheet.open", false)?;
-            self.plain(bar, Cmd::SaveAs, "sheet.save_as", false)?;
-            let name = self
-                .core
-                .book
-                .name()
-                .map_or_else(|| Label::key("sheet.untitled"), |n| Label::data(&n));
-            self.ui.add_sized(
-                bar,
-                Text::new(name).color(ColorRole::TextMuted),
-                Sizing::grow(1),
-            )?;
-        }
-        if !compact {
-            let tools = self.bar(root)?;
-            self.build_tools(tools, &st, (frozen_r, frozen_c, rtl), false)?;
-        }
-        // formula bar
-        let fbar = self.ui.add(
-            root,
-            Flex::row()
-                .gap(Space::S8)
-                .padding(Padding::symmetric(Space::S8, Space::S4))
-                .cross(CrossAlign::Center),
-        )?;
-        self.nodes.name_box = Some(self.ui.add_sized(
-            fbar,
-            Text::new(Label::data(&self.core.cell_name())).color(ColorRole::TextMuted),
-            Sizing::width(48.0),
-        )?);
-        let field = TextField::new(Label::key("sheet.formula"))
-            .placeholder(Label::key("sheet.formula.hint"));
-        self.nodes.formula = Some(self.ui.add_sized(fbar, field, Sizing::grow(1))?);
-        // grid
-        self.nodes.grid = Some(self.ui.add_sized(
-            root,
-            PixelArea::new(Label::key("sheet.grid")),
-            Sizing::grow(1),
-        )?);
-        if self.core.find.open {
-            self.build_find(root)?;
-        }
-        self.build_tabs(root)?;
-        let status = self.ui.add(
-            root,
-            Flex::row().padding(Padding::symmetric(Space::S8, Space::S4)),
-        )?;
-        self.nodes.status = Some(self.ui.add(
-            status,
-            Text::new(Label::data("")).color(ColorRole::TextMuted),
-        )?);
-        if compact && self.tools_open && self.ask.is_none() {
-            // a phone: the tools are a sheet over the grid, not rows that squeeze it away
-            let sheet = self
-                .ui
-                .add(root, Dialog::sheet(Label::key("sheet.tools")))?;
-            let tools = self.bar(sheet)?;
-            self.build_tools(tools, &st, (frozen_r, frozen_c, rtl), true)?;
-            let row = self.ui.add(sheet, Flex::row().main(MainAlign::End))?;
-            self.button(
-                row,
-                Cmd::Tools,
-                "sheet.close",
-                false,
-                ButtonVariant::Primary,
-            )?;
-            self.ui.open_dialog(sheet)?;
-        }
-        Ok(())
-    }
-
-    fn build_tools(
-        &mut self,
-        bar: NodeId,
-        st: &ultar_office::style::CellStyle,
-        (frozen_r, frozen_c, rtl): (bool, bool, bool),
-        compact: bool,
-    ) -> Result<(), UiError> {
-        use crate::ops::NumFmt;
-        use ultar_office::style::Align;
-        if compact {
-            self.plain(bar, Cmd::New, "sheet.new", false)?;
-            self.plain(bar, Cmd::Open, "sheet.open", false)?;
-            self.plain(bar, Cmd::SaveAs, "sheet.save_as", false)?;
-        }
-        self.plain(bar, Cmd::Italic, "sheet.italic", st.italic)?;
-        self.plain(bar, Cmd::Wrap, "sheet.wrap", st.wrap)?;
-        self.plain(
-            bar,
-            Cmd::Align(Align::Start),
-            "sheet.align_start",
-            st.align == Align::Start,
-        )?;
-        self.plain(
-            bar,
-            Cmd::Align(Align::Center),
-            "sheet.align_center",
-            st.align == Align::Center,
-        )?;
-        self.plain(
-            bar,
-            Cmd::Align(Align::End),
-            "sheet.align_end",
-            st.align == Align::End,
-        )?;
-        self.plain(bar, Cmd::Color, "sheet.color", st.color.is_some())?;
-        self.plain(bar, Cmd::Fill, "sheet.fill", st.fill.is_some())?;
-        for (f, key) in [
-            (NumFmt::General, "sheet.fmt_general"),
-            (NumFmt::Number, "sheet.fmt_number"),
-            (NumFmt::Percent, "sheet.fmt_percent"),
-            (NumFmt::Currency, "sheet.fmt_currency"),
-            (NumFmt::Date, "sheet.fmt_date"),
-        ] {
-            self.plain(bar, Cmd::Fmt(f), key, st.num_fmt == f.code())?;
-        }
-        self.plain(bar, Cmd::FreezeRow, "sheet.freeze_row", frozen_r)?;
-        self.plain(bar, Cmd::FreezeCol, "sheet.freeze_col", frozen_c)?;
-        self.plain(bar, Cmd::Rtl, "sheet.rtl", rtl)?;
-        self.plain(bar, Cmd::Sort(true), "sheet.sort_asc", false)?;
-        self.plain(bar, Cmd::Sort(false), "sheet.sort_desc", false)?;
-        self.plain(bar, Cmd::FillDown, "sheet.fill_down", false)?;
-        self.plain(bar, Cmd::FillRight, "sheet.fill_right", false)?; // physical
-        self.plain(bar, Cmd::InsRow, "sheet.row_add", false)?;
-        self.plain(bar, Cmd::DelRow, "sheet.row_del", false)?;
-        self.plain(bar, Cmd::InsCol, "sheet.col_add", false)?;
-        self.plain(bar, Cmd::DelCol, "sheet.col_del", false)?;
-        self.plain(bar, Cmd::Find, "sheet.find", self.core.find.open)?;
-        Ok(())
-    }
-
-    fn build_find(&mut self, root: NodeId) -> Result<(), UiError> {
-        let bar = self.ui.add(
-            root,
-            Flex::row()
-                .wrap()
-                .gap(Space::S8)
-                .padding(Padding::symmetric(Space::S8, Space::S4))
-                .cross(CrossAlign::Center),
-        )?;
-        let find = TextField::new(Label::key("sheet.find.field")).text(&self.core.find.needle);
-        self.nodes.find = Some(self.ui.add_sized(bar, find, Sizing::width(180.0))?);
-        if self.core.find.replace {
-            let with = TextField::new(Label::key("sheet.replace.field")).text(&self.core.find.with);
-            self.nodes.with = Some(self.ui.add_sized(bar, with, Sizing::width(180.0))?);
-        }
-        self.plain(bar, Cmd::FindPrev, "sheet.find_prev", false)?;
-        self.plain(bar, Cmd::FindNext, "sheet.find_next", false)?;
-        let case = self.core.find.match_case;
-        self.plain(bar, Cmd::MatchCase, "sheet.match_case", case)?;
-        if self.core.find.replace {
-            self.plain(bar, Cmd::ReplaceOne, "sheet.replace_one", false)?;
-            self.plain(bar, Cmd::ReplaceAll, "sheet.replace_all", false)?;
-        }
-        self.plain(bar, Cmd::CloseFind, "sheet.close", false)?;
-        Ok(())
-    }
-
-    fn build_tabs(&mut self, root: NodeId) -> Result<(), UiError> {
-        let bar = self.ui.add(
-            root,
-            Flex::row()
-                .wrap()
-                .gap(Space::S4)
-                .padding(Padding::symmetric(Space::S8, Space::S4))
-                .cross(CrossAlign::Center),
-        )?;
-        let names: Vec<String> = self
-            .core
-            .book
-            .wb
-            .sheets
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-        for (i, name) in names.iter().enumerate() {
-            let on = i == self.core.book.active;
-            let b = Button::new(Label::data(name)).variant(ButtonVariant::Tab(on));
-            let id = self.ui.add(bar, b)?;
-            self.cmds.push((id, Cmd::Tab(i)));
-        }
-        self.plain(bar, Cmd::AddSheet, "sheet.sheet_add", false)?;
-        self.plain(bar, Cmd::RenameSheet, "sheet.sheet_rename", false)?;
-        self.plain(bar, Cmd::DeleteSheet, "sheet.sheet_delete", false)?;
-        Ok(())
-    }
-
-    /// The states of the toggle buttons (when they change the tool bar is built again).
-    pub(crate) fn toggle_signature(&self) -> Vec<bool> {
-        let (r, c) = self.core.sel.active;
-        let sh = self.core.book.sheet();
-        let st = sh.style(r, c);
-        vec![
-            st.bold,
-            st.italic,
-            st.wrap,
-            st.color.is_some(),
-            st.fill.is_some(),
-            st.align == ultar_office::style::Align::Start,
-            st.align == ultar_office::style::Align::Center,
-            st.align == ultar_office::style::Align::End,
-            sh.frozen_rows > 0,
-            sh.frozen_cols > 0,
-            sh.rtl,
-            st.num_fmt.is_empty(),
-            st.num_fmt == "#,##0.00",
-            st.num_fmt == "0.00%",
-            st.num_fmt == "$#,##0.00",
-            st.num_fmt == "yyyy-mm-dd",
-        ]
     }
 
     // ---------------------------------------------------------------- drawing
@@ -654,16 +374,17 @@ impl SheetApp {
         if self.state != State::Ready {
             return Ok(());
         }
-        self.grid_size();
-        self.core.reveal();
         if self.toggle_signature() != self.toggles && self.ask.is_none() {
             return self.rebuild();
         }
         self.sync_bars()?;
+        // the bars may have changed the size of the grid: scroll to the cell after that
+        self.grid_size();
+        self.core.reveal();
         self.draw_grid()?;
         let v = self.core.book.version;
-        if v != self.title_version {
-            self.title_version = v;
+        if v != self.upkeep.title_version {
+            self.upkeep.title_version = v;
             let title = self.title();
             self.out.push(Out::Title(title));
         }
@@ -723,7 +444,7 @@ impl SheetApp {
     /// The window asked to close: `Out::Close` now, or after the answer to "save changes?".
     pub fn close_requested(&mut self) -> Result<(), UiError> {
         if !self.core.book.dirty() {
-            self.recovery.clear();
+            self.upkeep.recovery.clear();
             self.out.push(Out::Close);
             return Ok(());
         }
@@ -736,10 +457,10 @@ impl SheetApp {
 
     /// Gives the clock to the window: writes the copy for crash recovery now and then.
     pub fn tick(&mut self, now: Instant) {
-        if now.duration_since(self.last_copy).as_secs() >= AUTOSAVE_SECS {
-            self.last_copy = now;
+        if now.duration_since(self.upkeep.last_copy).as_secs() >= AUTOSAVE_SECS {
+            self.upkeep.last_copy = now;
             let path = self.core.book.path.clone();
-            let _ = self.recovery.save(&self.core.book, path.as_deref());
+            let _ = self.upkeep.recovery.save(&self.core.book, path.as_deref());
         }
     }
 

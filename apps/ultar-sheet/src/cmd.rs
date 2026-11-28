@@ -123,27 +123,72 @@ impl SheetApp {
         ) {
             self.finish_edit();
         }
-        let st = self
-            .core
-            .book
-            .sheet()
-            .style(self.core.sel.active.0, self.core.sel.active.1);
         // on a phone the tools are a sheet; a command closes it
         let closing_tools = self.tools_open && cmd != Cmd::Tools;
         if closing_tools {
             self.tools_open = false;
         }
-        match cmd {
-            Cmd::New => return self.new_workbook(),
-            Cmd::Open => return self.ask_open(),
-            Cmd::Save => return self.save(Then::Nothing),
-            Cmd::SaveAs => return self.ask_name(Then::Nothing),
-            Cmd::Undo => self.core.undo(),
-            Cmd::Redo => self.core.redo(),
+        if let Some(done) = self.run_window(cmd) {
+            return done;
+        }
+        self.run_cells(cmd);
+        if closing_tools
+            || matches!(
+                cmd,
+                Cmd::Tab(_) | Cmd::Undo | Cmd::Redo | Cmd::DelRow | Cmd::DelCol
+            )
+        {
+            // the tabs may have changed
+            return self.rebuild();
+        }
+        self.refresh()
+    }
+
+    /// The commands that open a question, change the window or the tabs; `None` for the ones
+    /// that act on the cells ([`SheetApp::run_cells`]).
+    fn run_window(&mut self, cmd: Cmd) -> Option<Result<(), UiError>> {
+        Some(match cmd {
+            Cmd::New => self.new_workbook(),
+            Cmd::Open => self.ask_open(),
+            Cmd::Save => self.save(Then::Nothing),
+            Cmd::SaveAs => self.ask_name(Then::Nothing),
             Cmd::Tools => {
                 self.tools_open = !self.tools_open;
-                return self.rebuild();
+                self.rebuild()
             }
+            Cmd::Find => self.open_find(false),
+            Cmd::MatchCase => {
+                self.core.find.match_case = !self.core.find.match_case;
+                self.rebuild()
+            }
+            Cmd::CloseFind => {
+                self.core.find.open = false;
+                self.rebuild()
+            }
+            Cmd::Extend => {
+                self.core.extend = !self.core.extend;
+                self.rebuild()
+            }
+            Cmd::AddSheet => {
+                self.core.add_sheet();
+                self.rebuild()
+            }
+            Cmd::RenameSheet => self.ask_rename(),
+            Cmd::DeleteSheet => self.delete_sheet(),
+            _ => return None,
+        })
+    }
+
+    /// The commands that change cells, formats, the look of the sheet or the find position.
+    fn run_cells(&mut self, cmd: Cmd) {
+        let st = self
+            .core
+            .book
+            .sheet()
+            .style(self.core.sel.active.0, self.core.sel.active.1);
+        match cmd {
+            Cmd::Undo => self.core.undo(),
+            Cmd::Redo => self.core.redo(),
             Cmd::Bold => self.core.toggle_bold(),
             Cmd::Italic => self.core.toggle_italic(),
             Cmd::Wrap => self.core.toggle_wrap(),
@@ -163,47 +208,19 @@ impl SheetApp {
             Cmd::DelRow => self.core.delete_lines(Axis::Rows),
             Cmd::InsCol => self.core.insert_lines(Axis::Cols),
             Cmd::DelCol => self.core.delete_lines(Axis::Cols),
-            Cmd::Find => return self.open_find(false),
             Cmd::FindNext => {
                 self.core.find_next(true);
             }
             Cmd::FindPrev => {
                 self.core.find_next(false);
             }
-            Cmd::MatchCase => {
-                self.core.find.match_case = !self.core.find.match_case;
-                return self.rebuild();
-            }
             Cmd::ReplaceOne => self.core.replace_one(),
             Cmd::ReplaceAll => {
                 self.core.replace_all();
             }
-            Cmd::CloseFind => {
-                self.core.find.open = false;
-                return self.rebuild();
-            }
-            Cmd::Extend => {
-                self.core.extend = !self.core.extend;
-                return self.rebuild();
-            }
             Cmd::Tab(i) => self.core.show_sheet(i),
-            Cmd::AddSheet => {
-                self.core.add_sheet();
-                return self.rebuild();
-            }
-            Cmd::RenameSheet => return self.ask_rename(),
-            Cmd::DeleteSheet => return self.delete_sheet(),
+            _ => {}
         }
-        if closing_tools
-            || matches!(
-                cmd,
-                Cmd::Tab(_) | Cmd::Undo | Cmd::Redo | Cmd::DelRow | Cmd::DelCol
-            )
-        {
-            // the tabs may have changed
-            return self.rebuild();
-        }
-        self.refresh()
     }
 
     /// Writes an open edit before a command acts on the cells.
@@ -217,7 +234,7 @@ impl SheetApp {
     pub fn open_find(&mut self, replace: bool) -> Result<(), UiError> {
         self.core.find.open = true;
         self.core.find.replace = replace;
-        self.focus_find = true;
+        self.waiting.focus_find = true;
         self.rebuild()
     }
 
@@ -240,12 +257,12 @@ impl SheetApp {
 
     /// Replaces the workbook by an empty one.
     pub(crate) fn reset(&mut self) -> Result<(), UiError> {
-        self.recovery.clear();
-        let dir = self.recovery.dir().to_owned();
+        self.upkeep.recovery.clear();
+        let dir = self.upkeep.recovery.dir().to_owned();
         self.core = crate::core::Core::new(crate::book::Book::new());
-        self.recovery = crate::recover::Recovery::new(&dir, None);
+        self.upkeep.recovery = crate::recover::Recovery::new(&dir, None);
         self.state = crate::app::State::Ready;
-        self.title_version = u64::MAX;
+        self.upkeep.title_version = u64::MAX;
         self.rebuild()
     }
 }

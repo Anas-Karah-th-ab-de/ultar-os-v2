@@ -318,7 +318,7 @@ impl Core {
     pub fn set_col_width(&mut self, c: u32, points: f32) {
         let w = col_chars(points.max(MIN_COL));
         let sheet = self.book.active;
-        self.book.edit_view(sheet, |sh| {
+        self.book.drag_view(sheet, |sh| {
             sh.widths.insert(c, w);
         });
     }
@@ -326,7 +326,7 @@ impl Core {
     /// Sets the height of a row in points.
     pub fn set_row_height(&mut self, r: u32, points: f32) {
         let sheet = self.book.active;
-        self.book.edit_view(sheet, |sh| {
+        self.book.drag_view(sheet, |sh| {
             sh.heights.insert(r, points.max(MIN_ROW));
         });
     }

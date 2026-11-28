@@ -42,74 +42,80 @@ pub enum Ask {
     Agent(String),
 }
 
+/// What a question shows besides its buttons.
+struct DialogParts {
+    title: Label,
+    ok_key: &'static str,
+    /// A text field: its label key and the text it starts with.
+    field: Option<(&'static str, String)>,
+    message: Option<Label>,
+}
+
 impl SheetApp {
     // ---------------------------------------------------------------- dialogs
 
-    pub(crate) fn build_dialog(&mut self) -> Result<(), UiError> {
-        let Some(ask) = self.ask.clone() else {
-            return Ok(());
-        };
+    /// Title, OK key, optional text field (key and start text) and message of a question.
+    fn dialog_parts(&self, ask: &Ask) -> DialogParts {
         let name = self
             .core
             .book
             .name()
             .unwrap_or_else(|| self.t("sheet.untitled"));
-        let (title, ok_key, field, message): (Label, &str, Option<(&str, String)>, Option<Label>) =
-            match &ask {
-                Ask::Unsaved(_) => (
-                    Label::key_with("sheet.ask.title", &[("name", &name)]),
-                    "sheet.ask.save",
-                    None,
-                    Some(Label::key("sheet.ask.message")),
-                ),
-                Ask::Name(_) => (
-                    Label::key("sheet.name.title"),
-                    "sheet.name.ok",
-                    Some(("sheet.name.field", String::new())),
-                    None,
-                ),
-                Ask::Open => (
-                    Label::key("sheet.open.title"),
-                    "sheet.open.ok",
-                    Some(("sheet.name.field", String::new())),
-                    None,
-                ),
-                Ask::Rename(i) => {
-                    let cur = self
-                        .core
-                        .book
-                        .wb
-                        .sheets
-                        .get(*i)
-                        .map(|s| s.name.clone())
-                        .unwrap_or_default();
-                    (
-                        Label::key("sheet.rename.title"),
-                        "sheet.rename.ok",
-                        Some(("sheet.rename.field", cur)),
-                        None,
-                    )
+        match ask {
+            Ask::Unsaved(_) => DialogParts {
+                title: Label::key_with("sheet.ask.title", &[("name", &name)]),
+                ok_key: "sheet.ask.save",
+                field: None,
+                message: Some(Label::key("sheet.ask.message")),
+            },
+            Ask::Name(_) => DialogParts {
+                title: Label::key("sheet.name.title"),
+                ok_key: "sheet.name.ok",
+                field: Some(("sheet.name.field", String::new())),
+                message: None,
+            },
+            Ask::Open => DialogParts {
+                title: Label::key("sheet.open.title"),
+                ok_key: "sheet.open.ok",
+                field: Some(("sheet.name.field", String::new())),
+                message: None,
+            },
+            Ask::Rename(i) => {
+                let cur = self.core.book.wb.sheets.get(*i).map(|s| s.name.clone());
+                DialogParts {
+                    title: Label::key("sheet.rename.title"),
+                    ok_key: "sheet.rename.ok",
+                    field: Some(("sheet.rename.field", cur.unwrap_or_default())),
+                    message: None,
                 }
-                Ask::Recover(_) => (
-                    Label::key("sheet.recover.title"),
-                    "sheet.recover.ok",
-                    None,
-                    Some(Label::key("sheet.recover.message")),
-                ),
-                Ask::Agent(what) => (
-                    Label::key("sheet.agent.title"),
-                    "sheet.agent.allow",
-                    None,
-                    Some(Label::key_with("sheet.agent.message", &[("what", what)])),
-                ),
-            };
+            }
+            Ask::Recover(_) => DialogParts {
+                title: Label::key("sheet.recover.title"),
+                ok_key: "sheet.recover.ok",
+                field: None,
+                message: Some(Label::key("sheet.recover.message")),
+            },
+            Ask::Agent(what) => DialogParts {
+                title: Label::key("sheet.agent.title"),
+                ok_key: "sheet.agent.allow",
+                field: None,
+                message: Some(Label::key_with("sheet.agent.message", &[("what", what)])),
+            },
+        }
+    }
+
+    pub(crate) fn build_dialog(&mut self) -> Result<(), UiError> {
+        let Some(ask) = self.ask.clone() else {
+            return Ok(());
+        };
+        let parts = self.dialog_parts(&ask);
         let root = self.ui.root();
-        let dialog = self.ui.add(root, Dialog::new(title))?;
-        if let Some(m) = message {
+        let dialog = self.ui.add(root, Dialog::new(parts.title))?;
+        if let Some(m) = parts.message {
             self.ui
                 .add(dialog, Text::new(m).color(ColorRole::TextMuted))?;
         }
-        if let Some((key, text)) = field {
+        if let Some((key, text)) = parts.field {
             let f = TextField::new(Label::key(key)).labelled().text(&text);
             self.nodes.dialog_field = Some(self.ui.add_sized(dialog, f, Sizing::grow(1))?);
         }
@@ -133,7 +139,7 @@ impl SheetApp {
             )?;
             self.nodes.dialog_discard = Some(d);
         }
-        let ok = self.ui.add(row, Button::new(Label::key(ok_key)))?;
+        let ok = self.ui.add(row, Button::new(Label::key(parts.ok_key)))?;
         self.nodes.dialog_ok = Some(ok);
         self.ui.set_default_action(dialog, Some(ok))?;
         self.ui.open_dialog(dialog)?;
@@ -160,14 +166,14 @@ impl SheetApp {
 
     /// Offers the copy of an earlier run of this workbook, when there is one.
     pub fn offer_recovery(&mut self, path: &std::path::Path) {
-        if let Some(found) = self.recovery.find(Some(path)) {
+        if let Some(found) = self.upkeep.recovery.find(Some(path)) {
             self.ask = Some(Ask::Recover(found));
         }
     }
 
     /// Offers the copy of a new workbook of an earlier run (start without a file).
     pub fn offer_recovery_new(&mut self) -> Result<(), UiError> {
-        if let Some(found) = self.recovery.find(None) {
+        if let Some(found) = self.upkeep.recovery.find(None) {
             self.ask = Some(Ask::Recover(found));
             self.rebuild()?;
         }
@@ -210,8 +216,8 @@ impl SheetApp {
                     (f, _) => f,
                 };
                 self.core.book.mark_saved();
-                self.recovery.clear();
-                self.recovery = Recovery::new(&self.recovery_path(), Some(&path));
+                self.upkeep.recovery.clear();
+                self.upkeep.recovery = Recovery::new(&self.recovery_path(), Some(&path));
                 let key = if saved.values_only {
                     "sheet.saved_values"
                 } else if saved.encoding_changed.is_some() {
@@ -220,7 +226,7 @@ impl SheetApp {
                     "sheet.saved"
                 };
                 self.core.message = Some(Label::key_with(key, &[("name", &name)]));
-                self.title_version = u64::MAX;
+                self.upkeep.title_version = u64::MAX;
                 self.after(then)?;
             }
             Err(e) => self.say_failed(&name, e),
@@ -229,7 +235,7 @@ impl SheetApp {
     }
 
     fn recovery_path(&self) -> PathBuf {
-        self.recovery.dir().to_owned()
+        self.upkeep.recovery.dir().to_owned()
     }
 
     fn after(&mut self, then: Then) -> Result<(), UiError> {
@@ -263,7 +269,7 @@ impl SheetApp {
             self.core.say("sheet.reason.missing");
             return self.refresh();
         };
-        self.pending_spot = Some(spot);
+        self.waiting.spot = Some(spot);
         if self.core.book.dirty() && self.state == State::Ready {
             self.ask = Some(Ask::Unsaved(Then::Load(path)));
             return self.rebuild();
@@ -330,7 +336,7 @@ impl SheetApp {
             },
             Ask::Agent(_) => {
                 let reply = self.core.agent_answer(true);
-                self.agent_reply = Some(reply);
+                self.waiting.agent_reply = Some(reply);
             }
         }
         self.rebuild()
@@ -338,8 +344,8 @@ impl SheetApp {
 
     fn answer_cancel(&mut self) -> Result<(), UiError> {
         match self.ask.take() {
-            Some(Ask::Recover(_)) => self.recovery.clear(),
-            Some(Ask::Agent(_)) => self.agent_reply = Some(self.core.agent_answer(false)),
+            Some(Ask::Recover(_)) => self.upkeep.recovery.clear(),
+            Some(Ask::Agent(_)) => self.waiting.agent_reply = Some(self.core.agent_answer(false)),
             _ => {}
         }
         self.rebuild()
@@ -351,7 +357,7 @@ impl SheetApp {
             _ => Then::Nothing,
         };
         self.core.book.mark_saved();
-        self.recovery.clear();
+        self.upkeep.recovery.clear();
         match then {
             Then::Close => {
                 self.out.push(Out::Close);

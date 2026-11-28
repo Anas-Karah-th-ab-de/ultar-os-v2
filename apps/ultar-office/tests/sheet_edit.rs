@@ -125,7 +125,7 @@ fn fill_copies_with_moving_references() {
     assert_eq!(w.sheets[0].get(3, 0), "1");
     assert_eq!(w.sheets[0].get(3, 1), "=A4*2");
     assert!(w.sheets[0].style(2, 1).bold);
-    w.fill_right(0, 0, 1, 0, 3);
+    w.fill_across(0, 0, 1, 0, 3);
     assert_eq!(w.sheets[0].get(0, 3), "=C1*2");
 }
 

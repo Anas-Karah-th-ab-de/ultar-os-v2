@@ -1,12 +1,12 @@
 //! Draws the visible part of a sheet into a picture: cells with their formats, grid lines,
 //! the frozen parts, the row and column headers, the selection and the cell being edited.
 
-use crate::book::Book;
+use crate::book::{Book, Shown};
 use crate::frame::{Frame, Seg};
 use crate::sel::{Sel, Span};
 use ultar_i18n::Direction;
 use ultar_office::sheet::col_name;
-use ultar_office::style::Align;
+use ultar_office::style::{Align, CellStyle};
 use ultar_ui::canvas::{Canvas, PixelFormat};
 use ultar_ui::geom::Rect;
 use ultar_ui::icon::IconCache;
@@ -101,7 +101,7 @@ impl Drawer {
         }
         Self::separators(&mut p, frame);
         Self::selection(&mut p, frame, sel);
-        Self::headers(&mut p, book, frame, sel, body);
+        Self::headers(&mut p, frame, sel, body);
         if let Some(e) = edit {
             Self::editor(&mut p, book, frame, e, dir, body);
         }
@@ -143,6 +143,19 @@ impl Drawer {
             return;
         }
         let style = style.unwrap_or_default();
+        Self::cell_text(p, rect, &shown, &style, fill, dir, body);
+    }
+
+    /// The text of a cell, placed by the sheet's start and end edges.
+    fn cell_text(
+        p: &mut Painter<'_>,
+        rect: Rect,
+        shown: &Shown,
+        style: &CellStyle,
+        fill: Option<Color>,
+        dir: Direction,
+        body: TextSpec,
+    ) {
         let color = match (style.color, fill) {
             (Some(c), _) => rgb(c),
             (None, Some(f)) => ink_on(f),
@@ -246,13 +259,9 @@ impl Drawer {
         }
     }
 
-    fn headers(p: &mut Painter<'_>, book: &Book, frame: &Frame, sel: &Sel, body: TextSpec) {
+    fn headers(p: &mut Painter<'_>, frame: &Frame, sel: &Sel, body: TextSpec) {
         let bar = p.color(ColorRole::Bar);
         let line = p.color(ColorRole::Line);
-        let muted = p.color(ColorRole::TextMuted);
-        let text = p.color(ColorRole::Text);
-        let accent = p.color(ColorRole::Accent);
-        let (r0, c0, r1, c1) = sel.rect();
         let hdr_x = if frame.rtl {
             frame.w - frame.hdr_w
         } else {
@@ -270,6 +279,17 @@ impl Drawer {
         let edge = if frame.rtl { hdr_x } else { frame.hdr_w - hair };
         p.fill(Rect::new(edge, 0.0, hair, frame.h), None, line);
         let small = body.weight(Weight::Medium);
+        Self::column_headers(p, frame, sel, small);
+        Self::row_headers(p, frame, sel, small, hdr_x);
+    }
+
+    fn column_headers(p: &mut Painter<'_>, frame: &Frame, sel: &Sel, small: TextSpec) {
+        let line = p.color(ColorRole::Line);
+        let muted = p.color(ColorRole::TextMuted);
+        let text = p.color(ColorRole::Text);
+        let accent = p.color(ColorRole::Accent);
+        let (_, c0, _, c1) = sel.rect();
+        let hair = p.hairline();
         for s in &frame.cols {
             let rect = Rect::new(s.pos, 0.0, s.size, frame.hdr_h);
             let on = (c0..=c1).contains(&s.idx);
@@ -290,6 +310,15 @@ impl Drawer {
                 line,
             );
         }
+    }
+
+    fn row_headers(p: &mut Painter<'_>, frame: &Frame, sel: &Sel, small: TextSpec, hdr_x: f32) {
+        let line = p.color(ColorRole::Line);
+        let muted = p.color(ColorRole::TextMuted);
+        let text = p.color(ColorRole::Text);
+        let accent = p.color(ColorRole::Accent);
+        let (r0, _, r1, _) = sel.rect();
+        let hair = p.hairline();
         for s in &frame.rows {
             let rect = Rect::new(hdr_x, s.pos, frame.hdr_w, s.size);
             let on = (r0..=r1).contains(&s.idx);
@@ -308,7 +337,6 @@ impl Drawer {
                 line,
             );
         }
-        let _ = book;
     }
 
     fn editor(

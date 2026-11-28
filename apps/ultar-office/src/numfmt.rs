@@ -109,97 +109,99 @@ fn push_lit(out: &mut Vec<Tok>, s: &str) {
     }
 }
 
+/// A quoted text starting at `i` (the quote): its literal and the index after it.
+fn quoted_text(ch: &[char], i: usize, out: &mut Vec<Tok>) -> usize {
+    let end = ch[i + 1..]
+        .iter()
+        .position(|x| *x == '"')
+        .map_or(ch.len(), |p| i + 1 + p);
+    push_lit(out, &ch[i + 1..end].iter().collect::<String>());
+    end + 1
+}
+
+/// `[$EUR-407]`-style brackets: a currency symbol is kept, colours and conditions are not.
+fn bracket(ch: &[char], i: usize, out: &mut Vec<Tok>) -> usize {
+    let end = ch[i..]
+        .iter()
+        .position(|x| *x == ']')
+        .map_or(ch.len(), |p| i + p);
+    let body: String = ch[i + 1..end.min(ch.len())].iter().collect();
+    if let Some(cur) = body.strip_prefix('$') {
+        push_lit(out, cur.split('-').next().unwrap_or(""));
+    }
+    end + 1
+}
+
+/// `AM/PM` or `A/P` at `i`, or the letter itself as a literal.
+fn am_pm(ch: &[char], i: usize, out: &mut Vec<Tok>) -> usize {
+    let rest: String = ch[i..].iter().take(5).collect::<String>().to_uppercase();
+    if rest.starts_with("AM/PM") {
+        out.push(Tok::AmPm);
+        5
+    } else if rest.starts_with("A/P") {
+        out.push(Tok::AmPm);
+        3
+    } else {
+        push_lit(out, &ch[i].to_string());
+        1
+    }
+}
+
+/// A run of one date or time letter (`yyyy`, `mm`, `d` ...) at `i`.
+fn date_run(ch: &[char], i: usize, out: &mut Vec<Tok>) -> usize {
+    let c = ch[i];
+    let n = ch[i..]
+        .iter()
+        .take_while(|x| x.eq_ignore_ascii_case(&c))
+        .count();
+    out.push(match c.to_ascii_lowercase() {
+        'y' => Tok::Year(n),
+        'm' => Tok::Month(n),
+        'd' => Tok::Day(n),
+        'h' => Tok::Hour(n),
+        _ => Tok::Second(n),
+    });
+    n
+}
+
 fn tokens(section: &str) -> Vec<Tok> {
     let ch: Vec<char> = section.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
-    let run = |i: usize, c: char| {
-        ch[i..]
-            .iter()
-            .take_while(|x| x.eq_ignore_ascii_case(&c))
-            .count()
-    };
     while i < ch.len() {
         let c = ch[i];
-        match c {
-            '"' => {
-                let end = ch[i + 1..]
-                    .iter()
-                    .position(|x| *x == '"')
-                    .map_or(ch.len(), |p| i + 1 + p);
-                push_lit(&mut out, &ch[i + 1..end].iter().collect::<String>());
-                i = end + 1;
-            }
+        let simple = match c {
+            '0' | '#' | '?' => Some(Tok::Digit(c)),
+            '.' => Some(Tok::Point),
+            ',' => Some(Tok::Group),
+            '%' => Some(Tok::Percent),
+            _ => None,
+        };
+        if let Some(t) = simple {
+            out.push(t);
+            i += 1;
+            continue;
+        }
+        i = match c {
+            '"' => quoted_text(&ch, i, &mut out),
             '\\' | '_' => {
                 if let Some(n) = ch.get(i + 1) {
-                    push_lit(
-                        &mut out,
-                        &if c == '_' {
-                            " ".to_owned()
-                        } else {
-                            n.to_string()
-                        },
-                    );
+                    let lit = if c == '_' { ' ' } else { *n };
+                    push_lit(&mut out, &lit.to_string());
                 }
-                i += 2;
+                i + 2
             }
-            '*' => i += 2,
-            '[' => {
-                let end = ch[i..]
-                    .iter()
-                    .position(|x| *x == ']')
-                    .map_or(ch.len(), |p| i + p);
-                let body: String = ch[i + 1..end.min(ch.len())].iter().collect();
-                if let Some(cur) = body.strip_prefix('$') {
-                    push_lit(&mut out, cur.split('-').next().unwrap_or(""));
-                }
-                i = end + 1;
-            }
-            '0' | '#' | '?' => {
-                out.push(Tok::Digit(c));
-                i += 1;
-            }
-            '.' => {
-                out.push(Tok::Point);
-                i += 1;
-            }
-            ',' => {
-                out.push(Tok::Group);
-                i += 1;
-            }
-            '%' => {
-                out.push(Tok::Percent);
-                i += 1;
-            }
+            '*' => i + 2,
+            '[' => bracket(&ch, i, &mut out),
             'y' | 'Y' | 'm' | 'M' | 'd' | 'D' | 'h' | 'H' | 's' | 'S' => {
-                let n = run(i, c);
-                out.push(match c.to_ascii_lowercase() {
-                    'y' => Tok::Year(n),
-                    'm' => Tok::Month(n),
-                    'd' => Tok::Day(n),
-                    'h' => Tok::Hour(n),
-                    _ => Tok::Second(n),
-                });
-                i += n;
+                i + date_run(&ch, i, &mut out)
             }
-            'a' | 'A' => {
-                let rest: String = ch[i..].iter().take(5).collect::<String>().to_uppercase();
-                if rest.starts_with("AM/PM") {
-                    out.push(Tok::AmPm);
-                    i += 5;
-                } else if rest.starts_with("A/P") {
-                    out.push(Tok::AmPm);
-                    i += 3;
-                } else {
-                    push_lit(&mut out, &c.to_string());
-                    i += 1;
-                }
-            }
+            'a' | 'A' => i + am_pm(&ch, i, &mut out),
             _ => {
                 push_lit(&mut out, &c.to_string());
-                i += 1;
+                i + 1
             }
-        }
+        };
     }
     out
 }

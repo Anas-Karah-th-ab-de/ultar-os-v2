@@ -92,7 +92,7 @@ fn group_thousands(n: f64, dec: usize) -> String {
     }
     let mut s: String = out.chars().rev().collect();
     if dec > 0 {
-        s.push_str(&format!("{:.*}", dec, frac).trim_start_matches('0'));
+        s.push_str(format!("{:.*}", dec, frac).trim_start_matches('0'));
     }
     if neg {
         format!("-{s}")

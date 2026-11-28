@@ -59,14 +59,20 @@ Rückgängig-Schritt. In der Bibliothek als typisierte Schnittstelle (`agent.rs`
 2. **Launcher**: Dateibereiche binden (`/areas/<name>`), Standard-App „Tabelle“ für `.xlsx/.csv` in
    Files (`FileKind::default_app`), Bus-Richtlinie für `mesh.set_activity` freischalten.
 3. **Kursiv** wird gespeichert und in xlsx geschrieben, aber nicht gezeichnet (keine kursive Schrift).
-4. **Rückgängig** deckt Zellen, Formate, Zeilen/Spalten, Sortieren und Blätter ab; Spaltenbreite,
-   Zeilenhöhe, Fixierung und RTL-Umschaltung sind nicht rückgängig zu machen.
+4. **Rückgängig** deckt Zellen, Formate, Zeilen/Spalten, Sortieren, Blätter sowie Spaltenbreite,
+   Zeilenhöhe, Fixierung und RTL-Umschaltung ab; ein ganzes Ziehen an einer Spalten- oder
+   Zeilenkante ist ein Schritt.
 5. Ausschneiden = Kopieren + sofortiges Leeren (nicht „beim Einfügen verschieben“).
 6. Touch: Bereichsauswahl über den umschaltbaren Knopf „Erweitern“ (Tippen wählt, Ziehen scrollt,
    zweites Tippen bearbeitet).
 7. Textfarbe und Füllung sind feste Farbfolgen, keine Farbwähler. Blattnamen dürfen kein `'` enthalten.
-8. „Öffnen“ nimmt einen Dateinamen aus Dokumente; es gibt noch keinen Dateiwähler (Files startet die
-   App mit einer URI).
+8. **Dateiwähler**: im System gibt es keinen (kein Wähler/Picker in `apps/*`, `platform/ultar-ui`
+   oder `ultar-launcher`; gesucht nach chooser/picker/open-with). „Öffnen“ nimmt daher einen
+   Dateinamen aus Dokumente; die App startet sonst mit einer URI (Files über `launcher.resolve`).
+   Die App ist über `[open] schemes = ["files"]` Kandidat für die Art `documents`; der Launcher
+   unterscheidet dort aber nicht nach Endung (`kind_of_uri`: xlsx/csv, docx, pdf sind alle
+   `Documents`, Standard-App `documents`). „Standard für .xlsx/.csv“ braucht eine eigene Art im
+   Bus-Vertrag (`ultar-bus` `launcher::Kind`) – nicht Teil dieses Pakets.
 9. Die xlsx-Prüfdateien sind `openpyxl-sample.xlsx` (Fremdschreiber) und `excel-like.xlsx` (von Hand
    nach Excel-Aufbau gebaut, `gen_fixtures.py`); keine mit echtem Excel/LibreOffice gespeicherte Datei.
 10. Leistung nur im Debug-Build gemessen (Kopfzeile des Tests), kein Lauf auf echtem Gerät.
@@ -76,8 +82,9 @@ Rückgängig-Schritt. In der Bibliothek als typisierte Schnittstelle (`agent.rs`
   xlsx hin und zurück mit eigener Datei und beiden Prüfdateien (`tests/xlsx_fixtures.rs`).
 - `cargo test -p ultar-sheet`: Modultests (Auswahl, Gitter, Datei, Wiederherstellung, Orte),
   `tests/flow.rs` (17 Abläufe: Öffnen/Speichern, Bearbeiten, Rückgängig, Blätter, Agent),
-  `tests/window.rs` (15: Fenster ar/en × dunkel/hell × kompakt/breit, Touch, Zustände,
-  100 000 Zeilen Bildlauf unter 100 ms je Bild im Debug-Build, bestes von drei Durchläufen),
+  `tests/window.rs` + `tests/window_input.rs` (16: Fenster ar/en × dunkel/hell × kompakt/breit,
+  Maus, Touch, Wiederherstellung, Zustände, 100 000 Zeilen Bildlauf unter 100 ms je Bild im
+  Debug-Build, bestes von drei Durchläufen),
   `tests/locales.rs` (Kataloge ar/en/de vollständig und gleich).
 - Bilder: `ULTAR_SHEET_SHOTS=<ordner>` schreibt die Fensterbilder des Tests.
 - `cargo test -p ultar-launcher --test app_manifests` prüft das Manifest.

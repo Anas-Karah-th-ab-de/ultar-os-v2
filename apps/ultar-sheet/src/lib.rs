@@ -24,6 +24,7 @@ pub mod agent;
 pub mod app;
 pub mod ask;
 pub mod book;
+mod build;
 pub mod cmd;
 pub mod core;
 pub mod draw;

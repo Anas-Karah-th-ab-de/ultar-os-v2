@@ -281,33 +281,29 @@ impl Core {
         (self.frame().rows.len() as i64 - 2).max(1)
     }
 
-    /// A key on the grid (not in an edit). Returns what the window has to do.
-    pub fn key(&mut self, key: Key, m: Modifiers) -> Fx {
-        if self.edit.is_some() {
-            self.edit_key(key, m);
-            return Fx::None;
-        }
-        let ext = m.shift;
-        let ctrl = m.ctrl || m.meta;
-        let go = |core: &mut Core, dr: i64, dc: i64| {
-            if ctrl {
-                let (r, c) = core.jump(dr, dc);
-                if ext {
-                    core.sel.extend_to(r, c);
-                } else {
-                    core.sel.select(r, c);
-                }
+    /// One step with an arrow key (with Ctrl: to the edge of the data).
+    fn go(&mut self, dr: i64, dc: i64, ctrl: bool, ext: bool) {
+        if ctrl {
+            let (r, c) = self.jump(dr, dc);
+            if ext {
+                self.sel.extend_to(r, c);
             } else {
-                // the arrows are physical: in a right-to-left sheet "left" is the next column
-                let dc = if core.book.sheet().rtl { -dc } else { dc };
-                core.sel.step(dr, dc, ext || core.extend);
+                self.sel.select(r, c);
             }
-        };
+        } else {
+            // the arrows are physical: in a right-to-left sheet "left" is the next column
+            let dc = if self.book.sheet().rtl { -dc } else { dc };
+            self.sel.step(dr, dc, ext || self.extend);
+        }
+    }
+
+    /// Arrows, Page Up/Down, Home and End move the selection; `false` for any other key.
+    fn navigate(&mut self, key: Key, ctrl: bool, ext: bool) -> bool {
         match key {
-            Key::ArrowUp => go(self, -1, 0),
-            Key::ArrowDown => go(self, 1, 0),
-            Key::ArrowLeft => go(self, 0, -1), // physical
-            Key::ArrowRight => go(self, 0, 1), // physical
+            Key::ArrowUp => self.go(-1, 0, ctrl, ext),
+            Key::ArrowDown => self.go(1, 0, ctrl, ext),
+            Key::ArrowLeft => self.go(0, -1, ctrl, ext), // physical
+            Key::ArrowRight => self.go(0, 1, ctrl, ext), // physical
             Key::PageUp => {
                 let n = self.page();
                 self.sel.step(-n, 0, ext);
@@ -330,6 +326,24 @@ impl Core {
                 self.sel
                     .select(rows.saturating_sub(1), cols.saturating_sub(1));
             }
+            _ => return false,
+        }
+        true
+    }
+
+    /// A key on the grid (not in an edit). Returns what the window has to do.
+    pub fn key(&mut self, key: Key, m: Modifiers) -> Fx {
+        if self.edit.is_some() {
+            self.edit_key(key, m);
+            return Fx::None;
+        }
+        let ext = m.shift;
+        let ctrl = m.ctrl || m.meta;
+        if self.navigate(key, ctrl, ext) {
+            self.reveal();
+            return Fx::None;
+        }
+        match key {
             Key::Enter => {
                 self.sel.advance(true, ext);
             }

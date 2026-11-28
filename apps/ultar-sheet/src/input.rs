@@ -5,7 +5,6 @@ use crate::app::{Out, SheetApp, State};
 use crate::ask::Ask;
 use crate::core::Fx;
 use crate::frame::{col_points, row_points, Hit};
-use crate::sel::Span;
 use std::time::{Duration, Instant};
 use ultar_ui::event::{Event, Key, PointerButton};
 use ultar_ui::geom::Point;
@@ -51,7 +50,7 @@ impl SheetApp {
         let Event::Key { key, modifiers } = event else {
             return Ok(());
         };
-        self.mods = modifiers;
+        self.pointer.mods = modifiers;
         if self.ask.is_some() || self.state != State::Ready {
             return Ok(());
         }
@@ -98,9 +97,6 @@ impl SheetApp {
                 }
             }
         }
-        if self.core.sel.span != Span::Cells && self.core.sel.single() {
-            // nothing to do: kept for clarity of the selection kinds
-        }
         self.refresh()
     }
 
@@ -133,7 +129,7 @@ impl SheetApp {
             return Ok(());
         }
         match event {
-            Event::Modifiers { modifiers } => self.mods = modifiers,
+            Event::Modifiers { modifiers } => self.pointer.mods = modifiers,
             Event::PointerDown {
                 pos,
                 button: PointerButton::Primary,
@@ -145,7 +141,10 @@ impl SheetApp {
             Event::TouchDown { pos, .. } if self.inside(pos) => self.finger_down(pos)?,
             Event::TouchMove { pos, .. } => self.finger_move(pos)?,
             Event::TouchUp { pos, .. } => self.finger_up(pos)?,
-            Event::TouchCancel { .. } => self.drag = Drag::None,
+            Event::TouchCancel { .. } => {
+                self.core.book.settle();
+                self.pointer.drag = Drag::None;
+            }
             Event::Scroll { pos, lines } if self.inside(pos) => self.scroll(lines)?,
             _ => {}
         }
@@ -165,7 +164,7 @@ impl SheetApp {
             return self.refresh();
         }
         self.focus_grid();
-        let shift = self.mods.shift || self.core.extend;
+        let shift = self.pointer.mods.shift || self.core.extend;
         match hit {
             Hit::Corner => {
                 let ext = self.core.book.sheet().extent();
@@ -173,23 +172,24 @@ impl SheetApp {
             }
             Hit::Col(c) => {
                 self.core.sel.col(c, shift);
-                self.drag = Drag::Cols;
+                self.pointer.drag = Drag::Cols;
             }
             Hit::Row(r) => {
                 self.core.sel.row(r, shift);
-                self.drag = Drag::Rows;
+                self.pointer.drag = Drag::Rows;
             }
             Hit::ColEdge(c) => {
                 let w = col_points(self.core.book.sheet(), c);
-                self.drag = Drag::ColSize(c, pos.x, w);
+                self.pointer.drag = Drag::ColSize(c, pos.x, w);
             }
             Hit::RowEdge(r) => {
                 let h = row_points(self.core.book.sheet(), r, self.core.touch);
-                self.drag = Drag::RowSize(r, pos.y, h);
+                self.pointer.drag = Drag::RowSize(r, pos.y, h);
             }
             Hit::Cell(r, c) => {
                 let now = Instant::now();
                 let double = self
+                    .pointer
                     .last_click
                     .is_some_and(|(t, at)| at == (r, c) && now.duration_since(t) < DOUBLE_CLICK);
                 if shift {
@@ -197,11 +197,11 @@ impl SheetApp {
                 } else {
                     self.core.sel.select(r, c);
                 }
-                self.drag = Drag::Select;
-                self.last_click = Some((now, (r, c)));
+                self.pointer.drag = Drag::Select;
+                self.pointer.last_click = Some((now, (r, c)));
                 if double {
                     self.core.begin_edit(None);
-                    self.drag = Drag::None;
+                    self.pointer.drag = Drag::None;
                 }
             }
             Hit::None => {}
@@ -210,7 +210,7 @@ impl SheetApp {
     }
 
     fn moved(&mut self, pos: Point) -> Result<(), UiError> {
-        match self.drag {
+        match self.pointer.drag {
             Drag::None | Drag::Finger(..) => Ok(()),
             Drag::Select | Drag::Rows | Drag::Cols => {
                 let Some(l) = self.local(pos) else {
@@ -244,7 +244,7 @@ impl SheetApp {
                     l.x.clamp(frame.hdr_w + 1.0, w - 1.0),
                     l.y.clamp(frame.hdr_h + 1.0, h - 1.0),
                 );
-                match (self.drag, frame.hit(x, y)) {
+                match (self.pointer.drag, frame.hit(x, y)) {
                     (Drag::Select, Hit::Cell(r, c)) => self.core.sel.extend_to(r, c),
                     (Drag::Rows, Hit::Cell(r, _)) => self.core.sel.row(r, true),
                     (Drag::Cols, Hit::Cell(_, c)) => self.core.sel.col(c, true),
@@ -269,15 +269,16 @@ impl SheetApp {
     }
 
     fn released(&mut self) {
-        self.drag = Drag::None;
+        self.core.book.settle();
+        self.pointer.drag = Drag::None;
     }
 
     /// Wheel: rows (columns with Shift).
     fn scroll(&mut self, lines: f32) -> Result<(), UiError> {
         let n = (lines * 3.0).round() as i64;
         self.scroll_by(
-            if self.mods.shift { 0 } else { n },
-            if self.mods.shift { n } else { 0 },
+            if self.pointer.mods.shift { 0 } else { n },
+            if self.pointer.mods.shift { n } else { 0 },
         )
     }
 
@@ -306,19 +307,19 @@ impl SheetApp {
         match hit {
             Hit::ColEdge(c) => {
                 let w = col_points(self.core.book.sheet(), c);
-                self.drag = Drag::ColSize(c, pos.x, w);
+                self.pointer.drag = Drag::ColSize(c, pos.x, w);
             }
             Hit::RowEdge(r) => {
                 let h = row_points(self.core.book.sheet(), r, true);
-                self.drag = Drag::RowSize(r, pos.y, h);
+                self.pointer.drag = Drag::RowSize(r, pos.y, h);
             }
-            _ => self.drag = Drag::Finger(pos, pos, false, hit),
+            _ => self.pointer.drag = Drag::Finger(pos, pos, false, hit),
         }
         Ok(())
     }
 
     fn finger_move(&mut self, pos: Point) -> Result<(), UiError> {
-        match self.drag {
+        match self.pointer.drag {
             Drag::Finger(start, last, scrolling, hit) => {
                 let far =
                     (pos.x - start.x).abs() > TOUCH_SLOP || (pos.y - start.y).abs() > TOUCH_SLOP;
@@ -339,7 +340,7 @@ impl SheetApp {
                     if dx != 0 { pos.x } else { last.x },
                     if dy != 0 { pos.y } else { last.y },
                 );
-                self.drag = Drag::Finger(start, moved, true, hit);
+                self.pointer.drag = Drag::Finger(start, moved, true, hit);
                 if dy != 0 || dx != 0 {
                     self.scroll_by(dy, dx)?;
                 }
@@ -351,7 +352,8 @@ impl SheetApp {
     }
 
     fn finger_up(&mut self, _pos: Point) -> Result<(), UiError> {
-        let drag = std::mem::replace(&mut self.drag, Drag::None);
+        self.core.book.settle();
+        let drag = std::mem::replace(&mut self.pointer.drag, Drag::None);
         if let Drag::Finger(_, _, false, hit) = drag {
             // a tap
             let ext = self.core.extend;
@@ -417,7 +419,7 @@ impl SheetApp {
 
     /// The answer to the last request that waited for the user.
     pub fn take_agent_reply(&mut self) -> Option<Reply> {
-        self.agent_reply.take()
+        self.waiting.agent_reply.take()
     }
 }
 

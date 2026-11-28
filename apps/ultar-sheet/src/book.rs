@@ -6,10 +6,11 @@
 //! again ([`ultar_office::calc::Calc`]).
 
 use crate::file::Format;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use ultar_office::calc::Calc;
 use ultar_office::numfmt::{self, Names};
-use ultar_office::sheet::{excel_now, Value, Workbook};
+use ultar_office::sheet::{excel_now, Sheet, Value, Workbook};
 use ultar_office::style::CellStyle;
 
 /// Steps kept for undo.
@@ -23,8 +24,43 @@ struct Edit {
     new: (String, CellStyle),
 }
 
+/// How a sheet looks: column widths, row heights, frozen parts and direction.
+#[derive(Debug, Clone, PartialEq)]
+struct View {
+    widths: BTreeMap<u32, f32>,
+    heights: BTreeMap<u32, f32>,
+    frozen_rows: u32,
+    frozen_cols: u32,
+    rtl: bool,
+}
+
+impl View {
+    fn of(sh: &Sheet) -> View {
+        View {
+            widths: sh.widths.clone(),
+            heights: sh.heights.clone(),
+            frozen_rows: sh.frozen_rows,
+            frozen_cols: sh.frozen_cols,
+            rtl: sh.rtl,
+        }
+    }
+
+    /// Puts this look on the sheet and returns the look it had.
+    fn put_on(self, sh: &mut Sheet) -> View {
+        let was = View::of(sh);
+        sh.widths = self.widths;
+        sh.heights = self.heights;
+        sh.frozen_rows = self.frozen_rows;
+        sh.frozen_cols = self.frozen_cols;
+        sh.rtl = self.rtl;
+        was
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Step {
+    /// The look of one sheet (the look before, when undone).
+    View { sheet: usize, view: View },
     /// Cells of one sheet.
     Cells { sheet: usize, edits: Vec<Edit> },
     /// The whole workbook before (and after, when undone) a structural change.
@@ -56,6 +92,8 @@ pub struct Book {
     undo: Vec<Step>,
     redo: Vec<Step>,
     dirty: bool,
+    /// A drag is changing the look: its steps are one step of the history.
+    dragging: bool,
     /// Counts every change (autosave looks at it).
     pub version: u64,
     /// Month and weekday names for number formats.
@@ -79,6 +117,7 @@ impl Book {
             undo: Vec::new(),
             redo: Vec::new(),
             dirty: false,
+            dragging: false,
             version: 0,
             names: Names::default(),
         }
@@ -146,6 +185,7 @@ impl Book {
     }
 
     fn push(&mut self, step: Step) {
+        self.dragging = false;
         self.undo.push(step);
         if self.undo.len() > HISTORY {
             self.undo.remove(0);
@@ -278,13 +318,44 @@ impl Book {
         }
     }
 
-    /// Changes how a sheet looks (widths, heights, frozen parts, direction). Not a step of
-    /// the history, but the workbook is changed.
-    pub fn edit_view(&mut self, sheet: usize, f: impl FnOnce(&mut ultar_office::sheet::Sheet)) {
-        if let Some(sh) = self.wb.sheets.get_mut(sheet) {
-            f(sh);
-            self.touch();
+    /// Changes how a sheet looks (widths, heights, frozen parts, direction) as one step of the
+    /// history.
+    pub fn edit_view(&mut self, sheet: usize, f: impl FnOnce(&mut Sheet)) {
+        self.change_view(sheet, f, false);
+    }
+
+    /// Like [`Book::edit_view`], for a drag that calls it again and again: the whole drag is
+    /// one step, until [`Book::settle`] or another change ends it.
+    pub fn drag_view(&mut self, sheet: usize, f: impl FnOnce(&mut Sheet)) {
+        self.change_view(sheet, f, true);
+    }
+
+    /// The drag is over: the next change is a step of its own.
+    pub fn settle(&mut self) {
+        self.dragging = false;
+    }
+
+    fn change_view(&mut self, sheet: usize, f: impl FnOnce(&mut Sheet), drag: bool) {
+        let Some(sh) = self.wb.sheets.get_mut(sheet) else {
+            return;
+        };
+        let before = View::of(sh);
+        f(sh);
+        if View::of(sh) == before {
+            return;
         }
+        let joins = drag
+            && self.dragging
+            && matches!(self.undo.last(), Some(Step::View { sheet: s, .. }) if *s == sheet);
+        if joins {
+            self.touch();
+            return;
+        }
+        self.push(Step::View {
+            sheet,
+            view: before,
+        });
+        self.dragging = drag;
     }
 
     /// Takes another workbook's cells as unsaved changes of this one (a recovered copy).
@@ -322,6 +393,15 @@ impl Book {
     /// Applies a step in the other direction and returns the step that reverts it.
     fn revert(&mut self, step: Step) -> Step {
         match step {
+            Step::View { sheet, view } => {
+                let was = self
+                    .wb
+                    .sheets
+                    .get_mut(sheet)
+                    .map_or(view.clone(), |sh| view.put_on(sh));
+                self.active = sheet.min(self.wb.sheets.len() - 1);
+                Step::View { sheet, view: was }
+            }
             Step::Cells { sheet, edits } => {
                 // the undo of an undo: swap old and new
                 let swapped: Vec<Edit> = edits
@@ -404,5 +484,31 @@ mod tests {
         assert_eq!(b.shown(0, 0).text, "25.6%");
         assert!(b.undo());
         assert_eq!(b.shown(0, 0).text, "0.256");
+    }
+
+    #[test]
+    fn the_look_of_a_sheet_is_undone_and_a_drag_is_one_step() {
+        let mut b = Book::new();
+        b.edit_view(0, |sh| sh.rtl = true);
+        b.drag_view(0, |sh| {
+            sh.widths.insert(1, 20.0);
+        });
+        b.drag_view(0, |sh| {
+            sh.widths.insert(1, 30.0);
+        });
+        b.settle();
+        b.drag_view(0, |sh| {
+            sh.widths.insert(1, 40.0);
+        });
+        assert!(b.undo());
+        assert_eq!(b.sheet().widths.get(&1), Some(&30.0));
+        assert!(b.undo());
+        assert_eq!(b.sheet().widths.get(&1), None);
+        assert!(b.sheet().rtl);
+        assert!(b.undo());
+        assert!(!b.sheet().rtl);
+        assert!(!b.undo());
+        assert!(b.redo() && b.redo() && b.redo());
+        assert_eq!(b.sheet().widths.get(&1), Some(&40.0));
     }
 }
