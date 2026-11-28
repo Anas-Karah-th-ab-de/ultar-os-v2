@@ -8734,8 +8734,10 @@ dependencies = [
 name = "ultar-hal-system"
 version = "0.8.0"
 dependencies = [
+ "nix 0.29.0",
  "ultar-driverpkg",
  "ultar-profile",
+ "zeroize",
 ]
 
 [[package]]
@@ -8866,10 +8868,11 @@ dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
  "hmac 0.12.1",
- "libc",
  "pbkdf2 0.12.2",
  "serde_json",
  "sha2 0.10.9",
+ "ultar-brand",
+ "ultar-hal-system",
  "xts-mode",
  "zeroize",
 ]

@@ -25,4 +25,5 @@ serde_json = "1"
 base64 = "0.22"
 getrandom = "0.2"
 zeroize = "1"
-libc = "0.2"
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
+ultar-brand = { path = "../ultar-brand" }

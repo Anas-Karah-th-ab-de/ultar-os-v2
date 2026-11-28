@@ -13,12 +13,10 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, Read, Write};
 use std::os::unix::fs::FileExt;
 use std::process::ExitCode;
+use ultar_hal_system::crypt;
 use ultar_luks::{Error, Params, Sectors, DATA_OFFSET, SECTOR};
 use zeroize::Zeroizing;
 
-const CONTROL: &str = "/sys/kernel/ultar/crypt";
-const DATA_NODE: &str = "/dev/ultar/part/ultar-data";
-const CONSOLE: &str = "/dev/console";
 const CHUNK: usize = 1 << 20;
 
 fn stdin_line() -> Zeroizing<String> {
@@ -97,42 +95,6 @@ fn decrypt(image: &str, out: &str, bytes: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// Reads one line from the console without echo (echo comes back afterwards).
-fn ask(console: &mut File, prompt: &str) -> Option<Zeroizing<String>> {
-    use std::os::fd::AsRawFd;
-    let _ = console.write_all(prompt.as_bytes());
-    let fd = console.as_raw_fd();
-    // SAFETY: termios is plain data; tcgetattr fills it.
-    let mut t: libc::termios = unsafe { std::mem::zeroed() };
-    // SAFETY: valid descriptor and termios.
-    let quiet = unsafe { libc::tcgetattr(fd, &mut t) } == 0;
-    let old = t;
-    if quiet {
-        t.c_lflag &= !libc::ECHO;
-        // SAFETY: valid descriptor and termios.
-        unsafe { libc::tcsetattr(fd, libc::TCSANOW, &t) };
-    }
-    let mut line = Zeroizing::new(Vec::new());
-    let mut byte = [0u8; 1];
-    let mut ended = false;
-    while let Ok(1) = console.read(&mut byte) {
-        if byte[0] == b'\n' || byte[0] == b'\r' {
-            ended = true;
-            break;
-        }
-        line.push(byte[0]);
-    }
-    if quiet {
-        // SAFETY: valid descriptor and termios.
-        unsafe { libc::tcsetattr(fd, libc::TCSANOW, &old) };
-    }
-    let _ = console.write_all(b"\n");
-    if !ended && line.is_empty() {
-        return None;
-    }
-    Some(Zeroizing::new(String::from_utf8_lossy(&line).into_owned()))
-}
-
 fn hex(key: &[u8]) -> Zeroizing<String> {
     const D: &[u8; 16] = b"0123456789abcdef";
     let mut s = Zeroizing::new(String::with_capacity(key.len() * 2));
@@ -144,29 +106,24 @@ fn hex(key: &[u8]) -> Zeroizing<String> {
 }
 
 fn unlock() -> Result<(), String> {
-    let state = std::fs::read_to_string(CONTROL).unwrap_or_default();
-    if state.trim() != "locked" {
+    if !crypt::locked() {
         return Ok(());
     }
-    let data = File::open(DATA_NODE).map_err(|e| format!("{DATA_NODE}: {e}"))?;
-    let mut console = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(CONSOLE)
-        .map_err(|e| format!("{CONSOLE}: {e}"))?;
-    let _ = console.write_all(b"\nUltar OS: Daten verschluesselt / data encrypted\n");
+    let data = crypt::open_header().map_err(|e| format!("{}: {e}", crypt::DATA_NODE))?;
+    let mut console = crypt::console().map_err(|e| format!("{}: {e}", crypt::CONSOLE))?;
+    let title = format!(
+        "\n{}: Daten verschluesselt / data encrypted\n",
+        ultar_brand::PRODUCT
+    );
+    let _ = console.write_all(title.as_bytes());
     loop {
-        let Some(pass) = ask(&mut console, "Passwort / passphrase: ") else {
+        let _ = console.write_all(b"Passwort / passphrase: ");
+        let Some(pass) = crypt::read_hidden(&mut console) else {
             return Err("no console input".into());
         };
-        match ultar_luks::open(&mut reader(&data), pass.as_bytes()) {
+        match ultar_luks::open(&mut reader(&data), &pass) {
             Ok(o) => {
-                let cmd = Zeroizing::new(format!("open {} {}", o.offset, hex(&o.key[..]).as_str()));
-                let mut ctl = OpenOptions::new()
-                    .write(true)
-                    .open(CONTROL)
-                    .map_err(|e| format!("{CONTROL}: {e}"))?;
-                ctl.write_all(cmd.as_bytes())
+                crypt::hand_key(o.offset, &hex(&o.key[..]))
                     .map_err(|e| format!("kernel refused the key: {e}"))?;
                 let _ = console.write_all(b"Daten entsperrt / data unlocked\n");
                 return Ok(());

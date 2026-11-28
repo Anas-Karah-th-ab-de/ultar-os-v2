@@ -152,14 +152,13 @@ fn uuid() -> Result<String, Error> {
     ))
 }
 
-/// Formats a new volume: a random master key in keyslot 0, protected by `passphrase`.
-pub fn format(passphrase: &[u8], params: &Params) -> Result<Formatted, Error> {
-    let mut key: Key = Zeroizing::new([0u8; KEY_LEN]);
-    random(&mut key[..])?;
-    let slot = keyslot::seal(&key, passphrase, params)?;
-    let mut digest_salt = [0u8; 32];
-    random(&mut digest_salt)?;
-    let digest = keyslot::digest(&key[..], &digest_salt, params.digest_iterations, 32);
+/// The JSON metadata of a volume with one keyslot and one segment.
+fn metadata_json(
+    slot: &keyslot::Sealed,
+    params: &Params,
+    digest_salt: &[u8],
+    digest: &[u8],
+) -> String {
     let json_size = HDR_SIZE - 4096;
     let meta = json!({
         "keyslots": { "0": {
@@ -196,12 +195,23 @@ pub fn format(passphrase: &[u8], params: &Params) -> Result<Formatted, Error> {
             "segments": ["0"],
             "hash": "sha256",
             "iterations": params.digest_iterations,
-            "salt": b64(&digest_salt),
-            "digest": b64(&digest),
+            "salt": b64(digest_salt),
+            "digest": b64(digest),
         }},
         "config": { "json_size": json_size.to_string(), "keyslots_size": KEYSLOTS_SIZE.to_string() },
     });
-    let text = meta.to_string();
+    meta.to_string()
+}
+
+/// Formats a new volume: a random master key in keyslot 0, protected by `passphrase`.
+pub fn format(passphrase: &[u8], params: &Params) -> Result<Formatted, Error> {
+    let mut key: Key = Zeroizing::new([0u8; KEY_LEN]);
+    random(&mut key[..])?;
+    let slot = keyslot::seal(&key, passphrase, params)?;
+    let mut digest_salt = [0u8; 32];
+    random(&mut digest_salt)?;
+    let digest = keyslot::digest(&key[..], &digest_salt, params.digest_iterations, 32);
+    let text = metadata_json(&slot, params, &digest_salt, &digest);
     let id = uuid()?;
     let mut salt = [0u8; 64];
     random(&mut salt)?;

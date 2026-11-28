@@ -268,8 +268,6 @@ pub fn sprache_von_startpartition() {
     }
 }
 
-/// Control file of the kernel's data decryption (kernel/ultar-kern/src/crypt.rs).
-const CRYPT_CONTROL: &str = "/sys/kernel/ultar/crypt";
 /// The LUKS2 tool (system/core/ultar-luks): asks for the passphrase on the console and hands
 /// the key to the kernel, which mounts /data.
 const LUKS_TOOL: &str = "/usr/bin/ultar-luks";
@@ -278,8 +276,7 @@ const LUKS_TOOL: &str = "/usr/bin/ultar-luks";
 /// start, so no service writes into a /data that is not mounted yet. Without encryption
 /// (control file missing or not `locked`) nothing happens.
 pub fn unlock_data() {
-    let locked = fs::read_to_string(CRYPT_CONTROL).is_ok_and(|s| s.trim() == "locked");
-    if !locked {
+    if !ultar_hal_system::crypt::locked() {
         return;
     }
     match std::process::Command::new(LUKS_TOOL).arg("unlock").status() {
