@@ -125,6 +125,13 @@ Why the installer runs on the first start and not in the service: the service ca
 its own cell. The person sees the installer's progress window through the bridge (MSI, Inno Setup) or the
 program after a silent install (NSIS).
 
+Wine as Ubuntu ships it, learned in the cells: its server is not in `PATH`
+(`/usr/lib/x86_64-linux-gnu/wine/wineserver`, the wrapper finds it), it **breaks with `TMPDIR` set**
+(`free(): invalid pointer` at its start – the cells set `TMPDIR=/tmp`, the wrapper unsets it), it finds
+its libraries through `/proc/self/exe` (the cells bring their own `/proc`), and a new prefix is about
+**1.2 GB** (Wine copies its Windows libraries, 64 and 32 bit, into every prefix) – per Windows app, in
+its own data.
+
 Security notes: Wine's `\\?\unix\` path reaches what the cell sees (the read-only area, its own data, its
 `/tmp`), never the host – the cell is the boundary, the missing `Z:` is tidiness. The installer copy is
 read-only in the cell (`/.setup`), and the data mount is `noexec` (Wine maps Windows programs by reading
@@ -178,7 +185,9 @@ the barrier of stage P0).
   reported by the end to end). The Ultar kernel has no user namespaces.
 * The mobile system dialog does not yet load the `foreign` texts (the desktop's does).
 * UI: Files and Settings do not call `foreign.*` yet (policy and contract are ready).
-* Windows: icons of MSI packages (their `Icon` table) are not read; a program with several start-menu
-  entries becomes one app (the main one); installers that need the network (web installers) fail without
+* Windows: each app's prefix is about 1.2 GB (a shared read-only prefix template would save it); the
+  Wayland driver is the default but the end to end shows windows through X11 in the cell (Xvfb) – the
+  run with the real bridge `ultar-wayland` (P1) is still to be done; icons of MSI packages (their `Icon`
+  table) are not read; a program with several start-menu entries becomes one app (the main one); installers that need the network (web installers) fail without
   the network permission; the installer copy stays as the app's own (repair/reinstall) until removal.
 * Folders (`files` areas) for foreign apps are wired through the launcher but not covered by the end to end.
