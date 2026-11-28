@@ -5,6 +5,7 @@
 mod accel;
 mod bounce_keys;
 mod budget;
+mod clipboard_bridge;
 mod compose;
 mod compose_table;
 mod grabs;

@@ -131,6 +131,13 @@ fn encode_data(event: &Event, w: &mut Writer) {
             w.u32(surface.0).str(text, MAX_IME_TEXT);
         }
         Event::SelectionOffer { mimes } => encode_mimes(w, mimes),
+        Event::SelectionChange {
+            mimes,
+            confidential,
+        } => {
+            encode_mimes(w, mimes);
+            w.bool(*confidential);
+        }
         Event::SendRequest { transfer, mime } => {
             w.u32(transfer.0).str(mime, MAX_MIME);
         }
@@ -399,6 +406,10 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         },
         20 => Event::SelectionOffer {
             mimes: decode_mimes(r)?,
+        },
+        42 => Event::SelectionChange {
+            mimes: decode_mimes(r)?,
+            confidential: r.bool()?,
         },
         21 => Event::SendRequest {
             transfer: TransferId(r.u32()?),

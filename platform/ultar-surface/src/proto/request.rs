@@ -169,6 +169,20 @@ pub enum Request {
         /// Last chunk.
         last: bool,
     },
+    /// Offers a selection whose content this client provides (needs
+    /// [`Rights::CLIPBOARD_BRIDGE`]; the mesh service copies from another
+    /// device into the local clipboard). The data follows on `SendRequest`.
+    BridgeSetSelection {
+        /// Offered types.
+        mimes: Vec<String>,
+    },
+    /// Asks for the current selection's data as the clipboard bridge (needs
+    /// [`Rights::CLIPBOARD_BRIDGE`]; a confidential selection is never
+    /// offered and answers with `TransferCancelled`). Delivered like a paste.
+    BridgeReadSelection {
+        /// Wanted type.
+        mime: String,
+    },
     /// Starts dragging data from a pointer press.
     StartDrag {
         /// Serial of the press.
@@ -464,6 +478,8 @@ impl Request {
             Request::ConfigureKeyboard { .. } => 47,
             Request::ConfigureVisual { .. } => 56,
             Request::VisualAlert { .. } => 57,
+            Request::BridgeSetSelection { .. } => 58,
+            Request::BridgeReadSelection { .. } => 59,
         }
     }
 
@@ -563,6 +579,12 @@ impl Request {
             }
             Request::ReadSelection { serial, mime } => {
                 w.u32(*serial).str(mime, MAX_MIME);
+            }
+            Request::BridgeSetSelection { mimes } => {
+                encode_mimes(w, mimes);
+            }
+            Request::BridgeReadSelection { mime } => {
+                w.str(mime, MAX_MIME);
             }
             Request::SendData {
                 transfer,
