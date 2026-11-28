@@ -84,7 +84,7 @@ done
 {
   echo "# ultar-android-runtime $VERSION – built $(date -u +%Y-%m-%dT%H:%M:%SZ) on Ubuntu $SUITE"
   echo "$SOURCES" | while read -r name url commit licence; do
-    [ -n "$name" ] && echo "$name $url $(git -C "$SRC/$name" rev-parse HEAD) $licence"
+    if [ -n "$name" ]; then echo "$name $url $(git -C "$SRC/$name" rev-parse HEAD) $licence"; fi
   done
 } >"$OUT/SOURCES"
 
