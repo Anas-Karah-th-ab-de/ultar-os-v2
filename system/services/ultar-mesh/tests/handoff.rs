@@ -176,9 +176,17 @@ fn without_the_app_the_file_arrives_and_opens_with_the_default_app() {
     let (offer, _, _) = incoming(&w.take(1)).unwrap();
     let (_, effects) = w.nodes[1].answer(offer, true, w.now);
     w.run(1, effects);
-    let (_, app, uri) = open(&w.take(1)).unwrap();
+    let (opened, app, uri) = open(&w.take(1)).unwrap();
     assert_eq!(app, "");
-    assert!(uri.unwrap().ends_with("/inbox1/notes.txt"));
+    let uri = uri.unwrap();
+    assert!(uri.ends_with("/inbox1/notes.txt"));
+    // The shell is told (`mesh.received`): who sent which file, and where it lies.
+    let note = ultar_mesh::arrived::file_received(&w.nodes[1], opened, &app, Some(&uri)).unwrap();
+    assert_eq!((note.offer, note.title.as_str()), (opened, "notes.txt"));
+    assert_eq!(note.uri, uri);
+    assert!(!note.from_name.is_empty(), "the sender is named");
+    // An activity that continues in an app is no received file.
+    assert!(ultar_mesh::arrived::file_received(&w.nodes[1], opened, "editor", Some(&uri)).is_none());
 }
 
 #[test]

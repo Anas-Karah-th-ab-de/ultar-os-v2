@@ -442,3 +442,6 @@ volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. �
 volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
 volumed.drive.body = ضمّه لفتح ملفاته.
 volumed.drive.mount = ضمّ
+desk.mesh.list.empty = لا توجد أجهزة مقترنة
+desk.mesh.list.here = متصل
+desk.mesh.list.devices = الأجهزة المقترنة

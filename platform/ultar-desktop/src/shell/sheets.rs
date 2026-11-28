@@ -24,6 +24,7 @@ pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Out
         (Target::Tile(id), ActionKind::Activated) => tile(s, *id),
         (Target::TileMore(id), ActionKind::Activated) => more(s, *id),
         (Target::QuickBack, ActionKind::Activated) => page(s, QuickPage::Tiles),
+        (Target::MeshDevice(id), ActionKind::Activated) => super::handoff::list_device(s, id),
         (Target::PowerModeChoice(_), ActionKind::Selected(i)) => match PowerMode::ALL.get(*i) {
             Some(m) => setting(s, "power.mode", SettingValue::Text(m.word().into())),
             None => Outcome::none(),
@@ -286,9 +287,8 @@ fn more(s: &mut Shell, id: TileId) -> Outcome {
             }
             out
         }
-        // The mesh tile's arrow: continue what is in front on another device (the phone's
-        // way to it); with nobody to send to, its page in Settings.
-        TileId::Mesh if crate::model::mesh::can_send(&s.d.svc) => super::handoff::send(s, None),
+        // qs.mesh.list: the paired devices inside the sheet.
+        TileId::Mesh => page(s, QuickPage::Mesh),
         _ => settings_of(s, id),
     }
 }

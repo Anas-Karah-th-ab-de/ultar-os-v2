@@ -176,6 +176,11 @@ impl MeshService {
     }
 
     fn open(&mut self, offer: u64, app: String, uri: Option<String>, bus: &Bus<'_, Self>) {
+        if let Some(note) =
+            crate::arrived::file_received(&self.runtime.node, offer, &app, uri.as_deref())
+        {
+            bus.publish(&note);
+        }
         let app = if app.is_empty() {
             self.listen.opener.clone()
         } else {

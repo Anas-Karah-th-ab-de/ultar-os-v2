@@ -108,6 +108,8 @@ pub enum QuickPage {
     WifiJoin,
     /// The VPN connections (qs.vpn.list).
     Vpn,
+    /// The paired devices (qs.mesh.list).
+    Mesh,
 }
 
 /// The keyboard layouts of the compositor.

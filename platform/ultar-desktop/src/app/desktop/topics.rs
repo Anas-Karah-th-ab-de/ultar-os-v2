@@ -8,6 +8,7 @@ use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::calendar::Changed as CalendarChanged;
 use ultar_bus::messages::media::MediaState;
 use ultar_bus::messages::mesh::{HandoffProgress, MeshState};
+use ultar_bus::messages::mesh_received::FileReceived;
 use ultar_bus::messages::net::{NetState, WifiLink};
 use ultar_bus::messages::notify::Dismissed;
 use ultar_bus::messages::power::PowerActions;
@@ -31,6 +32,7 @@ pub struct ServiceTopics {
     vpn: Option<TypedSubscription<VpnState>>,
     mesh: Option<TypedSubscription<MeshState>>,
     handoff: Option<TypedSubscription<HandoffProgress>>,
+    arrived: Option<TypedSubscription<FileReceived>>,
     helper: Option<TypedSubscription<ultar_bus::messages::agent::AgentState>>,
     progress: Option<TypedSubscription<ultar_bus::messages::agent::Progress>>,
 }
@@ -62,6 +64,7 @@ impl ServiceTopics {
             vpn: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
             handoff: client.subscribe().ok(),
+            arrived: client.subscribe().ok(),
             helper: client.subscribe().ok(),
             progress: client.subscribe().ok(),
         }
@@ -88,6 +91,13 @@ impl ServiceTopics {
         let mut progress = Vec::new();
         any |= drain(&self.handoff, |m| progress.push(m));
         crate::model::mesh::report(d, &progress);
+        let mut files = Vec::new();
+        any |= drain(&self.arrived, |m| files.push(m));
+        for file in files {
+            d.svc
+                .mesh
+                .received(&file.from_name, &file.title, Some(file.uri));
+        }
         let overview = &mut d.overview;
         let (sources, helper) = (&mut overview.sources, &mut overview.helper);
         any |= drain(&self.helper, |m| {

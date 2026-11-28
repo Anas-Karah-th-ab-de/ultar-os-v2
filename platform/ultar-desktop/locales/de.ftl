@@ -442,3 +442,6 @@ volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du n
 volumed.drive.title = Laufwerk „{arg0}“ verbunden
 volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
 volumed.drive.mount = Einhängen
+desk.mesh.list.empty = Keine gekoppelten Geräte
+desk.mesh.list.here = Verbunden
+desk.mesh.list.devices = Gekoppelte Geräte

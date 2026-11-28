@@ -32,6 +32,24 @@ pub(super) fn send(s: &mut Shell, device: Option<String>) -> Outcome {
     Outcome::effect_and_close(Effect::Service(Call::MeshSend(device, front)))
 }
 
+/// A click on a paired device in the list of the Mesh tile (qs.mesh.list): a connected one
+/// gets what is in front (a notice says when there is nothing to hand over), one that is not
+/// connected opens the Mesh area of Settings.
+pub(super) fn list_device(s: &mut Shell, id: &str) -> Outcome {
+    let here = s
+        .d
+        .svc
+        .mesh
+        .state
+        .iter()
+        .flat_map(|m| &m.peers)
+        .any(|p| p.id == id && p.reachable);
+    if here && mesh::can_send(&s.d.svc) {
+        return send(s, Some(id.to_owned()));
+    }
+    super::bar::launch(s, super::bar::SETTINGS, Opening::settings_page("mesh"))
+}
+
 /// A click inside the open choice dialog.
 pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Option<Outcome> {
     match (target, kind) {

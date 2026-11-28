@@ -442,3 +442,6 @@ volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no
 volumed.drive.title = Drive "{arg0}" connected
 volumed.drive.body = Mount it to open its files.
 volumed.drive.mount = Mount
+desk.mesh.list.empty = No paired devices
+desk.mesh.list.here = Connected
+desk.mesh.list.devices = Paired devices

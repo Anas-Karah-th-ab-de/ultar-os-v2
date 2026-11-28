@@ -13,6 +13,7 @@ pub mod geometry;
 pub mod helper;
 pub mod menu;
 pub mod mesh_send;
+pub mod mesh_list;
 pub mod mesh_toasts;
 pub mod note;
 pub mod overview;
@@ -98,6 +99,8 @@ pub enum Target {
     BtScan,
     /// Bluetooth page: a device (pair, connect or disconnect).
     BtDevice(String),
+    /// A paired device in the list of the Mesh tile (qs.mesh.list).
+    MeshDevice(String),
     /// Bluetooth page: forget a paired device.
     BtForget(String),
     /// Calendar: previous month.
