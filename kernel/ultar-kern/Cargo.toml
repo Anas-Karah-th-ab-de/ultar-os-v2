@@ -1,6 +1,6 @@
 [package]
 name = "ultar-kern"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 description = "Ultar-Kern – eigener Rust-Kernel von KM Code Craft (UEFI, eigene Treiber, Treiber-Werkstatt)"
 license = "Proprietary"

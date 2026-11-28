@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ab-agent"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
 ]
@@ -825,7 +825,7 @@ checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
 name = "calls-e2e"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-call",
@@ -4679,7 +4679,7 @@ dependencies = [
 
 [[package]]
 name = "phone-e2e"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-call",
@@ -6045,7 +6045,7 @@ dependencies = [
 
 [[package]]
 name = "settings-e2e"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-accountd",
@@ -8324,7 +8324,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "ultar-accountd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8336,7 +8336,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-admin"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "argon2 0.5.3",
  "axum",
@@ -8359,7 +8359,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-agentd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8370,7 +8370,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-appbuilder"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ed25519-dalek 2.2.0",
  "hex",
@@ -8385,7 +8385,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-apps"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "hex",
  "serde",
@@ -8400,11 +8400,11 @@ dependencies = [
 
 [[package]]
 name = "ultar-audio"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-audiod"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "ultar-bus",
@@ -8416,7 +8416,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-auth"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "argon2 0.5.3",
  "password-hash 0.5.0",
@@ -8427,18 +8427,18 @@ dependencies = [
 
 [[package]]
 name = "ultar-brand"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-bt"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
 ]
 
 [[package]]
 name = "ultar-btd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes 0.9.4",
  "cmac",
@@ -8461,7 +8461,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-bus"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "postcard",
  "serde",
@@ -8471,7 +8471,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-busd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -8481,7 +8481,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-calendard"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "ultar-bus",
@@ -8491,7 +8491,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-call"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
@@ -8516,7 +8516,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-captured"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "png 0.17.16",
  "rustix",
@@ -8529,7 +8529,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-catalog"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -8544,7 +8544,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-check"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8554,7 +8554,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-cloud"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -8574,14 +8574,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-compat"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
 ]
 
 [[package]]
 name = "ultar-compositor"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-hal",
@@ -8594,14 +8594,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-ctl"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-sprache",
 ]
 
 [[package]]
 name = "ultar-desktop"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ed25519-dalek 2.2.0",
  "hex",
@@ -8626,7 +8626,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-devd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "serde",
@@ -8642,14 +8642,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-dialog-core"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
 ]
 
 [[package]]
 name = "ultar-displayd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-bus",
@@ -8663,7 +8663,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-doc"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "miniz_oxide 0.8.9",
  "png 0.17.16",
@@ -8677,7 +8677,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-driverpkg"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -8692,7 +8692,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-editor"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-i18n",
  "ultar-office",
@@ -8703,18 +8703,18 @@ dependencies = [
 
 [[package]]
 name = "ultar-ext4grow"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-face"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "tract-onnx",
 ]
 
 [[package]]
 name = "ultar-files"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "png 0.17.16",
  "rustix",
@@ -8727,7 +8727,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-hal",
  "ultar-profile",
@@ -8735,7 +8735,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal-gfx"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "drm",
  "rustix",
@@ -8744,7 +8744,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal-linux"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-hal",
@@ -8752,7 +8752,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal-netlink"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "libc",
  "rustix",
@@ -8760,7 +8760,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal-system"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
  "ultar-driverpkg",
@@ -8770,18 +8770,18 @@ dependencies = [
 
 [[package]]
 name = "ultar-i18n"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-brand",
 ]
 
 [[package]]
 name = "ultar-ime"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-init"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
  "serde",
@@ -8796,7 +8796,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-installer-ui"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "argon2 0.5.3",
  "getrandom 0.2.17",
@@ -8817,7 +8817,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-launcher"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "serde",
@@ -8833,7 +8833,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-llm"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -8847,7 +8847,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-llm-bus"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde_json",
  "ultar-bus",
@@ -8857,7 +8857,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-llm-cloud"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes-gcm 0.10.3",
  "hmac 0.12.1",
@@ -8873,7 +8873,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-lock-core"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-i18n",
@@ -8881,7 +8881,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-logd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "sha2 0.10.9",
  "toml 0.8.23",
@@ -8891,7 +8891,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-luks"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes 0.8.4",
  "argon2 0.5.3",
@@ -8909,7 +8909,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-mediad"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "tempfile",
@@ -8920,7 +8920,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-mesh"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",
@@ -8941,7 +8941,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-mobile"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-compositor",
@@ -8958,14 +8958,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-modem"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
 ]
 
 [[package]]
 name = "ultar-net"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
  "serde",
@@ -8974,7 +8974,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-netd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes-kw",
  "getrandom 0.2.17",
@@ -8993,7 +8993,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-netproto"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes-kw",
  "hmac 0.12.1",
@@ -9005,11 +9005,11 @@ dependencies = [
 
 [[package]]
 name = "ultar-notify"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-notifyd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-service",
@@ -9018,7 +9018,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-office"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "encoding_rs",
  "hayro",
@@ -9033,7 +9033,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-pdf"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-i18n",
@@ -9044,7 +9044,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-phone"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "jpeg-encoder",
  "ultar-bus",
@@ -9056,7 +9056,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-pkg"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -9073,7 +9073,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-powerd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-bus",
@@ -9086,7 +9086,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-profile"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -9094,11 +9094,11 @@ dependencies = [
 
 [[package]]
 name = "ultar-radio"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-remote"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-i18n",
@@ -9108,7 +9108,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-ril"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "libc",
  "ultar-bus",
@@ -9130,14 +9130,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-secure"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
 ]
 
 [[package]]
 name = "ultar-service"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "ultar-bus",
@@ -9146,7 +9146,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-sessiond"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "ultar-bus",
@@ -9156,7 +9156,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-settings"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "png 0.17.16",
  "serde",
@@ -9169,7 +9169,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-settingsd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "toml 0.8.23",
  "ultar-bus",
@@ -9180,7 +9180,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-sheet"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-bus",
  "ultar-i18n",
@@ -9191,7 +9191,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-shell"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "cosmic-text",
@@ -9219,7 +9219,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-shell-host"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-i18n",
  "ultar-surface",
@@ -9228,15 +9228,15 @@ dependencies = [
 
 [[package]]
 name = "ultar-slots"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-sprache"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-sshd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "getrandom 0.2.17",
@@ -9249,7 +9249,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-store"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -9270,7 +9270,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-surface"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "ultar-hal-gfx",
@@ -9279,7 +9279,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-svckit"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "crc32fast",
  "serde",
@@ -9289,14 +9289,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-sys"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
 ]
 
 [[package]]
 name = "ultar-telegram"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "grammers-client",
  "grammers-session",
@@ -9305,7 +9305,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-terminal"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-brand",
  "ultar-i18n",
@@ -9316,7 +9316,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-textview"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-i18n",
  "ultar-ui",
@@ -9324,7 +9324,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-tor"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "arti-client",
  "getrandom 0.4.3",
@@ -9338,7 +9338,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-ui"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ab_glyph_rasterizer",
  "libm",
@@ -9353,7 +9353,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-unlock"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ultar-brand",
  "ultar-compositor",
@@ -9369,7 +9369,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-update"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ed25519-dalek 2.2.0",
  "getrandom 0.2.17",
@@ -9391,7 +9391,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-verbund"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",
@@ -9421,7 +9421,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-volumed"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustix",
  "serde",
@@ -9434,11 +9434,11 @@ dependencies = [
 
 [[package]]
 name = "ultar-vpn"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "ultar-vpnd"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "boringtun",
@@ -9454,7 +9454,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-web"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "encoding_rs",
  "mp4",
@@ -9474,7 +9474,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-zellen"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "libc",
  "nix 0.29.0",
