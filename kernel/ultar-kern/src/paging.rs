@@ -234,8 +234,44 @@ impl AddrSpace {
         let l3 = &mut tab(t3)[((va >> 30) & 511) as usize];
         let t2 = Self::next(l3, true)?;
         let l2 = &mut tab(t2)[((va >> 21) & 511) as usize];
+        // a 2-MiB kernel page in a user window gives way to an own table: its translation must not
+        // stay in this core's TLB (it would keep the new user pages unreachable)
+        let huge = *l2 & P != 0 && *l2 & HUGE != 0;
         let t1 = Self::next(l2, true)?;
+        if huge {
+            // SAFETY: invalidates the translation of one address; no memory is touched.
+            unsafe { core::arch::asm!("invlpg [{}]", in(reg) va) };
+        }
         Some(&mut tab(t1)[((va >> 12) & 511) as usize])
+    }
+
+    /// A user access at `va` in a low window met a 2-MiB kernel page of the shared tables (present,
+    /// without the user bit): the window's page is not mapped yet – a reserved range there is put in
+    /// place like an absent page.
+    pub fn kernel_page_at(&self, va: u64) -> bool {
+        if low_window(va, va + 1).is_none() {
+            return false;
+        }
+        let mut t = self.pml4;
+        for sh in [39u64, 30, 21] {
+            let e = tab(t)[((va >> sh) & 511) as usize];
+            if e & P == 0 {
+                return false;
+            }
+            if e & HUGE != 0 {
+                return e & OWN == 0;
+            }
+            t = e & ADDR;
+        }
+        false
+    }
+
+    /// The page at `va` already allows the access (`write`, `exec`): the fault came from a stale
+    /// translation of another core (a kernel page this window replaced) – nothing to do but retry.
+    pub fn allows(&self, va: u64, write: bool, exec: bool) -> bool {
+        let Some(e) = self.walk(va) else { return false };
+        let e = *e;
+        e & P != 0 && e & U != 0 && (!write || e & W != 0) && (!exec || e & nx() == 0)
     }
 
     /// Benutzerseite bei `va` (genullt) bereitstellen; liefert die physische Adresse.

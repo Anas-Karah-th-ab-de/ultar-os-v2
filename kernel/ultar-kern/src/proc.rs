@@ -1318,7 +1318,25 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
     let cr2: u64;
     unsafe { core::arch::asm!("mov {}, cr2", out(reg) cr2) };
     crate::heap::clear_refused();
-    if v == 14 && f.err & 1 == 0 {
+    // a user access in a low window that met a kernel page (present, no user bit) is an absent page
+    // of the window; one that the page already allows came from another core's stale translation
+    let user_prot = v == 14 && f.err & 1 != 0 && f.err & 4 != 0 && crate::paging::low_window(cr2, cr2 + 1).is_some();
+    let (kernel_page, stale) = if user_prot {
+        let ps = PROCS.lock();
+        let me = current();
+        match ps.iter().find(|p| p.pid == me).and_then(|p| p.g.space.as_ref()) {
+            Some(s) => (s.kernel_page_at(cr2), s.allows(cr2, f.err & 2 != 0, f.err & 0x10 != 0)),
+            None => (false, false),
+        }
+    } else {
+        (false, false)
+    };
+    if stale {
+        // SAFETY: invalidates the translation of one user address; no memory is touched.
+        unsafe { core::arch::asm!("invlpg [{}]", in(reg) cr2) };
+        return;
+    }
+    if v == 14 && (f.err & 1 == 0 || kernel_page) {
         // reservierter mmap-Bereich oder Stapel: Seite jetzt belegen
         use crate::paging::Fault;
         let got = {
