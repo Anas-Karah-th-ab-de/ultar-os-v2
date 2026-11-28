@@ -25,12 +25,14 @@ impl Sectors {
     /// Encrypts `buf` (whole sectors) that starts at sector `first` of the area.
     pub fn encrypt(&self, first: u64, buf: &mut [u8]) {
         assert_eq!(buf.len() as u64 % SECTOR, 0, "whole sectors only");
-        self.0.encrypt_area(buf, SECTOR as usize, u128::from(first), get_tweak_default);
+        self.0
+            .encrypt_area(buf, SECTOR as usize, u128::from(first), get_tweak_default);
     }
 
     /// Decrypts `buf` (whole sectors) that starts at sector `first` of the area.
     pub fn decrypt(&self, first: u64, buf: &mut [u8]) {
         assert_eq!(buf.len() as u64 % SECTOR, 0, "whole sectors only");
-        self.0.decrypt_area(buf, SECTOR as usize, u128::from(first), get_tweak_default);
+        self.0
+            .decrypt_area(buf, SECTOR as usize, u128::from(first), get_tweak_default);
     }
 }

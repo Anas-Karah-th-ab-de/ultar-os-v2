@@ -9,7 +9,9 @@ pub const MAGIC2: [u8; 6] = *b"SKUL\xba\xbe";
 const BIN: usize = 4096;
 const CSUM: usize = 448;
 /// Allowed header sizes (binary header plus JSON area).
-const SIZES: [u64; 9] = [0x4000, 0x8000, 0x1_0000, 0x2_0000, 0x4_0000, 0x8_0000, 0x10_0000, 0x20_0000, 0x40_0000];
+const SIZES: [u64; 9] = [
+    0x4000, 0x8000, 0x1_0000, 0x2_0000, 0x4_0000, 0x8_0000, 0x10_0000, 0x20_0000, 0x40_0000,
+];
 
 pub struct Fields<'a> {
     pub magic: [u8; 6],
@@ -83,7 +85,11 @@ fn copy_at(read: &mut Reader<'_>, at: u64, magic: [u8; 6]) -> Result<(u64, Value
 pub fn read_best(read: &mut Reader<'_>) -> Result<Value, Error> {
     let mut head = [0u8; 8];
     read(0, &mut head)?;
-    let primary = if head[..6] == MAGIC { Some(copy_at(read, 0, MAGIC)) } else { None };
+    let primary = if head[..6] == MAGIC {
+        Some(copy_at(read, 0, MAGIC))
+    } else {
+        None
+    };
     let secondary = SIZES.iter().find_map(|&at| copy_at(read, at, MAGIC2).ok());
     match (primary, secondary) {
         (None, None) => Err(Error::NotLuks),

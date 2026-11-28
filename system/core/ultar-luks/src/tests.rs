@@ -15,7 +15,10 @@ fn format_then_open() {
 #[test]
 fn wrong_passphrase_is_refused() {
     let f = format(PASS, &Params::TEST).unwrap();
-    assert_eq!(open_bytes(&f.metadata, b"falsch").err(), Some(Error::Passphrase));
+    assert_eq!(
+        open_bytes(&f.metadata, b"falsch").err(),
+        Some(Error::Passphrase)
+    );
 }
 
 #[test]
@@ -24,12 +27,18 @@ fn damaged_primary_falls_back_to_secondary() {
     f.metadata[5000] ^= 0xff;
     assert!(open_bytes(&f.metadata, PASS).is_ok());
     f.metadata[HDR_SIZE as usize + 5000] ^= 0xff;
-    assert!(matches!(open_bytes(&f.metadata, PASS), Err(Error::Header(_))));
+    assert!(matches!(
+        open_bytes(&f.metadata, PASS),
+        Err(Error::Header(_))
+    ));
 }
 
 #[test]
 fn not_luks() {
-    assert_eq!(open_bytes(&vec![0u8; 1 << 16], PASS).err(), Some(Error::NotLuks));
+    assert_eq!(
+        open_bytes(&vec![0u8; 1 << 16], PASS).err(),
+        Some(Error::NotLuks)
+    );
     assert!(!is_luks(&[0u8; 8]));
 }
 

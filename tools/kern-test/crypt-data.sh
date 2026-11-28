@@ -35,3 +35,22 @@ sudo -n cryptsetup close ultar-crypt-t
 grep -aq "geschrieben im Ultar-Kern" "$W/disk.img" && { echo "FAIL  plain text on the disk"; fail=1; }
 [ "$fail" = 0 ] || { tail -30 "$W/log"; exit 1; }
 echo "ok    CRYPTTEST: ALLES OK (LUKS2 data partition: locked, wrong key refused, read and write, host reads it back)"
+
+# 2) the start path: ultar-luks (static, as in the image) formats on the host, in the kernel
+# `ultar-luks unlock` asks on the console – first a wrong passphrase, then the right one.
+RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -q --target x86_64-unknown-linux-gnu -p ultar-luks
+TOOL=target/x86_64-unknown-linux-gnu/release/ultar-luks
+truncate -s 64M "$W/luks2.img"
+echo "$PASS" | "$TOOL" format "$W/luks2.img" "$W/plain.img" --test
+python3 tools/kern-test/gptimg.py "$W/disk2.img" "ultar-data:linux:$W/luks2.img"
+cp out/ultar-kern-esp.img "$W/esp.img"
+mcopy -i "$W/esp.img" "$TOOL" ::/bin/ultar-luks
+QARGS="-drive file=$W/disk2.img,if=none,id=c,format=raw -device virtio-blk-pci,drive=c" SMP=2 MEM=1024 WAIT=15 \
+  timeout 300 python3 tools/kern-test/qtest.py "$W/esp.img" "/bin/ultar-luks unlock" "@falsch" "@$PASS" \
+  "/bin/cat /sys/kernel/ultar/crypt" "/bin/cat /data/probe.txt" > "$W/log2" 2>&1 || true
+grep -aq "Falsches Passwort" "$W/log2" || { echo "FAIL  wrong passphrase not reported"; fail=1; }
+grep -aq "Daten entsperrt" "$W/log2" || { echo "FAIL  ultar-luks unlock did not open the data"; fail=1; }
+grep -aq "ultar luks probe" "$W/log2" || { echo "FAIL  /data not readable after unlock"; fail=1; }
+grep -aq "$PASS" "$W/log2" && { echo "FAIL  the passphrase was echoed"; fail=1; }
+[ "$fail" = 0 ] || { tail -30 "$W/log2"; exit 1; }
+echo "ok    ultar-luks unlock: wrong passphrase refused, right one opens /data in the kernel"

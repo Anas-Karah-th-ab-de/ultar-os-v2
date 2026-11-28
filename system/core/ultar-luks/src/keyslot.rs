@@ -19,10 +19,19 @@ pub struct Sealed {
     pub area: Vec<u8>,
 }
 
-fn argon2id(pass: &[u8], salt: &[u8], memory: u32, time: u32, lanes: u32, algo: Algorithm) -> Result<Key, Error> {
+fn argon2id(
+    pass: &[u8],
+    salt: &[u8],
+    memory: u32,
+    time: u32,
+    lanes: u32,
+    algo: Algorithm,
+) -> Result<Key, Error> {
     let params = argon2::Params::new(memory, time, lanes, Some(KEY_LEN)).map_err(|_| Error::Kdf)?;
     let mut out: Key = Zeroizing::new([0u8; KEY_LEN]);
-    Argon2::new(algo, Version::V0x13, params).hash_password_into(pass, salt, &mut out[..]).map_err(|_| Error::Kdf)?;
+    Argon2::new(algo, Version::V0x13, params)
+        .hash_password_into(pass, salt, &mut out[..])
+        .map_err(|_| Error::Kdf)?;
     Ok(out)
 }
 
@@ -37,7 +46,14 @@ pub fn digest(key: &[u8], salt: &[u8], iterations: u32, len: usize) -> Vec<u8> {
 pub fn seal(key: &Key, pass: &[u8], p: &Params) -> Result<Sealed, Error> {
     let mut salt = [0u8; 32];
     crate::random(&mut salt)?;
-    let slot_key = argon2id(pass, &salt, p.memory_kib, p.time, p.lanes, Algorithm::Argon2id)?;
+    let slot_key = argon2id(
+        pass,
+        &salt,
+        p.memory_kib,
+        p.time,
+        p.lanes,
+        Algorithm::Argon2id,
+    )?;
     let split = af::split(&key[..], STRIPES)?;
     let mut area = vec![0u8; split.len().div_ceil(4096) * 4096];
     area[..split.len()].copy_from_slice(&split);
@@ -48,11 +64,15 @@ pub fn seal(key: &Key, pass: &[u8], p: &Params) -> Result<Sealed, Error> {
 fn b64(v: &Value) -> Result<Vec<u8>, Error> {
     use base64::Engine;
     let s = v.as_str().ok_or(Error::Header("base64 field"))?;
-    base64::engine::general_purpose::STANDARD.decode(s).map_err(|_| Error::Header("base64"))
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|_| Error::Header("base64"))
 }
 
 fn u32_of(v: &Value, what: &'static str) -> Result<u32, Error> {
-    num(v).and_then(|n| u32::try_from(n).ok()).ok_or(Error::Header(what))
+    num(v)
+        .and_then(|n| u32::try_from(n).ok())
+        .ok_or(Error::Header(what))
 }
 
 /// The keyslot key the passphrase gives.
@@ -60,12 +80,23 @@ fn slot_key(kdf: &Value, pass: &[u8]) -> Result<Key, Error> {
     let salt = b64(&kdf["salt"])?;
     match kdf["type"].as_str() {
         Some(t @ ("argon2id" | "argon2i")) => {
-            let algo = if t == "argon2id" { Algorithm::Argon2id } else { Algorithm::Argon2i };
+            let algo = if t == "argon2id" {
+                Algorithm::Argon2id
+            } else {
+                Algorithm::Argon2i
+            };
             let memory = u32_of(&kdf["memory"], "kdf memory")?;
             if memory > 4 << 20 {
                 return Err(Error::Unsupported("kdf memory above 4 GiB"));
             }
-            argon2id(pass, &salt, memory, u32_of(&kdf["time"], "kdf time")?, u32_of(&kdf["cpus"], "kdf cpus")?, algo)
+            argon2id(
+                pass,
+                &salt,
+                memory,
+                u32_of(&kdf["time"], "kdf time")?,
+                u32_of(&kdf["cpus"], "kdf cpus")?,
+                algo,
+            )
         }
         Some("pbkdf2") => {
             if kdf["hash"] != "sha256" {
@@ -98,7 +129,12 @@ fn matches(key: &[u8], d: &Value) -> Result<bool, Error> {
 }
 
 /// Opens keyslot `s`: `Some(key)` when the passphrase is right.
-pub fn open(s: &Value, d: &Value, read: &mut Reader<'_>, pass: &[u8]) -> Result<Option<Key>, Error> {
+pub fn open(
+    s: &Value,
+    d: &Value,
+    read: &mut Reader<'_>,
+    pass: &[u8],
+) -> Result<Option<Key>, Error> {
     if s["type"] != "luks2" || num(&s["key_size"]) != Some(KEY_LEN as u64) {
         return Err(Error::Unsupported("keyslot type or key size"));
     }
@@ -106,9 +142,14 @@ pub fn open(s: &Value, d: &Value, read: &mut Reader<'_>, pass: &[u8]) -> Result<
     if af["type"] != "luks1" || af["hash"] != "sha256" {
         return Err(Error::Unsupported("AF (only luks1 sha256)"));
     }
-    let stripes = num(&af["stripes"]).filter(|&n| n > 0).ok_or(Error::Header("stripes"))? as usize;
+    let stripes = num(&af["stripes"])
+        .filter(|&n| n > 0)
+        .ok_or(Error::Header("stripes"))? as usize;
     let area = &s["area"];
-    if area["type"] != "raw" || area["encryption"] != "aes-xts-plain64" || num(&area["key_size"]) != Some(KEY_LEN as u64) {
+    if area["type"] != "raw"
+        || area["encryption"] != "aes-xts-plain64"
+        || num(&area["key_size"]) != Some(KEY_LEN as u64)
+    {
         return Err(Error::Unsupported("keyslot area cipher"));
     }
     let offset = num(&area["offset"]).ok_or(Error::Header("area offset"))?;

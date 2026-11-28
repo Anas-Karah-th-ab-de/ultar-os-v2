@@ -57,9 +57,19 @@ pub struct Params {
 
 impl Params {
     /// Installed systems: 256 MiB, 4 passes, 4 lanes (about a second on a current PC).
-    pub const INSTALL: Params = Params { memory_kib: 256 * 1024, time: 4, lanes: 4, digest_iterations: 100_000 };
+    pub const INSTALL: Params = Params {
+        memory_kib: 256 * 1024,
+        time: 4,
+        lanes: 4,
+        digest_iterations: 100_000,
+    };
     /// Tests and test images only: cheap, still valid for cryptsetup.
-    pub const TEST: Params = Params { memory_kib: 1024, time: 4, lanes: 1, digest_iterations: 1000 };
+    pub const TEST: Params = Params {
+        memory_kib: 1024,
+        time: 4,
+        lanes: 1,
+        digest_iterations: 1000,
+    };
 }
 
 /// Why a volume could not be written or opened.
@@ -132,7 +142,14 @@ fn uuid() -> Result<String, Error> {
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
     let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    Ok(format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]))
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &h[..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..]
+    ))
 }
 
 /// Formats a new volume: a random master key in keyslot 0, protected by `passphrase`.
@@ -191,7 +208,17 @@ pub fn format(passphrase: &[u8], params: &Params) -> Result<Formatted, Error> {
     let mut metadata = vec![0u8; KEYSLOTS_OFFSET as usize + slot.area.len()];
     for (at, magic) in [(0u64, MAGIC), (HDR_SIZE, header::MAGIC2)] {
         let h = &mut metadata[at as usize..(at + HDR_SIZE) as usize];
-        header::write(h, &header::Fields { magic, seqid: 1, offset: at, uuid: &id, salt: &salt }, &text)?;
+        header::write(
+            h,
+            &header::Fields {
+                magic,
+                seqid: 1,
+                offset: at,
+                uuid: &id,
+                salt: &salt,
+            },
+            &text,
+        )?;
     }
     metadata[KEYSLOTS_OFFSET as usize..].copy_from_slice(&slot.area);
     Ok(Formatted { metadata, key })
@@ -219,7 +246,9 @@ pub(crate) fn num(v: &Value) -> Option<u64> {
 
 /// The data segment: must be the one this crate and the kernel decrypt.
 fn segment(meta: &Value) -> Result<u64, Error> {
-    let segs = meta["segments"].as_object().ok_or(Error::Header("segments"))?;
+    let segs = meta["segments"]
+        .as_object()
+        .ok_or(Error::Header("segments"))?;
     if segs.len() != 1 {
         return Err(Error::Unsupported("more than one segment"));
     }
@@ -236,7 +265,11 @@ fn segment(meta: &Value) -> Result<u64, Error> {
     if s["size"] != "dynamic" {
         return Err(Error::Unsupported("fixed segment size"));
     }
-    if s.get("integrity").is_some() || s.get("flags").and_then(Value::as_array).is_some_and(|f| !f.is_empty()) {
+    if s.get("integrity").is_some()
+        || s.get("flags")
+            .and_then(Value::as_array)
+            .is_some_and(|f| !f.is_empty())
+    {
         return Err(Error::Unsupported("segment flags or integrity"));
     }
     if meta["config"].get("requirements").is_some() {
@@ -253,11 +286,19 @@ fn segment(meta: &Value) -> Result<u64, Error> {
 pub fn open(read: &mut Reader<'_>, passphrase: &[u8]) -> Result<Opened, Error> {
     let meta = header::read_best(read)?;
     let offset = segment(&meta)?;
-    let slots = meta["keyslots"].as_object().ok_or(Error::Header("keyslots"))?;
-    let digests = meta["digests"].as_object().ok_or(Error::Header("digests"))?;
+    let slots = meta["keyslots"]
+        .as_object()
+        .ok_or(Error::Header("keyslots"))?;
+    let digests = meta["digests"]
+        .as_object()
+        .ok_or(Error::Header("digests"))?;
     let mut tried = false;
     for (id, slot) in slots {
-        let Some(d) = digests.values().find(|d| d["keyslots"].as_array().is_some_and(|k| k.iter().any(|x| x == id))) else {
+        let Some(d) = digests.values().find(|d| {
+            d["keyslots"]
+                .as_array()
+                .is_some_and(|k| k.iter().any(|x| x == id))
+        }) else {
             continue;
         };
         tried = true;
@@ -277,7 +318,9 @@ pub fn open_bytes(meta: &[u8], passphrase: &[u8]) -> Result<Opened, Error> {
     open(
         &mut |at, buf| {
             let at = at as usize;
-            let src = meta.get(at..at + buf.len()).ok_or(Error::Header("short metadata"))?;
+            let src = meta
+                .get(at..at + buf.len())
+                .ok_or(Error::Header("short metadata"))?;
             buf.copy_from_slice(src);
             Ok(())
         },

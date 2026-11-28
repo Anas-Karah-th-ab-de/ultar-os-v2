@@ -8776,6 +8776,7 @@ dependencies = [
  "ultar-bus",
  "ultar-i18n",
  "ultar-installer-ui",
+ "ultar-luks",
  "ultar-settingsd",
  "ultar-slots",
  "ultar-surface",

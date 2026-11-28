@@ -41,7 +41,12 @@ fn text<E: std::fmt::Display>(e: E) -> String {
 fn format(image: &str, plain: &str, params: &Params) -> Result<(), String> {
     let pass = stdin_line();
     let f = ultar_luks::format(pass.as_bytes(), params).map_err(text)?;
-    let out = OpenOptions::new().write(true).create(true).truncate(false).open(image).map_err(text)?;
+    let out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(image)
+        .map_err(text)?;
     let mut meta = f.metadata.clone();
     meta.resize(DATA_OFFSET as usize, 0);
     out.write_all_at(&meta, 0).map_err(text)?;
@@ -57,7 +62,8 @@ fn format(image: &str, plain: &str, params: &Params) -> Result<(), String> {
         let n = got.div_ceil(SECTOR as usize) * SECTOR as usize;
         buf[got..n].fill(0);
         s.encrypt(off / SECTOR, &mut buf[..n]);
-        out.write_all_at(&buf[..n], DATA_OFFSET + off).map_err(text)?;
+        out.write_all_at(&buf[..n], DATA_OFFSET + off)
+            .map_err(text)?;
         off += n as u64;
     }
     out.sync_all().map_err(text)
@@ -81,7 +87,8 @@ fn decrypt(image: &str, out: &str, bytes: u64) -> Result<(), String> {
     let mut off = 0u64;
     while off < bytes {
         let n = ((bytes - off).min(CHUNK as u64).div_ceil(SECTOR) * SECTOR) as usize;
-        f.read_exact_at(&mut buf[..n], o.offset + off).map_err(text)?;
+        f.read_exact_at(&mut buf[..n], o.offset + off)
+            .map_err(text)?;
         s.decrypt(off / SECTOR, &mut buf[..n]);
         let keep = ((bytes - off) as usize).min(n);
         dst.write_all(&buf[..keep]).map_err(text)?;
@@ -142,7 +149,11 @@ fn unlock() -> Result<(), String> {
         return Ok(());
     }
     let data = File::open(DATA_NODE).map_err(|e| format!("{DATA_NODE}: {e}"))?;
-    let mut console = OpenOptions::new().read(true).write(true).open(CONSOLE).map_err(|e| format!("{CONSOLE}: {e}"))?;
+    let mut console = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(CONSOLE)
+        .map_err(|e| format!("{CONSOLE}: {e}"))?;
     let _ = console.write_all(b"\nUltar OS: Daten verschluesselt / data encrypted\n");
     loop {
         let Some(pass) = ask(&mut console, "Passwort / passphrase: ") else {
@@ -151,8 +162,12 @@ fn unlock() -> Result<(), String> {
         match ultar_luks::open(&mut reader(&data), pass.as_bytes()) {
             Ok(o) => {
                 let cmd = Zeroizing::new(format!("open {} {}", o.offset, hex(&o.key[..]).as_str()));
-                let mut ctl = OpenOptions::new().write(true).open(CONTROL).map_err(|e| format!("{CONTROL}: {e}"))?;
-                ctl.write_all(cmd.as_bytes()).map_err(|e| format!("kernel refused the key: {e}"))?;
+                let mut ctl = OpenOptions::new()
+                    .write(true)
+                    .open(CONTROL)
+                    .map_err(|e| format!("{CONTROL}: {e}"))?;
+                ctl.write_all(cmd.as_bytes())
+                    .map_err(|e| format!("kernel refused the key: {e}"))?;
                 let _ = console.write_all(b"Daten entsperrt / data unlocked\n");
                 return Ok(());
             }
@@ -166,8 +181,16 @@ fn unlock() -> Result<(), String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let params = if args.iter().any(|a| a == "--test") { Params::TEST } else { Params::INSTALL };
-    let words: Vec<&str> = args.iter().map(String::as_str).filter(|a| *a != "--test").collect();
+    let params = if args.iter().any(|a| a == "--test") {
+        Params::TEST
+    } else {
+        Params::INSTALL
+    };
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--test")
+        .collect();
     let r = match words.as_slice() {
         ["unlock"] => unlock(),
         ["format", image, plain] => format(image, plain, &params),
