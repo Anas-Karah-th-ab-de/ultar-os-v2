@@ -31,7 +31,13 @@ const CTRL: u64 = 0x00000;
 const STATUS: u64 = 0x00008;
 const CTRL_EXT: u64 = 0x00018;
 const EICR: u64 = 0x00800;
+const EITR0: u64 = 0x00820;
+const EIMS: u64 = 0x00880;
 const EIMC: u64 = 0x00888;
+const EIAC: u64 = 0x00810;
+const EIAM: u64 = 0x00890;
+const GPIE: u64 = 0x00898;
+const IVAR0: u64 = 0x00900;
 const EIMC_EX0: u64 = 0x00ab0;
 const EIMC_EX1: u64 = 0x00ab4;
 const EEC: u64 = 0x10010;
@@ -97,6 +103,34 @@ struct Nic {
     /// E610: last link answer of the firmware (bit 31 up, low bits Mbit/s) and when it was asked
     link_cache: core::sync::atomic::AtomicU32,
     link_asked: core::sync::atomic::AtomicU64,
+}
+
+/// Angemeldete Unterbrechungsquellen (eine je 10G-Port mit MSI-X): Vektor, BAR0 des Ports, Zähler.
+/// Der Handler bekommt nur seinen Vektor und findet hier den Port. Die Sperre wird – wie bei der
+/// Grafik – auch im Interrupt kurz genommen (Anmeldung nur beim Start).
+struct Irq {
+    vector: u8,
+    mmio: u64,
+    count: core::sync::atomic::AtomicU64,
+}
+static IRQS: spin::Mutex<alloc::vec::Vec<Irq>> = spin::Mutex::new(alloc::vec::Vec::new());
+
+/// Handler eines MSI-X-Vektors: die Ursache lesen (RxQ0), zählen, Weckruf, dann die Maske wieder
+/// freigeben. Die Rate begrenzt der Throttle EITR, ein Sturm ist damit ausgeschlossen.
+fn on_irq(vector: u8) {
+    let g = IRQS.lock();
+    if let Some(irq) = g.iter().find(|q| q.vector == vector) {
+        let m = irq.mmio;
+        let _ = r(m, EICR); // Ursache lesen/quittieren
+        irq.count.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        w(m, EIMS, 1); // Vektor 0 wieder scharf (Auto-Maske hatte ihn gesperrt)
+        crate::apic::wake_waiters();
+    }
+}
+
+/// Zähler aller 10G-Unterbrechungen (für Selbsttest/Protokoll).
+pub fn irq_count() -> u64 {
+    IRQS.lock().iter().map(|q| q.count.load(core::sync::atomic::Ordering::Relaxed)).sum()
 }
 
 fn r(b: u64, o: u64) -> u32 {
@@ -231,6 +265,35 @@ fn links(m: u64) -> (bool, u32) {
     (l & (1 << 30) != 0, mbit)
 }
 
+/// MSI-X für RxQ0 einrichten: einen Kern-Vektor holen, die Tabellenzeile 0 auf ihn zeigen lassen,
+/// die Empfangs-Warteschlange 0 auf diesen Vektor abbilden (IVAR), Auto-Maske und Auto-Quittung
+/// setzen, Rate begrenzen (EITR ~200 µs) und den Vektor scharf schalten. Rückgabe: der Vektor, oder
+/// `None`, wenn das Gerät kein MSI-X hat oder die Tabelle nicht programmiert werden konnte. Der
+/// Datenpfad pollt weiter; die Unterbrechung beweist die Zustellung und weckt künftig wartende Leser.
+fn setup_msix(d: &PciDev, m: u64) -> Option<u8> {
+    if !crate::msi::has_msix(d) {
+        return None;
+    }
+    let vector = crate::msi::alloc(on_irq)?;
+    let apic = crate::apic::id();
+    if crate::msi::program_msix(d, &[crate::msi::MsixEntry { index: 0, vector }], apic).is_err() {
+        crate::msi::free(vector);
+        return None;
+    }
+    // MSI-X-Betrieb: mehrere Vektoren, Auto-Maske (EIAME), PBA, One-Clear-on-Done
+    w(m, GPIE, (1 << 4) | (1 << 5) | (1 << 30) | (1 << 31));
+    // RxQ0 (Belegung 0) → EICR-Bit 0 / Tabellenzeile 0; gültig = Bit 7
+    let ivar = r(m, IVAR0);
+    w(m, IVAR0, (ivar & !0xff) | 0x80);
+    // Rate begrenzen: ~200 µs (Einheit 2,048 µs, Feld Bit 3..11) → kein Sturm
+    w(m, EITR0, 100 << 3);
+    w(m, EIAC, 1); // Ursache Bit 0 quittiert sich selbst
+    w(m, EIAM, 1); // Ursache Bit 0 maskiert sich beim Auslösen, Handler schaltet wieder scharf
+    IRQS.lock().push(Irq { vector, mmio: m, count: core::sync::atomic::AtomicU64::new(0) });
+    w(m, EIMS, 1); // Bit 0 scharf
+    Some(vector)
+}
+
 impl Driver for Drv {
     fn name(&self) -> &'static str {
         "gen-ixgbe"
@@ -318,16 +381,21 @@ impl Driver for Drv {
         if !wait(|| r(m, TXDCTL) & (1 << 25) != 0, 50) {
             return Err("Sendering startet nicht".into());
         }
+        // MSI-X für RxQ0 (Unterbrechung statt reinem Abfragen; Datenpfad pollt weiter)
+        let msix = setup_msix(d, m);
         // Verbindung
-        let mut info = String::new();
+        let mut info = match msix {
+            Some(v) => format!(" · MSI-X Vektor {v:#x}"),
+            None => String::from(" · ohne MSI-X (abfragend)"),
+        };
         let (link, mbit) = if e610 {
             match aci(m, ACI_GET_VER, [0; 4], None, false) {
                 Ok(a) => {
                     let fw = a[6].to_le_bytes();
                     let api = a[7].to_le_bytes();
-                    info = format!(" · Firmware {}.{}.{} API {}.{}", fw[1], fw[2], fw[3], api[1], api[2]);
+                    info += &format!(" · Firmware {}.{}.{} API {}.{}", fw[1], fw[2], fw[3], api[1], api[2]);
                 }
-                Err(e) => info = format!(" · {e}"),
+                Err(e) => info += &format!(" · {e}"),
             }
             // Verbindung freigeben und Aushandlung neu starten (LINK_RESTART | LINK_ENABLE in Byte 2 der Parameter)
             if let Err(e) = aci(m, ACI_RESTART_AN, [0x06 << 16, 0, 0, 0], None, false) {
@@ -371,6 +439,10 @@ impl Driver for Drv {
         let name = format!("eth{}", nl.len());
         let mut nic = Nic { name: name.clone(), mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0, e610, link_cache: core::sync::atomic::AtomicU32::new(0), link_asked: core::sync::atomic::AtomicU64::new(0) };
         let verb = if link { format!("steht ({mbit} Mbit/s)") } else { format!("fehlt – Schleifentest: {}", nic.schleifentest()) };
+        // Bei MSI-X: hat die Schleife/der Verkehr Unterbrechungen ausgelöst? (Beleg der Zustellung)
+        if msix.is_some() {
+            info += &format!(" · {} MSI-X-Unterbrechungen", irq_count());
+        }
         crate::kprintln!(
             "[ixgbe] {name}: {:04x} {} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}{info} · Verbindung {verb}",
             d.device,

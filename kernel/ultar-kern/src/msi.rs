@@ -25,9 +25,11 @@ const MSI_ADDRESS_BASE: u32 = 0xfee0_0000;
 const PCI_CAP_MSI: u8 = 0x05;
 const PCI_CAP_MSIX: u8 = 0x11;
 
-/// Je Pool-Vektor: der registrierte Handler. Wie bei `gt_irq` wird die Sperre auch im Interrupt kurz
-/// genommen (Vergabe nur beim Einrichten, Zustellung nur lesend).
-static HANDLERS: Mutex<[Option<fn()>; POOL_LEN]> = Mutex::new([None; POOL_LEN]);
+/// Je Pool-Vektor: der registrierte Handler. Er bekommt seinen eigenen Vektor übergeben, damit ein
+/// Treiber mit mehreren Warteschlangen (NVMe, 10G) erkennt, welche Warteschlange ihn geweckt hat.
+/// Wie bei `gt_irq` wird die Sperre auch im Interrupt kurz genommen (Vergabe nur beim Einrichten,
+/// Zustellung nur lesend).
+static HANDLERS: Mutex<[Option<fn(u8)>; POOL_LEN]> = Mutex::new([None; POOL_LEN]);
 
 /// Nächster zu vergebender Index (einfacher fortlaufender Zeiger, es werden nie welche frei, außer
 /// ein Gerät gibt sie beim Abbau zurück – dann bleibt die Lücke bis zum nächsten Rundlauf).
@@ -38,7 +40,7 @@ fn find_free(table: &[Option<fn()>; POOL_LEN]) -> Option<usize> {
 /// Einen Vektor vergeben und seinen Handler eintragen. Gibt den x86-Vektor (Pool-Bereich) zurück
 /// oder `None`, wenn der Pool voll ist. Der Handler läuft im Interrupt; danach ruft die Zustellung
 /// selbst `apic::eoi()`.
-pub fn alloc(handler: fn()) -> Option<u8> {
+pub fn alloc(handler: fn(u8)) -> Option<u8> {
     let mut t = HANDLERS.lock();
     let i = find_free(&t)?;
     t[i] = Some(handler);
@@ -66,7 +68,7 @@ pub fn dispatch(vector: u8) {
     }
     let h = HANDLERS.lock()[(vector - POOL_FIRST) as usize];
     if let Some(f) = h {
-        f();
+        f(vector);
     }
 }
 
