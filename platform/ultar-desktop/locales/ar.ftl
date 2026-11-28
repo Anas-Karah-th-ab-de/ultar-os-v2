@@ -469,3 +469,9 @@ desk.desk.rename.cancel = إلغاء
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}
 mesh.clip.body = للصق اضغط Ctrl+V
+
+## Apps from other systems: where a grid cell comes from (docs/FREMD-APPS.md)
+desk.apps.source.linux = {name} · لينكس
+desk.apps.source.windows = {name} · ويندوز
+desk.apps.source.android = {name} · أندرويد
+desk.apps.source.other = {name} · نظام آخر

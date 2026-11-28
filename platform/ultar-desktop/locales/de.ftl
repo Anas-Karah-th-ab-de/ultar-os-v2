@@ -469,3 +469,9 @@ desk.desk.rename.cancel = Abbrechen
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert
 mesh.clip.body = Mit Strg+V einfügen
+
+## Apps from other systems: where a grid cell comes from (docs/FREMD-APPS.md)
+desk.apps.source.linux = {name} · Linux
+desk.apps.source.windows = {name} · Windows
+desk.apps.source.android = {name} · Android
+desk.apps.source.other = {name} · anderes System

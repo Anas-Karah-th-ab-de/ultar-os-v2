@@ -192,7 +192,7 @@ fn section(
                     running: 0,
                     open: false,
                 },
-                app.label(),
+                grid_label(app),
             );
             let id = view.ui.add_sized(row, cell, Sizing::grow(1))?;
             view.mark(id, Target::AppItem(app.id.clone()));
@@ -210,6 +210,31 @@ fn section(
         }
     }
     Ok(())
+}
+
+/// Where an app from another system comes from (`foreign.<source>-<name>`, contract
+/// `ultar_bus::messages::foreign`): the i18n key of its source, `None` for Ultar apps.
+pub fn foreign_source(app: &str) -> Option<&'static str> {
+    let rest = app.strip_prefix("foreign.")?;
+    let source = rest.split('-').next()?;
+    Some(match source {
+        "deb" => "desk.apps.source.linux",
+        "exe" | "msi" => "desk.apps.source.windows",
+        "apk" => "desk.apps.source.android",
+        _ => "desk.apps.source.other",
+    })
+}
+
+/// The name of a grid cell: an app from another system says where it comes from.
+fn grid_label(app: &AppInfo) -> Label {
+    let Some(source) = foreign_source(&app.id) else {
+        return app.label();
+    };
+    let name = match &app.name {
+        crate::model::apps::AppName::Data(d) => d.clone(),
+        crate::model::apps::AppName::Key(k) => k.clone(),
+    };
+    Label::key_with(source, &[("name", &name)])
 }
 
 /// The context menu of an app cell.
@@ -320,4 +345,27 @@ fn brand_line(view: &mut View, row: NodeId) -> Result<(), UiError> {
             .spec(TextSpec::new(TypeSize::S14).weight(Weight::Semibold)),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod foreign_tests {
+    use super::foreign_source;
+
+    #[test]
+    fn apps_from_other_systems_say_where_they_come_from() {
+        assert_eq!(
+            foreign_source("foreign.deb-mousepad"),
+            Some("desk.apps.source.linux")
+        );
+        assert_eq!(
+            foreign_source("foreign.msi-setup"),
+            Some("desk.apps.source.windows")
+        );
+        assert_eq!(
+            foreign_source("foreign.apk-notes"),
+            Some("desk.apps.source.android")
+        );
+        assert_eq!(foreign_source("org.ultar.files"), None);
+        assert_eq!(foreign_source("foreignish"), None);
+    }
 }
