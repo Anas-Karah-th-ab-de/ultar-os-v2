@@ -96,7 +96,7 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
     pub fn new(look: Look, state: CallState, port: P, host: H) -> Result<Self, AppError> {
         let tr = translator(look.lang)?;
         let ui = Ui::new(
-            PaintEnv::new(look.lang, look.theme),
+            PaintEnv::new(look.lang, look.theme).with_session(false),
             look.mode,
             look.size,
             tr.clone(),

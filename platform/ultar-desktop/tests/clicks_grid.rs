@@ -190,3 +190,17 @@ fn the_grid_sorts_arabic_names_without_the_article_and_hides_empty_categories() 
     );
     assert_eq!(ultar_desktop::view::apps::categories(d).len(), 4);
 }
+
+#[test]
+fn the_power_button_of_the_grid_opens_the_power_menu() {
+    for lang in [Lang::Ar, Lang::En] {
+        let mut h = Harness::new(lang, ThemeKind::Dark);
+        h.click_bar(Target::AllApps);
+        assert!(
+            h.popup_target(&Target::Power),
+            "the grid shows the power button"
+        );
+        h.click_popup(Target::Power);
+        assert_eq!(h.shell.d.open, Open::PowerMenu);
+    }
+}

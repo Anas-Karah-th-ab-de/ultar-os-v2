@@ -23,6 +23,7 @@ desk.apps.search = Apps suchen
 desk.apps.title = Alle Apps
 desk.apps.uninstall = App entfernen …
 desk.bar.apps = Alle Apps
+desk.bar.battery = {level} %
 desk.bar.clock = Kalender und Benachrichtigungen: {date} {time}
 desk.bar.date = {weekday} {day}. {month}
 desk.bar.overview = Übersicht
@@ -453,3 +454,7 @@ desk.call.unmute = Stumm aus
 desk.call.hangup = Auflegen
 desk.note.mirror.title = {arg0}: {arg1}
 desk.note.mirror.locked = Neue Benachrichtigung auf {arg0}
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Auf {arg0} kopiert
+mesh.clip.body = Mit Strg+V einfügen

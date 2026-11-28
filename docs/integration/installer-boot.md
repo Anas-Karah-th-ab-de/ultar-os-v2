@@ -29,18 +29,41 @@ binaries (the patch deletes the committed test binaries below).
      `/dev/ultar/part/ultar-data`. The kernel never sees the passphrase: root with the raw-device right
      writes `open <offset> <master key>`; the kernel maps the segment (software AES, the kernel keeps no
      SSE state) and mounts it as `/data` only if an ext4 is behind it (wrong key: `EKEYREJECTED`).
-   - Start: ultar-init runs `/usr/bin/ultar-luks unlock` before anything writes to `/data` and before the
-     services (not on the phone, which uses `ultar-secure`/cryptsetup). It asks on the console without
-     echo and asks again after a wrong passphrase.
+     Key hygiene: the key copy of the control write and the hex/raw key are overwritten right after
+     use; the AES key schedule is cleared when it is dropped (`aes` feature `zeroize`) and wiped
+     before every power-off and restart, after which the mapping refuses every access.
+     Speed: the ext4 code keeps the group descriptor blocks it has read (up to 1 MiB) and updates
+     them on every write, so lookups and allocations no longer read them from the disk each time.
+   - Start: ultar-init runs the graphical unlock screen `/usr/bin/ultar-unlock` (platform/ultar-unlock)
+     before anything writes to `/data` and before the services (not on the phone, which uses
+     `ultar-secure`/cryptsetup). It draws with the UI toolkit straight onto the framebuffer (look of the
+     lock screen, language of the installation, Caps Lock warning) and reads the keys from the input
+     devices – while they are open the kernel hands keys only to them, never to the console. The
+     strokes are kept as key codes and tried as text in every keyboard layout (Arabic, English, German;
+     the installation's layout first), so a passphrase typed in any layout at installation opens.
+     Language and keyboard come from an `ultar-start` token in the LUKS2 header (cryptsetup keeps and
+     ignores it). Without framebuffer or keyboard (exit 3) or when the screen fails, `ultar-luks unlock`
+     asks on the console without echo.
+   - Size: on a whole disk the data partition takes the rest of the disk; after the copy the medium's
+     ext4 grows into it with `system/core/ultar-ext4grow` (offline like resize2fs: new groups
+     BLOCK_UNINIT/INODE_UNINIT, reserved descriptor blocks, resize inode, backups) – plain or through the
+     decrypted view of the LUKS2 segment. The kernel's ext4 writer now also takes inodes of
+     INODE_UNINIT groups. Growth is bounded by the reserved descriptor blocks (1024 times the medium's
+     data file system with mke2fs defaults, 512 GiB for the 512 MiB image); a layout it does not know is
+     left as it is.
    - Tests: unit tests of ultar-luks; `tools/kern-test/luks-interop.sh` (cryptsetup 2.7 and dm-crypt read
      what ultar-luks writes and the reverse); `tools/kern-test/crypt-data.sh` (the kernel decrypts what
      dm-crypt encrypted and the reverse, e2fsck clean, no plain text on the disk; `ultar-luks unlock` on
      the serial console: wrong passphrase refused, right one mounts `/data`, nothing echoed); installer
-     `installs_encrypted_data_as_luks2`. Both scripts are in `tools/kern-test/ci.sh`.
-   - Open: the prompt is text on the console (no graphical prompt yet); the ext4 inside the volume is
-     not grown to the partition (grow-data only grows plain partitions), so on a whole disk /data has the
-     medium's size until that exists; the key schedule stays in kernel memory until power off; TPM still
-     shown as not available (no TPM driver).
+     `installs_encrypted_data_as_luks2`; the graphical screen in QEMU (crypt-data.sh part 3: drawn on
+     the framebuffer, keys through the PS/2 keyboard, wrong passphrase refused, right one mounts
+     `/data`); renders of every phase in ar/en/de (`platform/ultar-unlock/tests/screen.rs`); growth
+     against e2fsck, debugfs and a Linux loop mount (`ultar-ext4grow/tests`), the kernel writing into
+     grown groups (`tools/kern-test/ext4-grow.sh`), installer whole-disk installs plain and encrypted
+     (`platform/ultar-installer-ui/tests/grow.rs`). All scripts are in `tools/kern-test/ci.sh`.
+   - Open: the key schedule stays in kernel memory until power off; TPM still shown as not available
+     (no TPM driver); the kernel's ext4 allocator reads one descriptor block per group it looks at
+     (slow on very large disks once the first groups are full, correct).
 3. **Restart after the installation: done (2026-11-26).** Done → Restart asks the service manager over the bus
    (`init.power` with `Reboot`; the policy gives `system.installer` `init.power` and the pseudo method
    `init.shutdown`, the installer runs only in the profile `installer`). ultar-init ends every service in order,

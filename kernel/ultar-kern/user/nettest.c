@@ -241,6 +241,21 @@ int main(int argc, char **argv) {
     int port = atoi(argv[2]);
     const char *name = argc > 3 ? argv[3] : "github.com";
 
+    // 0. a device that was just plugged in (USB hot-plug) is bound at the kernel's next network poll:
+    //    wait up to 15 s for the interface of the driver under test; a socket call drives the poll
+    {
+        char w[64];
+        for (int i = 0; i < 75 && !find_if(drv, w, sizeof w); i++) {
+            int u = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+            if (u >= 0) {
+                char b[4];
+                recv(u, b, sizeof b, 0);
+                close(u);
+            }
+            usleep(200000);
+        }
+    }
+
     // 1. every interface as Linux shows it
     DIR *d = opendir("/sys/class/net");
     CHECK(d != NULL, "/sys/class/net is listed");

@@ -396,7 +396,7 @@ impl LockApp {
 
     /// The local time in minutes since midnight (the parental window's clock).
     pub(super) fn local_min(&self, now_ms: u64) -> u16 {
-        LocalTime::at(now_ms, self.clock.offset_s())
+        LocalTime::at(now_ms, self.offset_s(now_ms))
             .map_or(0, |t| u16::from(t.hour) * 60 + u16::from(t.minute))
     }
 
@@ -451,6 +451,32 @@ impl LockApp {
         if let Some(v) = self.state.access.values {
             self.look = self.look.with_access(v[1], v[0]);
         }
+        self.apply_look();
+    }
+
+    /// Language, theme, accent and text size of the settings (the lock screen shows the
+    /// person's choices from the first frame, and follows a change at once).
+    pub(super) fn apply_look(&mut self) {
+        let p = &self.state.prefs.look;
+        if let Some(lang) = p.lang {
+            self.look.lang = lang;
+        }
+        if let Some(light) = p.light {
+            self.look.theme = if light {
+                ThemeKind::Light
+            } else {
+                ThemeKind::Dark
+            };
+        }
+        self.look.accent = ultar_ui::tokens::Accent::parse(&p.accent).unwrap_or_default();
+        let large = self.state.access.values.is_some_and(|v| v[0]);
+        self.look.text_scale =
+            if large { crate::view::LARGE_TEXT } else { 1.0 } * f32::from(p.font_percent) / 100.0;
+    }
+
+    /// Offset of the local time: the time zone of the settings, the clock's own until then.
+    pub(super) fn offset_s(&self, now_ms: u64) -> i32 {
+        self.state.prefs.offset_s(now_ms, self.clock.offset_s())
     }
 
     /// The accessibility values (the button is disabled without the settings service).
@@ -495,7 +521,7 @@ impl LockApp {
         self.state.caps_lock = self.host.caps_lock();
         self.state.notes = self.notes.counts_by_app();
         let now = self.clock.now_ms();
-        let time = LocalTime::at(now, self.clock.offset_s());
+        let time = LocalTime::at(now, self.offset_s(now));
         let size = self
             .surface
             .and_then(|id| self.host.view(id))

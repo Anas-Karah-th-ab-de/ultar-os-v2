@@ -15,6 +15,10 @@
 mod acting;
 pub mod audio_link;
 pub mod calls;
+pub mod clip_bridge;
+pub mod clip_image;
+mod clip_service;
+mod clip_share;
 pub mod clipboard;
 pub mod compute;
 pub mod device;

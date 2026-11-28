@@ -3,9 +3,19 @@
 //! available in this version" instead of a switch that only stores a value
 //! (docs/integration/settings-wiring.md lists every one and what it waits for).
 
-/// The panels this rule applies to (the ten panels of the first seed are followed by the
-/// shell, the display service and the session as before).
-pub const CHECKED_PANELS: [&str; 17] = [
+/// The panels this rule applies to. Of the ten panels of the first seed, the displays and
+/// the account are followed by the display service and the account service as a whole; the
+/// other eight are checked row by row since 28.11.2026 (many of their rows only stored a
+/// value before – now each row either takes effect at once or says that it waits).
+pub const CHECKED_PANELS: [&str; 25] = [
+    "appearance",
+    "date_time",
+    "desktop_bar",
+    "region",
+    "power",
+    "windows",
+    "notifications",
+    "privacy",
     "mobile",
     "search",
     "apps",
@@ -27,6 +37,51 @@ pub const CHECKED_PANELS: [&str; 17] = [
 
 /// Settings of those panels with an effect: who follows them.
 pub const WIRED: &[(&str, &str)] = &[
+    // The look of the whole system, at once and without a new start: the shell (bar,
+    // sheets, background), the lock screen, the system dialogs and the on-screen keyboard
+    // follow these; the launcher hands them to every app it starts (ULTAR_LANG, ULTAR_THEME,
+    // ULTAR_ACCENT, ULTAR_FONT_SIZE); this window follows them itself; displayd tells the
+    // compositor (title bars, `Request::ConfigureLook`) the language and the theme.
+    (
+        "region.language",
+        "shell + lock + dialogs + launcher + compositor + settings",
+    ),
+    (
+        "appearance.theme",
+        "shell + lock + dialogs + launcher + compositor + settings",
+    ),
+    (
+        "appearance.accent_color",
+        "shell + lock + dialogs + launcher + settings",
+    ),
+    (
+        "appearance.font_size",
+        "shell + lock + dialogs + launcher + settings",
+    ),
+    // The input languages of the sign-in and the bar (the compositor's layouts).
+    ("region.keyboard.layouts", "shell + lock"),
+    ("region.keyboard.active", "shell + lock"),
+    // The clock of the bar and of the lock screen: the zone (with summer time), 12/24 h,
+    // seconds, weekday, date and the Hijri date.
+    ("datetime.timezone.name", "shell + lock"),
+    ("datetime.clock_format", "shell + lock"),
+    ("bar.clock.show_seconds", "shell"),
+    ("bar.clock.show_weekday", "shell"),
+    ("bar.clock.show_date", "shell"),
+    ("bar.clock.show_hijri", "shell"),
+    // The bar: bottom or top with a dock, the tiles centred or at the start, the trash and
+    // the drives, the battery level beside the status icons.
+    ("bar.layout", "shell"),
+    ("bar.icon_alignment", "shell"),
+    ("bar.show_trash", "shell"),
+    ("bar.show_volumes", "shell"),
+    ("power.show_battery_percent", "shell"),
+    // The power mode (quick settings), followed by displayd and the updater as well.
+    ("power.mode", "shell + displayd + updated"),
+    // Do not disturb: the shell shows no banners.
+    ("notifications.do_not_disturb", "shell"),
+    // The phone shell follows the location switch (the desktop has no location source).
+    ("privacy.location", "phone shell"),
     // The on-screen keyboard (ultar-osk) follows these: when it appears (automatic without
     // a hardware keyboard, always, never; the accessibility switch shows it always), word
     // suggestions and autocorrect.
@@ -182,9 +237,15 @@ pub fn takes_effect(panel: &str, key: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// The panel of a key: its first word (`pointer` for the mouse page).
+    /// The panel of a key: its first word (`pointer` for the mouse page), with the panels
+    /// whose id differs from the words of their keys.
     fn panel(key: &str) -> &str {
-        key.split('.').next().unwrap_or_default()
+        match key.split('.').next().unwrap_or_default() {
+            "datetime" => "date_time",
+            "bar" | "dock" | "desktop" => "desktop_bar",
+            "workspaces" => "windows",
+            word => word,
+        }
     }
 
     #[test]
@@ -297,6 +358,45 @@ mod tests {
         ] {
             assert!(!takes_effect(panel(key), key), "{key}");
         }
+    }
+
+    #[test]
+    fn the_first_panels_say_which_rows_take_effect() {
+        for key in [
+            "region.language",
+            "appearance.theme",
+            "appearance.accent_color",
+            "appearance.font_size",
+            "datetime.timezone.name",
+            "datetime.clock_format",
+            "bar.clock.show_hijri",
+            "bar.icon_alignment",
+            "power.show_battery_percent",
+            "notifications.do_not_disturb",
+        ] {
+            assert!(takes_effect(panel(key), key), "{key}");
+        }
+        // nothing follows these yet: the row says so instead of only storing a value
+        for key in [
+            "appearance.wallpaper.custom_path",
+            "appearance.icon_size",
+            "region.format.date",
+            "power.screen_off_after",
+            "power.lid_action",
+            "windows.edge_snap",
+            "workspaces.count",
+            "privacy.camera",
+            "notifications.dnd_schedule.enabled",
+            "bar.autohide",
+            "dock.size",
+            "desktop.icons.enabled",
+            "datetime.automatic",
+        ] {
+            assert!(!takes_effect(panel(key), key), "{key}");
+        }
+        // the displays and the account are followed as a whole
+        assert!(takes_effect("display", "display.night_light.schedule"));
+        assert!(takes_effect("account", "account.server"));
     }
 
     #[test]

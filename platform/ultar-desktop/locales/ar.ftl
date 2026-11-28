@@ -23,6 +23,7 @@ desk.apps.search = ابحث في التطبيقات
 desk.apps.title = كل التطبيقات
 desk.apps.uninstall = إزالة التطبيق…
 desk.bar.apps = كل التطبيقات
+desk.bar.battery = {level}%
 desk.bar.clock = التقويم والإشعارات: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = نظرة عامة
@@ -453,3 +454,7 @@ desk.call.unmute = إلغاء الكتم
 desk.call.hangup = إنهاء المكالمة
 desk.note.mirror.title = {arg0}: {arg1}
 desk.note.mirror.locked = إشعار جديد على {arg0}
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = تم النسخ على {arg0}
+mesh.clip.body = للصق اضغط Ctrl+V

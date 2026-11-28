@@ -32,6 +32,7 @@ pub mod ids;
 pub mod input;
 pub mod key_helpers;
 pub mod link;
+pub mod look;
 pub mod msg;
 pub mod plan;
 pub mod ports;

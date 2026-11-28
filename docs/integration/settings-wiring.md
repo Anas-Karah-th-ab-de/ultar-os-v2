@@ -1,19 +1,26 @@
 # Settings – what takes effect, what waits, what is hidden
 
-KM Code Craft · Ultar OS v2 · 2026-11-24
+KM Code Craft · Ultar OS v2 · 2026-11-24, first panels 2026-11-28
 
 Rule of the owner: **a setting must take effect.** A switch that only stores a value is not offered.
 The table of record is `apps/ultar-settings/src/wired.rs` (`WIRED`); the generic page
-(`view/panel.rs`) shows every row of the 17 newer panels that is not in it disabled, with the note
-"Not yet available in this version" (ar/en/de) in the row and as the tooltip of its control. The ten
-panels of the first seed (display, appearance, desktop bar, windows, notifications, power, region,
-date and time, privacy, account) are followed by the shell, the display service and the session as
-before and are not part of this rule.
+(`view/panel.rs`) shows every row of the checked panels that is not in it disabled, with the note
+"Not yet available in this version" (ar/en/de) in the row and as the tooltip of its control.
+
+Since 2026-11-28 eight of the ten panels of the first seed are checked row by row as well (appearance,
+desktop bar, windows, notifications, power, region, date and time, privacy): many of their rows only
+stored a value before – a change in Settings did nothing (found by the owner in VMware, v2 compared
+with v1). Each row now either takes effect at once, without a new start, or says that it waits. The
+displays (displayd) and the account (accountd) follow their panels as a whole and stay unchecked.
 
 ## 1. Wired (changing it has an effect)
 
 | Page | Setting or action | Who follows it | How | Test |
 |---|---|---|---|---|
+| Region | `region.language` (ar / en / de) | shell, lock screen, system dialogs, on-screen keyboard, every app, the compositor's title bars, the Settings window | read at start and on `settings.changed`; the shell switches its translator and reading direction (`Shell::set_lang`) and builds every surface again; the lock screen and the dialogs switch their look (`app/look_follow.rs`, `ultar-lock-core` `LookPrefs`); the launcher hands `ULTAR_LANG` to every app it starts (`ultar-launcher/src/look.rs`); displayd sends `Request::ConfigureLook` – the compositor draws every title bar again, its buttons on the side the language reads from; the Settings window calls `Ui::set_lang` and rebuilds | desktop `link.rs`, `look_follow.rs`, lock-core `prefs.rs`, launcher `look.rs`, displayd `look.rs`, surface `visual.rs` tests |
+| Appearance | `appearance.theme`, `appearance.accent_color` (gold, blue, green, red, purple, teal), `appearance.font_size` (80–200 %) | the same | the accent replaces the three accent roles of the palette (`ultar_ui::tokens::Accent`, contrast ≥ 4.5:1 checked for every accent in both themes; high contrast keeps its own); the text size multiplies the text scale (on top of `accessibility.large_text`); apps get `ULTAR_THEME`, `ULTAR_ACCENT`, `ULTAR_FONT_SIZE` (`PaintEnv::with_session`); the compositor follows the theme through `Request::ConfigureLook` | ultar-ui `tokens.rs`, `session.rs`, desktop `link.rs` tests |
+| Date and time | `datetime.timezone.name`, `datetime.clock_format` | shell (bar), lock screen | the zone's offset from the zone file, else a table: the Arab world without summer time, Berlin, Paris, Vienna, Amsterdam, London, Beirut, Nicosia with their summer-time rule (`ultar_i18n::tz`, shared with the phone shell); before, the bar and the lock screen showed UTC | i18n `tz.rs`, desktop `model/prefs.rs` |
+| Desktop bar | `bar.clock.show_seconds`, `.show_weekday`, `.show_date`, `.show_hijri`, `bar.icon_alignment`, `bar.show_trash`, `bar.show_volumes`, `power.show_battery_percent` | shell | the bar's clock lines (`model/time.rs` `bar_lines_with`; with seconds the bar is built every second), the tiles at the start instead of the centre, trash and drives on or off, the battery level beside the status icons | desktop `model/time.rs`, `link.rs` tests |
 | Mouse and touchpad | `pointer.speed` (−10…10), `pointer.natural_scroll`, `pointer.primary_button`, `pointer.acceleration`, `pointer.size` | compositor | displayd follows `settings.changed` and sends `Request::ConfigurePointer` (again after every reconnect); relative motion × 2^(speed/5), scroll deltas reversed; primary and secondary clicks swapped; a velocity profile (1…3×, measured between the event times) when acceleration is on; the pointer image drawn at 1 / 1.5 / 2× the token `size.icon` | compositor `tests/input_config.rs`, displayd `tests/process.rs` (real settingsd + displayd + compositor), settings-e2e |
 | Keyboard | `keyboard.repeat.enabled`, `.delay_ms`, `.per_second` | compositor | displayd sends `Request::ConfigureKeyRepeat`; the compositor thins out the driver's repeats (`state/key_repeat.rs`) | the same three |
 | Accessibility | `accessibility.large_text`, `.high_contrast`, `.reduce_motion` | shell (bar, sheets, lock screen) and the Settings window | `Look::with_access`, `Ui::set_reduce_motion`; Settings: `App::follow_access` | desktop `link.rs` tests, settings-e2e |
@@ -121,6 +128,16 @@ Limits that are part of the truth:
   screen and the session service. The SOS light is the screen: no torch service is shipped.
 
 ## 2. Shown disabled with the note "Not yet available in this version"
+
+Of the first panels (since 2026-11-28): wallpaper choice (`appearance.wallpaper.*` – the background
+is the system picture "ultar-noir" with the company logo), `appearance.icon_size`, the region formats
+(`region.format.*`, `.first_weekday`, `.calendar`, `.month_names`), `datetime.automatic`,
+`.timezone.automatic`, `.hardware_clock`, `bar.displays`, `bar.autohide`, `dock.*`,
+`desktop.icons.*`, the power timeouts and actions (`power.screen_*`, `.suspend_*`, `.lid_action`,
+`.button_action`, `.charge_limit.*`, `.auto_saver.*`), `windows.*` and `workspaces.*`, the
+notification schedule, lock-screen and per-app rows, and the privacy switches except the phone's
+location. Each needs its consumer first (a wallpaper picker, a timer in the power service, the
+compositor's window rules, the notification service's per-app policy, …).
 
 Nothing in the system follows these yet. Each line says what it waits for.
 

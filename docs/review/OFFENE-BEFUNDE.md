@@ -1,8 +1,9 @@
 # Unabhängige Prüfungen – Befunde und Stand
 
-Stand 23.11.2026, nach Welle 4 · Drei Prüfer, die den Code nicht geschrieben haben, haben versucht, ihn zu brechen.
-Jeder Befund ist durch einen Test oder durch Lesen belegt. **Kein Teil ist damit „produktionsreif“** – die offenen
-Punkte unten sperren den Einsatz.
+Stand 28.11.2026 (Befunde 23.11.2026, nach Welle 4; unten fortgeschrieben) · Drei Prüfer, die den Code nicht
+geschrieben haben, haben versucht, ihn zu brechen. Jeder Befund ist durch einen Test oder durch Lesen belegt.
+**Kein Teil ist damit „produktionsreif“** – die offenen Punkte unten sperren den Einsatz. A1 und S1 (siehe unten)
+sind seitdem behoben; der Abgleich mit dem Code steht in `docs/review/ABGLEICH.md`.
 
 ## Behoben (Korrektur + Test im Repo)
 
@@ -31,16 +32,21 @@ Punkte unten sperren den Einsatz.
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| A1 | Apps | Apps haben noch keine eigenen Benutzerkennungen; es gibt noch keinen App-Starter | Starter, der jede App als eigenen Benutzer in ihrer Zelle startet und ihre Rechte einträgt |
-| S1 | Oberfläche | Desktop-Hülle (Leiste, Startmenü, Schnelleinstellungen), Sperrbildschirm, Systemdialoge und Apps sind noch nicht gebaut; die Sicherheits-Tasten wirken erst mit einem Sperrbildschirm | Desktop-Hülle als Clients des Compositors (Welle 5) |
-| G1 | Kern/Grafik | Nur der Bildspeicher der Firmware: ein Bildschirm, vblank nur nachgebildet (60-Hz-Raster), kein Touch-Treiber (USB-Tastatur, -Maus und -Tablet gehen jetzt) | Grafiktreiber (virtio-gpu, Intel), Touch |
-| R1 | Root-Dienste | 17 Dienste laufen noch als root (je mit Begründung) | aufteilen in kleine Helfer oder Bus-Aufrufe |
+| G1 | Kern/Grafik | Nur der Bildspeicher der Firmware: ein Bildschirm, vblank nur nachgebildet (60-Hz-Raster), kein Touch-Treiber (USB-Tastatur, -Maus und -Tablet gehen jetzt) | Grafiktreiber (virtio-gpu, Intel/Xe), Touch (I2C-HID) |
+| R1 | Root-Dienste | 26 Dienste laufen noch als root (je mit Begründung, Liste in `docs/review/ABGLEICH.md`) | aufteilen in kleine Helfer oder Bus-Aufrufe |
 | H1 | Hardware | kein Start ohne KVM direkt auf dem Beelink; ThinkPad nicht getestet; A/B-Start nur in QEMU geprüft | Freigabe und Einschaltknopf vor Ort |
 | K6 | Start | kein Zähler gegen ältere Fassung in einer EFI-Variable, kein Hardware-Wachhund nach dem Start | eigene Untersuchung (Firmware-Dienste stürzten in OVMF ab) |
 
+Seit dem 23.11.2026 behoben – sperrt nicht mehr den Einsatz:
+- **A1 App-Starter** – `ultar-launcher` (user 805) startet jede App als eigenen Benutzer (20000–49999) in ihrer
+  Zelle (mount+pid, read-only System-Sicht, privates /tmp, Daten 0700, Gruppe `apps/<app>`); Rechte nur aus dem
+  signierten Manifest (`system/core/ultar-launcher/src/{spawn,cell,rightsfile}.rs`).
+- **S1 Desktop-Hülle** – `ultar-desktop` (user 816): Leiste, Menüs, Schnelleinstellungen, Sperre (`ultar-lock`),
+  Systemdialoge (`ultar-sysdialog`); Clients des Compositors (`platform/ultar-desktop/`).
+
 ## Offen – leichter (vor Freigabe der jeweiligen Stufe)
 
-Kern: kein `SCM_CREDENTIALS`; fsync schickt keinen Cache-Flush an NVMe/AHCI; Set-ID-Bits beim Start ignoriert ·
+Kern: kein `SCM_CREDENTIALS` (nur `SO_PEERCRED`); AHCI-Cache-Flush bei fsync offen (NVMe-`flush` vorhanden); Set-ID-Bits beim Start ignoriert ·
 Updater: Daemon noch ohne Dienst-Rahmen; nach fehlgeschlagener Gesundheitsprüfung startet niemand neu · statischer ARM64-Bau des Updaters braucht TLS ohne C-Bibliothek ·
 Server: Proxy-Grenzen (Caddy) nur als Konfigurationsdatei geprüft ·
 Tests: zwei Ablauf-Tests der alten Oberfläche scheitern auf GitHub gelegentlich (Ursache offen, Fehlermeldung zeigt jetzt den Zustand); `ultar-logd` `after_sigkill` einmal gescheitert, nicht nachstellbar · Bildzeit nur auf dem Bau-Rechner gemessen, nicht auf ruhiger Hardware ·
@@ -52,7 +58,7 @@ Bus: Grenzen je Kennung (beibehaltene Themen, Dienstnamen), vorhandene Datei am 
 Einstellungsdienst: Bestätigung nach Fristablauf, Bestätigung nennt nicht die Änderung, `--allow-all` neben Richtlinie,
 Budget für App-Schlüssel, Bildschirm-Kennungen von der Meldereihenfolge abhängig, keine Sperre gegen zweite Instanz ·
 devd: Index ohne Seriennummer (alter signierter Index wird angenommen), widerrufener Schlüssel wirkt erst nach Neustart,
-`devices.shutdown` für jeden erlaubten Aufrufer · Kern: `clone(CLONE_THREAD)` ohne `CLONE_VM`, `/proc/meminfo` zeigt den
+`devices.shutdown` für jeden erlaubten Aufrufer · Kern: `/proc/meminfo` zeigt den
 ganzen Rechner · Server: Benutzernamen nicht normalisiert, keine Grenze für Geräte je Konto, Signalisierung ohne
 Ratenbegrenzung · Baukasten: 10 kleinere Verhaltensfehler (Schieber mit NaN, Zeilenumbruch-Zeichen im Textfeld …).
 
