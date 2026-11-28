@@ -73,8 +73,13 @@ Die vollständigen Berichte mit Fundstellen: `docs/review/ultar-ui-runde-1.md`; 
 | R2-2 | Signierer nur 64 Bit des Schlüssel-Hashs | voller SHA-256 als Signierer (Zustandsformat 3, Format 2 wird gelesen; Kurz-Kennung nur noch einmal gegen den eigenen Schlüssel) | `only_the_same_signer_replaces_…`, `format_2_is_read_…` |
 | R2-4 | Telefon-Link `org.ultar.settings` ungültig, `app.phone` ohne `launcher.start` | Kennung `settings`, ohne URI (Einstellungen haben noch kein Schema), Regel und Manifest um `launcher.start` ergänzt | Telefon-Tests |
 | R2-5 | langsamer Start blockiert den Busfaden | `start` läuft auf vier dauerhaften Start-Fäden (Stufe 1 endet mit ihrem Faden), bei voller Schlange wie bisher | Starter-Tests |
+| neu | `mprotect` ohne Wirkung (kein RELRO, kein W^X, keine Schutzseiten) | setzt Schreiben/Ausführen genau, auch für reservierte Bereiche; Kopie einer `noexec`-Datei wird nie ausführbar (Kennzeichen in der Seitentabelle, bleibt über `fork`), geteilte Seiten bekommen kein neues Recht (`EACCES`); `PROT_NONE` bleibt lesbar (x86) | neuer `schutztest` im CI-Tor (QEMU ALLES OK), glibc-Programme und Fäden laufen |
+| S-11 | beliebige HCI-Herstellerbefehle | OGF `0x3F` → `EPERM`; die Test-Gegenstelle nutzt einen Normbefehl | `bttest hci`, `bt-e2e` (BT ALLES OK) |
+| S-13 | `--input-ack` im ausgelieferten Compositor | nur mit Merkmal `test-hooks` (desktop-e2e baut es), Datei ohne Verknüpfung folgen, 0600 | Compositor-Tests mit und ohne Merkmal |
+| S-15 | `ui.client-header` | nur `app.system` kann es bekommen (Starter-Profil), seit S-7 geprüft | Profil-Tests |
+| Kern | `clone(CLONE_THREAD)` ohne `CLONE_VM` | `EINVAL` wie Linux | `schutztest` |
 
-Noch offen dazu: der Anruf-Bildschirm erscheint weiterhin ohne Bindung an ein „klingelt“-Ereignis von `ril`/`calld`; `mprotect` ist im Ultar-Kern noch ohne Wirkung (Seitenrechte ändern sich nicht – eigene Aufgabe, W^X); Bluetooth-Tastaturen über `btd` werden jetzt wie alle virtuellen Geräte abgewiesen, bis devd/Compositor sie über eine feste Kennung des Erzeugers zulassen und Sicherheitstasten nur von Hardware nehmen.
+Noch offen dazu: der Anruf-Bildschirm erscheint weiterhin ohne Bindung an ein „klingelt“-Ereignis von `ril`/`calld`; `mprotect` ändert Rechte nur auf dem eigenen Kern, ohne Abgleich der anderen Prozessorkerne (wie schon `munmap`); Bluetooth-Tastaturen über `btd` werden jetzt wie alle virtuellen Geräte abgewiesen, bis devd/Compositor sie über eine feste Kennung des Erzeugers zulassen und Sicherheitstasten nur von Hardware nehmen.
 
 ## Welle 8 – offen nach der Integration (Stand 24.11.2026)
 
@@ -87,9 +92,8 @@ alle), S-16, L-1…L-11 und R2-1 des App-Starters, Kennungs-Kollision 813 (calld
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
 
-Leichter: S-11 (beliebige
-HCI-Herstellerbefehle), S-13 (`--input-ack` nur für Tests), S-14
-(`ultar.profile` unter Linux aus der Bootzeile), S-15 (`ui.client-header` nur für System-Apps) · der Starter kann
+Leichter: S-14
+(`ultar.profile` unter Linux aus der Bootzeile) · der Starter kann
 `ui.call-screen`/`ui.client-header`/`ui.output-config` nicht erteilen · „Im Ordner zeigen“ des Browsers ruft
 `ultar-files --select`, das Dateien-App noch nicht kennt · boringtun/ring für aarch64 ungeprüft · ultar-check auf
 main 7744e78 schon mit 20 Befunden (Kern-Texte, `unsafe` ohne SAFETY in pci.rs) · Arbeitsbereich-clippy über die

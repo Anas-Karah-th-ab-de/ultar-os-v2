@@ -336,7 +336,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         260 => Res::Val(crate::perm::sys_chown(a[0] as i32 as i64, a[1], a[2], a[3], a[4])),
         268 | 452 => Res::Val(crate::perm::sys_chmod(a[0] as i32 as i64, a[1], a[2], if nr == 452 { a[3] } else { 0 })),
         74 | 75 => Res::Val(sys_fsync(a[0])),
-        149 | 150 | 151 | 152 | 10 | 28 | 131 | 273 | 109 => Res::Val(0),
+        10 => Res::Val(sys_mprotect(a[0], a[1], a[2])),
+        149 | 150 | 151 | 152 | 28 | 131 | 273 | 109 => Res::Val(0),
         11 => Res::Val(sys_munmap(a[0], a[1])),
         12 => Res::Val(sys_brk(a[0])),
         13 => Res::Val(sys_sigaction(a[0], a[1], a[2])),
@@ -2946,7 +2947,8 @@ const MMAP_MAX: u64 = 1 << 36;
 
 /// The content of the file `fd` names for `mmap`: `-EBADF` for no file, `-EPERM` for executable
 /// pages of a file below a `noexec` mount (as Linux).
-fn mmap_file(fd: i64, prot: u64) -> Result<Arc<Vec<u8>>, i64> {
+/// The data of the file `fd` for a private mapping, and whether it lies below a `noexec` mount.
+fn mmap_file(fd: i64, prot: u64) -> Result<(Arc<Vec<u8>>, bool), i64> {
     match with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
         Some(FdKind::File { data, no_exec, .. }) => Some((data.clone(), *no_exec)),
         _ => None,
@@ -2954,7 +2956,7 @@ fn mmap_file(fd: i64, prot: u64) -> Result<Arc<Vec<u8>>, i64> {
     .flatten()
     {
         Some((_, true)) if prot & PROT_EXEC != 0 => Err(-EPERM),
-        Some((d, _)) => Ok(d),
+        Some(d) => Ok(d),
         None => Err(-EBADF),
     }
 }
@@ -2978,6 +2980,8 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
     } else {
         None
     };
+    let file_noexec = data.as_ref().is_some_and(|d| d.1);
+    let data = data.map(|d| d.0);
     with(|p| {
         let va = match place(p, addr, len, flags) {
             Ok(v) => v,
@@ -3001,6 +3005,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
                 }
                 return -ENOMEM;
             };
+            if file_noexec {
+                p.space().mark_noexec_file(a);
+            }
             if let Some(d) = &data {
                 let s = (off + (a - va)) as usize;
                 if s < d.len() {
@@ -3011,6 +3018,38 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
             a += 4096;
         }
         va as i64
+    })
+    .unwrap_or(-ENOMEM)
+}
+
+/// `mprotect(addr, len, prot)`: the rights of mapped pages and of the reserved range change at once.
+/// Never executable for a copy of a `noexec` file and no new right for a shared page (`EACCES`, as
+/// Linux). `PROT_NONE` leaves a page readable (x86 has no user page without read access): writes
+/// and execution fault.
+fn sys_mprotect(addr: u64, len: u64, prot: u64) -> i64 {
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > MMAP_MAX || addr >= USER_TOP || addr + len > USER_TOP {
+        return -EINVAL;
+    }
+    // PROT_READ | PROT_WRITE | PROT_EXEC (PROT_GROWSDOWN/UP are not supported)
+    if prot & !7 != 0 {
+        return -EINVAL;
+    }
+    let len = (len + 4095) & !4095;
+    let (w, x) = (prot & 2 != 0, prot & PROT_EXEC != 0);
+    with(|p| {
+        let sp = p.space();
+        if !sp.may_protect(addr, len, w, x) {
+            return -EACCES;
+        }
+        if !sp.relabel(addr, len, w, x) {
+            return -ENOMEM;
+        }
+        let mut a = addr;
+        while a < addr + len {
+            sp.protect(a, w, x);
+            a += 4096;
+        }
+        0
     })
     .unwrap_or(-ENOMEM)
 }
@@ -3046,6 +3085,11 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
     const PARENT_SETTID: u64 = 0x10_0000;
     const CHILD_CLEARTID: u64 = 0x20_0000;
     const CHILD_SETTID: u64 = 0x100_0000;
+    // as Linux: a thread shares the address space (CLONE_THREAD needs CLONE_VM) – without it the
+    // "thread" was a separate process with the caller's thread-group expectations
+    if flags & THREAD != 0 && flags & VM == 0 {
+        return -EINVAL;
+    }
     let pid = proc::new_pid();
     let fs_now = unsafe { crate::paging::rdmsr(0xC000_0100) };
     let thread = flags & VM != 0 && flags & VFORK == 0;

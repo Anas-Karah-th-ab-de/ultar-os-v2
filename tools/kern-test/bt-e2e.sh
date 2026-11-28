@@ -42,7 +42,7 @@ QARGS="-device qemu-xhci,id=xh -chardev socket,id=btc,path=$WORK/bt.sock -device
   SMP="${SMP:-2}" MEM="${MEM:-1024}" WAIT="${WAIT:-300}" timeout 900 python3 tools/kern-test/qtest.py "$WORK/esp.img" \
   "/bin/bttest hci" "/bin/btd-e2e --bin /bin --work /tmp/bt" > "$LOG" 2>&1 || true
 # btd's setup after the test's own commands: Reset, Read BD_ADDR, Set Event Mask, Write SSP Mode, Write LE Host Supported
-setup=$(grep -a "BTEMU cmd" "$ELOG" | sed -n '/0xfc77/,$p' | tr '\n' ' ')
+setup=$(grep -a "BTEMU cmd" "$ELOG" | sed -n '/0x1002/,$p' | tr '\n' ' ')
 btd_setup=0
 for op in 0x0c03 0x1009 0x0c01 0x0c56 0x0c6d; do echo "$setup" | grep -q "cmd $op" || btd_setup=1; done
 # ... and its scan: LE scan parameters (active), LE scan on, inquiry, a remote name request
