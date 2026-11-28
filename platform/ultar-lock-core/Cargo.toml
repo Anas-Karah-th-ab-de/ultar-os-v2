@@ -12,3 +12,5 @@ path = "src/lib.rs"
 
 [dependencies]
 ultar-bus = { path = "../../system/core/ultar-bus" }
+# Language of region.language and the time zone of datetime.timezone.name.
+ultar-i18n = { path = "../../system/core/ultar-i18n" }

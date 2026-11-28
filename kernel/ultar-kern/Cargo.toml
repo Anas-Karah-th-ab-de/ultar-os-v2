@@ -29,7 +29,8 @@ ultar-intel-gt = { path = "../../drivers/kernel/intel-gt" }
 # Intel NPU logic (identification, PLL work point, power sequences, firmware container)
 ultar-intel-npu = { path = "../../drivers/kernel/intel-npu" }
 # product and company identity: names, brand texts (one no_std source for every program)
-ultar-brand = { path = "../../system/core/ultar-brand" }
+# with the company logo bitmap (boot picture, installer welcome)
+ultar-brand = { path = "../../system/core/ultar-brand", features = ["bitmaps"] }
 # data partition decryption (crypt.rs): reviewed RustCrypto ciphers, software AES (aes_force_soft)
 aes = { version = "0.8", default-features = false }
 xts-mode = { version = "0.5", default-features = false }

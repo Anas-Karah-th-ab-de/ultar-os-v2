@@ -89,7 +89,8 @@ fn open(o: Options) -> Result<(UiWindow, Terminal), String> {
     } else {
         ThemeKind::Dark
     };
-    let env = PaintEnv::new(o.lang, theme);
+    // the person's theme, accent and text size, handed over by the app launcher
+    let env = PaintEnv::new(o.lang, theme).with_session(o.light);
     let tr = ultar_terminal::i18n::translator;
     let ui = || {
         Ui::new(env, InputMode::Pointer, Size::new(1.0, 1.0), tr(o.lang)).map_err(|e| e.to_string())

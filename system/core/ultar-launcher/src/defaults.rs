@@ -157,6 +157,8 @@ impl Launcher {
         let mut core = lock(&self.core);
         if key == AUTOSTART {
             core.autostart.set_list(value);
+        } else if core.look.on_changed(key, value) {
+            // the look of the next apps it starts
         } else if !core.clean.on_changed(key, value) {
             core.defaults.on_changed(key, value);
         }

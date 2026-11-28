@@ -165,7 +165,7 @@ fn show<E: WebEngine>(
     };
     let tr = ultar_web::catalog::translator(lang)?;
     let ui = ultar_ui::ui::Ui::new(
-        PaintEnv::new(lang, theme),
+        PaintEnv::new(lang, theme).with_session(a.light),
         InputMode::Pointer,
         ultar_ui::Size::new(992.0, 584.0),
         tr,

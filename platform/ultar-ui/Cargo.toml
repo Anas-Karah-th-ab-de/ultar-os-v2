@@ -14,6 +14,8 @@ snapshot = ["dep:png"]
 
 [dependencies]
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# The company logo bitmap (BrickKind::Logo) and its rules.
+ultar-brand = { path = "../../system/core/ultar-brand", features = ["bitmaps"] }
 rustybuzz = "0.20"
 unicode-bidi = { version = "0.3", default-features = false, features = ["hardcoded-data", "std"] }
 ab_glyph_rasterizer = "0.1"

@@ -14,6 +14,12 @@ use ultar_ui::widgets::Toast;
 
 /// The setting the window's own theme follows.
 const THEME_KEY: &str = "appearance.theme";
+/// The window speaks the system language (`region.language`) and changes it at once.
+const LANG_KEY: &str = "region.language";
+/// The window's accent colour.
+const ACCENT_KEY: &str = "appearance.accent_color";
+/// The window's text size in percent.
+const FONT_KEY: &str = "appearance.font_size";
 /// Text factor of `accessibility.large_text` (the shell's).
 pub const LARGE_TEXT: f32 = 1.25;
 
@@ -32,6 +38,10 @@ pub struct App {
     built_width: f32,
     /// The value of `appearance.theme` the window last followed.
     seen_theme: Option<String>,
+    /// `appearance.font_size` as a factor (with `large_text` it sets the text size).
+    font: f32,
+    /// `accessibility.large_text` as last read.
+    large: bool,
 }
 
 impl std::fmt::Debug for App {
@@ -43,6 +53,8 @@ impl std::fmt::Debug for App {
 impl App {
     /// Loads the first page (area `area`) and builds the window.
     pub fn new(ui: Ui, ports: Ports, area: usize) -> Result<App, AppError> {
+        // The text size the launcher handed over (ULTAR_FONT_SIZE), until a page tells.
+        let font = ui.env().text_scale;
         let mut app = App {
             ui,
             view: View::default(),
@@ -52,6 +64,8 @@ impl App {
             toasts: 0,
             built_width: 0.0,
             seen_theme: None,
+            font,
+            large: false,
         };
         app.built_width = app.ui.size().w;
         app.state.area = area.min(crate::areas::AREAS.len() - 1);
@@ -65,13 +79,40 @@ impl App {
 
     /// The stored value of the setting `appearance.theme`, if settingsd was read.
     fn stored_theme(&self) -> Option<String> {
-        let items = self.state.panels.iter().flat_map(|p| p.items.iter());
-        items
-            .filter(|i| i.key == THEME_KEY)
-            .find_map(|i| match &i.value {
-                SettingValue::Text(t) => Some(t.clone()),
-                _ => None,
-            })
+        match self.stored(THEME_KEY) {
+            Some(SettingValue::Text(t)) => Some(t.clone()),
+            _ => None,
+        }
+    }
+
+    /// The stored value of a setting of the loaded panels.
+    fn stored(&self, key: &str) -> Option<&SettingValue> {
+        let mut items = self.state.panels.iter().flat_map(|p| p.items.iter());
+        items.find(|i| i.key == key).map(|i| &i.value)
+    }
+
+    /// The window follows the language, the accent colour and the text size of the
+    /// settings at once (changed on its own pages or elsewhere); `true` when the language
+    /// changed (every text and the reading direction: the whole window is built again).
+    fn follow_look(&mut self) -> bool {
+        if let Some(SettingValue::Text(t)) = self.stored(ACCENT_KEY) {
+            let accent = ultar_ui::tokens::Accent::parse(t).unwrap_or_default();
+            self.ui.set_accent(accent);
+        }
+        if let Some(SettingValue::Integer(v)) = self.stored(FONT_KEY) {
+            self.font = (*v).clamp(80, 200) as f32 / 100.0;
+        }
+        let lang = match self.stored(LANG_KEY) {
+            Some(SettingValue::Text(t)) => ultar_i18n::Lang::parse(t),
+            _ => None,
+        };
+        match lang {
+            Some(lang) if lang != self.ui.env().lang => {
+                self.ui.set_lang(lang);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Takes the window's theme from the setting `appearance.theme` (`light`, `dark`; `auto`
@@ -189,8 +230,11 @@ impl App {
         let contrast = flag("accessibility.high_contrast");
         let still = flag("accessibility.reduce_motion");
         if let Some(on) = large {
-            let _ = self.ui.set_text_scale(if on { LARGE_TEXT } else { 1.0 });
+            self.large = on;
         }
+        let _ = self
+            .ui
+            .set_text_scale(if self.large { LARGE_TEXT } else { 1.0 } * self.font);
         if let Some(on) = contrast {
             self.ui.set_high_contrast(on);
         }
@@ -204,8 +248,9 @@ impl App {
     }
 
     fn apply(&mut self, outcome: Outcome) -> Result<(), AppError> {
+        let lang_changed = self.follow_look();
         self.follow_access();
-        if outcome.rebuild_all {
+        if outcome.rebuild_all || lang_changed {
             view::build(&mut self.ui, &self.state, &mut self.view)?;
         } else if outcome.rebuild {
             view::rebuild_content(&mut self.ui, &self.state, &mut self.view)?;

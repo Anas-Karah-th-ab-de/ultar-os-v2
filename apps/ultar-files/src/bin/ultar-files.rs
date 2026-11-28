@@ -126,7 +126,8 @@ fn run(o: Options) -> Result<(), String> {
     } else {
         ThemeKind::Dark
     };
-    let env = PaintEnv::new(o.lang, theme);
+    // the person's theme, accent and text size, handed over by the app launcher
+    let env = PaintEnv::new(o.lang, theme).with_session(o.light);
     let tr = ultar_files::i18n::translator(o.lang);
     let title = tr.t("app.files.name").into_owned();
     let ui =

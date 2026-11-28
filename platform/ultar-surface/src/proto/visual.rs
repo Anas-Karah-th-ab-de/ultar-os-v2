@@ -5,7 +5,6 @@
 //! asks for a flash when a notification alerts and `accessibility.visual_alert`
 //! is on.
 
-#[allow(unused_imports)] // for the links above
 use super::Request;
 use crate::wire::{Reader, WireError, Writer};
 
@@ -65,6 +64,64 @@ impl ColourFilter {
     }
 }
 
+/// The language of the compositor's own drawing ([`Request::ConfigureLook`]); the byte on
+/// the wire is its number.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum LookLang {
+    /// Arabic (right to left; the standard).
+    #[default]
+    Ar = 0,
+    /// English.
+    En = 1,
+    /// German.
+    De = 2,
+}
+
+impl LookLang {
+    /// The language of a settings word (`ar`, `en`, `de`).
+    pub fn from_word(word: &str) -> Option<LookLang> {
+        match word.trim() {
+            "ar" => Some(LookLang::Ar),
+            "en" => Some(LookLang::En),
+            "de" => Some(LookLang::De),
+            _ => None,
+        }
+    }
+
+    /// Reads the wire byte; unknown languages are refused.
+    pub fn decode(byte: u8) -> Result<LookLang, WireError> {
+        match byte {
+            0 => Ok(LookLang::Ar),
+            1 => Ok(LookLang::En),
+            2 => Ok(LookLang::De),
+            _ => Err(WireError::BadValue),
+        }
+    }
+}
+
+/// Encodes the body of [`Request::ConfigureVisual`] (56), [`Request::VisualAlert`] (57) and
+/// [`Request::ConfigureLook`] (58); other requests write nothing.
+pub(super) fn encode(request: &Request, w: &mut Writer) {
+    match request {
+        Request::ConfigureVisual {
+            zoom,
+            zoom_percent,
+            filter,
+        } => {
+            w.bool(*zoom).u16(*zoom_percent);
+            filter.encode(w);
+        }
+        Request::VisualAlert { ms } => {
+            w.u32(*ms);
+        }
+        Request::ConfigureLook { lang, light } => {
+            w.u8(*lang as u8).bool(*light);
+        }
+        _ => {}
+    }
+}
+
 /// Decodes the body of [`Request::ConfigureVisual`] (56) or [`Request::VisualAlert`]
 /// (57). Every field is checked; out-of-range values are errors.
 pub(super) fn decode(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
@@ -111,6 +168,22 @@ mod tests {
         }
         let mut r = Reader::new(&[6]);
         assert_eq!(ColourFilter::decode(&mut r), Err(WireError::BadValue));
+    }
+
+    #[test]
+    fn the_look_request_round_trips_and_refuses_unknown_languages() {
+        for lang in [LookLang::Ar, LookLang::En, LookLang::De] {
+            let look = Request::ConfigureLook { lang, light: true };
+            assert_eq!(look.opcode(), 58);
+            let frame = look.encode().unwrap();
+            assert_eq!(Request::decode(58, &frame[8..]).unwrap(), look);
+        }
+        assert_eq!(LookLang::from_word("de"), Some(LookLang::De));
+        assert_eq!(LookLang::from_word("fr"), None);
+        let mut w = Writer::new(58);
+        w.u8(3).bool(false);
+        let frame = w.finish().unwrap();
+        assert!(Request::decode(58, &frame[8..]).is_err());
     }
 
     #[test]

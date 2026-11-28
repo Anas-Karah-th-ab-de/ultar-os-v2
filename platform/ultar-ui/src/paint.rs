@@ -86,6 +86,8 @@ pub struct PaintEnv {
     pub high_contrast: bool,
     /// accessibility.large_text: every text (and its line box) this many times larger (1 = off).
     pub text_scale: f32,
+    /// appearance.accent_color: the accent roles of the theme (gold: the palette's own).
+    pub accent: crate::tokens::Accent,
 }
 
 impl PaintEnv {
@@ -98,7 +100,16 @@ impl PaintEnv {
             scale: 1.0,
             high_contrast: false,
             text_scale: 1.0,
+            accent: crate::tokens::Accent::Gold,
         }
+    }
+
+    /// The colour of a role: the palette's, with the chosen accent (not in high contrast).
+    pub fn color(&self, role: ColorRole) -> Color {
+        if self.high_contrast {
+            return self.palette().get(role);
+        }
+        self.accent.apply(self.theme, self.palette(), role)
     }
 
     /// The palette of the active theme.
@@ -203,7 +214,7 @@ impl<'a> Painter<'a> {
     /// drawing calls (`fill`, `stroke`, `line`, `spinner`, `text`, `icon`), not here: applying
     /// it in both places painted disabled widgets at opacity² (0.16 instead of 0.4).
     pub fn color(&self, role: ColorRole) -> Color {
-        self.env.palette().get(role)
+        self.env.color(role)
     }
 
     /// Sets the opacity applied to all following drawing (disabled widgets) and returns the
@@ -310,6 +321,29 @@ impl<'a> Painter<'a> {
             .collect();
         self.canvas
             .draw_rgba(&faded, picture.width(), picture.height(), area);
+    }
+
+    /// Width and height in device pixels of what `rect` covers.
+    pub fn pixel_size(&self, rect: Rect) -> (u32, u32) {
+        let area = PixelRect::covering(&self.snap(rect));
+        (area.width().max(0) as u32, area.height().max(0) as u32)
+    }
+
+    /// Draws straight-alpha RGBA of `width` × `height` pixels into the device pixels of
+    /// `rect`, blended over what is there (the brand logo, already scaled to the size).
+    /// The painter's opacity fades it (a disabled or quiet picture).
+    pub fn rgba(&mut self, rgba: &[u8], width: u32, height: u32, rect: Rect) {
+        let area = PixelRect::covering(&self.snap(rect));
+        if self.opacity >= 1.0 {
+            self.canvas.draw_rgba(rgba, width, height, area);
+            return;
+        }
+        let alpha = self.opacity.clamp(0.0, 1.0);
+        let faded: Vec<u8> = rgba
+            .chunks_exact(4)
+            .flat_map(|p| [p[0], p[1], p[2], (f32::from(p[3]) * alpha).round() as u8])
+            .collect();
+        self.canvas.draw_rgba(&faded, width, height, area);
     }
 
     /// Draws `source` (device pixels, e.g. a web page frame) with its top start corner at

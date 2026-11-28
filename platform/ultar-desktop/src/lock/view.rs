@@ -90,7 +90,12 @@ fn cover(
         .ui
         .add(middle, Flex::column().cross(CrossAlign::Center))?;
     if let Some(t) = t {
-        let time = ultar_i18n::datefmt::format_time(t.hour, t.minute, ClockStyle::H24, tr);
+        let style = if s.prefs.look.h12 {
+            ClockStyle::H12
+        } else {
+            ClockStyle::H24
+        };
+        let time = ultar_i18n::datefmt::format_time(t.hour, t.minute, style, tr);
         let big = TextSpec::new(TypeSize::S32).weight(Weight::Bold);
         let big = TextSpec {
             role: FontRole::Title,

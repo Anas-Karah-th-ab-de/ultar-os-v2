@@ -99,12 +99,14 @@ call      = ["settings.get"]
 subscribe = ["settings.changed", "devices.capabilities"]
 
 # System dialogs (815): offers `sysdialog` (permission and administrator
-# prompts) and asks to keep new display settings.
+# prompts) and asks to keep new display settings. Reads the language and the look
+# of the settings (settings.get, settings.changed) so every dialog speaks the
+# person's language.
 [[rule]]
 identity  = "system.sysdialog"
 register  = ["sysdialog"]
-call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert"]
-subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state"]
+call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert", "settings.get"]
+subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state", "settings.changed"]
 
 
 # Network service: reports whether the connection is metered (nothing else of

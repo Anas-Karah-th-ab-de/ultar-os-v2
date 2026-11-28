@@ -55,8 +55,8 @@ pub struct DesktopApp {
     shell: Shell,
     look: Look,
     bar: SurfaceId,
-    /// The dock.
-    second: Option<SurfaceId>,
+    /// The dock and the desktop background.
+    side: panels::SidePanels,
     popup: Option<PopupSurface>,
     /// The banners' surface and when their clocks were last looked at.
     banners: BannerSurface,
@@ -148,7 +148,12 @@ impl DesktopApp {
             .unwrap_or_default();
         let mut shell = Shell::new(d, clock, user);
         shell.shape = Shape { bar: place };
-        let look = Look::new(options.lang, shell.d.theme);
+        // The language of the settings (region.language) when the service answered, else
+        // the session's; the accent and text size of the settings.
+        let v = shell.d.values;
+        let look = Look::new(shell.d.lang, shell.d.theme)
+            .with_access(v.high_contrast, v.large_text)
+            .with_prefs(&shell.d.prefs);
         let view = build_bar(&shell, look, size.w)?;
         let bar = host.open(&panels::bar_config(shell.shape), view, None)?;
         let mut app = DesktopApp {
@@ -156,7 +161,7 @@ impl DesktopApp {
             shell,
             look,
             bar,
-            second: None,
+            side: panels::SidePanels::default(),
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
@@ -170,6 +175,7 @@ impl DesktopApp {
         };
         app.apply_keyboard()?;
         app.open_side_panels()?;
+        app.sync_background()?;
         app.report_displays();
         Ok(app)
     }
@@ -203,8 +209,10 @@ impl DesktopApp {
 
     /// One turn of the loop.
     pub fn turn(&mut self) -> Result<(), AppError> {
-        let minute = time_to_minute(self.shell.clock.as_ref());
-        let events = self.host.dispatch(Some(minute.min(BUS_POLL)))?;
+        let seconds = self.shell.d.prefs.clock.seconds;
+        let tick = clock_tick(self.shell.clock.as_ref(), seconds);
+        let wait = time_to_tick(self.shell.clock.as_ref(), seconds);
+        let events = self.host.dispatch(Some(wait.min(BUS_POLL)))?;
         for event in events {
             self.event(event)?;
         }
@@ -212,8 +220,8 @@ impl DesktopApp {
         self.finish_slow()?;
         self.launch_due(None)?;
         self.tick_banners()?;
-        if time_to_minute(self.shell.clock.as_ref()) > minute {
-            // A new minute: the clock of the bar.
+        if clock_tick(self.shell.clock.as_ref(), seconds) != tick {
+            // A new minute (or second, with bar.clock.show_seconds): the clock of the bar.
             self.rebuild(Outcome {
                 bar: true,
                 ..Outcome::none()
@@ -495,10 +503,19 @@ fn wifi_mark(
 }
 
 /// Time until the next minute of the wall clock.
-fn time_to_minute(clock: &dyn Clock) -> Duration {
-    Duration::from_millis(crate::model::time::LocalTime::ms_to_next_minute(
-        clock.now_ms(),
-    ))
+/// Which minute (or second) of the clock it is: the bar is built again when it changes.
+fn clock_tick(clock: &dyn Clock, seconds: bool) -> u64 {
+    clock.now_ms() / if seconds { 1000 } else { 60_000 }
+}
+
+/// How long until the bar's clock changes.
+fn time_to_tick(clock: &dyn Clock, seconds: bool) -> Duration {
+    let now = clock.now_ms();
+    if seconds {
+        Duration::from_millis(1000 - now % 1000)
+    } else {
+        Duration::from_millis(crate::model::time::LocalTime::ms_to_next_minute(now))
+    }
 }
 
 /// Starts the shell on the system clock.

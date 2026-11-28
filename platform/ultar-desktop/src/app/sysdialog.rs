@@ -17,7 +17,7 @@ use std::time::Duration;
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret};
 use ultar_bus::messages::bluetooth::{BluetoothState, PairConfirm, PairConfirmReply};
 use ultar_bus::messages::mesh_dialog::{AskHandoff, HandoffDecision};
-use ultar_bus::messages::settings::{PendingConfirmation, PendingResolved};
+use ultar_bus::messages::settings::{Changed, PendingConfirmation, PendingResolved};
 use ultar_bus::messages::sysdialog::{
     AskPermission, Authenticate, AuthenticateReply, Decision, PermissionReply, SERVICE,
 };
@@ -44,6 +44,8 @@ pub struct DialogApp {
     resolved: Option<TypedSubscription<PendingResolved>>,
     /// `bluetooth.state`: a pairing that ends closes its "type this number" dialog.
     bluetooth: Option<TypedSubscription<BluetoothState>>,
+    /// `settings.changed`: the dialogs follow the language and the look of the settings.
+    settings: Option<TypedSubscription<Changed>>,
     calls: BTreeMap<u64, IncomingRequest>,
     next_id: u64,
     verify: Option<Receiver<Option<AuthOutcome>>>,
@@ -72,10 +74,15 @@ impl DialogApp {
         } else {
             ThemeKind::Dark
         };
+        let mut look = Look::new(options.lang, theme);
+        if let Some(c) = &client {
+            super::look_follow::read(c, &mut look);
+        }
         Ok(DialogApp {
             host,
             dialogs: Dialogs::default(),
-            look: Look::new(options.lang, theme),
+            look,
+            settings: client.as_ref().and_then(|c| c.subscribe::<Changed>().ok()),
             shown: None,
             endpoint: client.as_ref().and_then(|c| c.register(SERVICE).ok()),
             pending: client
@@ -135,6 +142,12 @@ impl DialogApp {
     }
 
     fn bus(&mut self) {
+        while let Some(Ok(Some(c))) = self.settings.as_ref().map(|s| s.try_recv()) {
+            if super::look_follow::apply(&mut self.look, &c.key, &c.value) {
+                // the open dialog is built again in the new language and look
+                self.shown_as = None;
+            }
+        }
         while let Some(Ok(Some(request))) = self.endpoint.as_ref().map(|e| e.try_recv()) {
             if let Ok(p) = request.decode::<AskPermission>() {
                 self.ask(Question::Permission(p), Some(request));

@@ -16,7 +16,8 @@ use ultar_ui::text::Weight;
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{
-    Badge, Brick, BrickKind, Card, Icon, Label, Menu, MenuItem, SearchField, Tabs, Text,
+    Badge, Brick, BrickKind, Card, Icon, IconButton, Label, Menu, MenuItem, Picture, SearchField,
+    Tabs, Text,
 };
 
 /// Cells per row.
@@ -229,15 +230,27 @@ pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
     ])
 }
 
+/// The footer (like the start menu's): the product mark and name at the start; the order
+/// hint, the keys and the power button (sleep, restart, power off, sign out – the same menu
+/// as in the quick settings) at the end.
 fn footer(view: &mut View, card: NodeId) -> Result<(), UiError> {
+    view.ui.add_sized(
+        card,
+        Brick::new(BrickKind::Rule, Label::data("")),
+        Sizing::AUTO,
+    )?;
     let row = Flex::row()
         .gap(Space::S8)
         .cross(CrossAlign::Center)
         .main(MainAlign::SpaceBetween);
     let row = view.ui.add_sized(card, row, Sizing::AUTO)?;
+    brand_line(view, row)?;
+    let end = view
+        .ui
+        .add(row, Flex::row().gap(Space::S16).cross(CrossAlign::Center))?;
     let hint = view
         .ui
-        .add(row, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
+        .add(end, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
     view.ui.add(hint, Icon::new(IconId::Info).small())?;
     let small = TextSpec::new(TypeSize::S12);
     view.ui.add(
@@ -248,7 +261,7 @@ fn footer(view: &mut View, card: NodeId) -> Result<(), UiError> {
     )?;
     let keys = view
         .ui
-        .add(row, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
+        .add(end, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
     for (caps, what) in [
         (&["Super", "A"][..], "desk.apps.keys.open"),
         (&["Esc"][..], "desk.apps.keys.close"),
@@ -263,5 +276,28 @@ fn footer(view: &mut View, card: NodeId) -> Result<(), UiError> {
                 .color(ColorRole::TextMuted),
         )?;
     }
+    let power = IconButton::new(IconId::Power, Label::key("desk.qs.power"));
+    let id = view.ui.add(end, power)?;
+    view.mark(id, Target::Power);
+    Ok(())
+}
+
+/// The product mark and name at the start of the footer.
+fn brand_line(view: &mut View, row: NodeId) -> Result<(), UiError> {
+    let brand = view
+        .ui
+        .add(row, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
+    view.ui.add(
+        brand,
+        Brick::new(
+            BrickKind::Art(Picture::Mark),
+            Label::key("brand.label.mark"),
+        ),
+    )?;
+    view.ui.add(
+        brand,
+        Text::new(Label::key("brand.product"))
+            .spec(TextSpec::new(TypeSize::S14).weight(Weight::Semibold)),
+    )?;
     Ok(())
 }
