@@ -286,8 +286,17 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
                 None => kprintln!("{p}: nicht gefunden"),
             }
         }
+        "spur" if args.first() == Some(&"fehler") => {
+            // only failing calls (not ENOENT/EAGAIN/EINTR) of processes whose name holds the word
+            let word = args.get(1).copied().unwrap_or("");
+            crate::syscall::trace_errors(Some(word));
+            kprintln!("Spur der fehlschlagenden Systemaufrufe an ({})", if word.is_empty() { "alle Prozesse" } else { word });
+        }
         "spur" => {
             let on = args.first() != Some(&"aus");
+            if !on {
+                crate::syscall::trace_errors(None);
+            }
             crate::syscall::TRACE.store(on, core::sync::atomic::Ordering::Relaxed);
             kprintln!("Systemaufruf-Spur {}", if on { "an" } else { "aus" });
         }

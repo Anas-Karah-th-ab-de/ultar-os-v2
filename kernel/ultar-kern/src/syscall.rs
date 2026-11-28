@@ -288,6 +288,38 @@ static UNKNOWN: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 /// Systemaufrufe protokollieren (`spur an` in der Kern-Konsole)
 pub static TRACE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
+/// `spur fehler <wort>`: failing calls of processes whose name holds the word (or ends in `.exe`),
+/// at most [`TRACE_ERR_MAX`] lines – how a foreign program's missing kernel behaviour is found.
+static TRACE_ERR: spin::Mutex<Option<String>> = spin::Mutex::new(None);
+static TRACE_ERR_ON: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static TRACE_ERR_LEFT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+const TRACE_ERR_MAX: u32 = 4000;
+
+/// Turns the trace of failing calls on (`Some(word)`, empty: every process) or off (`None`).
+pub fn trace_errors(word: Option<&str>) {
+    *TRACE_ERR.lock() = word.map(String::from);
+    TRACE_ERR_LEFT.store(TRACE_ERR_MAX, Ordering::Relaxed);
+    TRACE_ERR_ON.store(word.is_some(), Ordering::Relaxed);
+}
+
+fn trace_error(nr: u64, a: &[u64; 6], v: i64) {
+    let Some(name) = with(|p| p.name.clone()) else { return };
+    let hit = match TRACE_ERR.lock().as_deref() {
+        Some(w) => w.is_empty() || name.contains(w) || name.ends_with(".exe"),
+        None => false,
+    };
+    if !hit || TRACE_ERR_LEFT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1)).is_err() {
+        return;
+    }
+    let named = match nr {
+        2 | 4 | 6 | 21 | 59 | 85 | 87 | 89 => Some(a[0]),
+        257 | 262 | 263 | 267 | 269 | 332 | 439 => Some(a[1]),
+        _ => None,
+    };
+    let file = named.and_then(ustr).unwrap_or_default();
+    crate::kprintln!("[spur-fehler {} {name}] {nr}({:#x}, {:#x}, {:#x}, {:#x}) = {v} {file}", proc::current(), a[0], a[1], a[2], a[3]);
+}
+
 pub fn dispatch(f: &mut TrapFrame) {
     let nr = f.rax;
     crate::percpu::me().sys_rip = f.rip;
@@ -321,6 +353,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         0 => sys_read(a[0], a[1], a[2], None),
         1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
+        // creat(path, mode) = open(path, O_CREAT | O_WRONLY | O_TRUNC, mode) – the Wine server uses it
+        85 => Res::Val(sys_open(-100, a[0], 0o1101, a[1])),
         3 => Res::Val(sys_close(a[0])),
         436 => Res::Val(crate::fdcalls::close_range(a[0], a[1], a[2])),
         277 => Res::Val(crate::fdcalls::sync_file_range(a[0], a[3])),
@@ -583,6 +617,13 @@ pub fn dispatch(f: &mut TrapFrame) {
     if trace {
         if let Res::Val(v) = &r {
             crate::kprintln!("[spur {}] {nr} = {v}", proc::current());
+        }
+    }
+    if TRACE_ERR_ON.load(Ordering::Relaxed) {
+        if let Res::Val(v) = &r {
+            if *v < 0 && !matches!(*v, -2 | -11 | -4) {
+                trace_error(nr, &a, *v);
+            }
         }
     }
     match refused_errno(r) {

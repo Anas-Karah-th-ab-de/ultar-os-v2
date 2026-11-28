@@ -10,7 +10,8 @@
 # ultar-foreign and examples/foreigntest (else built here). Without KVM QEMU emulates: WAIT defaults to 1500 s.
 # DEB=<package> (default AREA/mousepad.deb; DEB= without one). An area with the component "windows"
 # (make-linux-runtime.sh COMPONENTS=windows) also runs Wine; the kernel's "noch nicht umgesetzt" lines
-# while it ran are listed as "FOREIGN-WINDOWS: syscall N".
+# while it ran are listed as "FOREIGN-WINDOWS: syscall N". FOREIGN_PRE=<shell command> runs before foreigntest
+# (e.g. "spur fehler wine": the kernel logs Wine's failing calls).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 AREA="${AREA:-out/foreign-linux}"
@@ -46,7 +47,7 @@ rm -f "$WORK/data.ext4"
 LOG="${LOG:-$WORK/foreign-e2e.log}"
 QARGS="-drive file=$WORK/disk.img,if=none,id=c,format=raw -device virtio-blk-pci,drive=c" \
   SMP="${SMP:-2}" MEM="${MEM:-2048}" WAIT="${WAIT:-1500}" timeout 2400 python3 tools/kern-test/qtest.py "$WORK/esp.img" \
-  "/bin/foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux $DEB_ARG" \
+  ${FOREIGN_PRE:+"$FOREIGN_PRE"} "/bin/foreigntest --helper /bin/ultar-foreign --area /data/foreign/linux $DEB_ARG" \
   > "$LOG" 2>&1 || true
 grep -aE "^FOREIGN" "$LOG" | tr -d '\r' || true
 tr -d '\r' <"$LOG" | awk '/FOREIGN-WINDOWS: start/{on=1} /FOREIGN-WINDOWS: end/{on=0}
