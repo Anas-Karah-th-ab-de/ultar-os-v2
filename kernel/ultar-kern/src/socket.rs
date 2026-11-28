@@ -1,8 +1,14 @@
 //! Sockets für Programme (Linux-ABI): AF_INET mit UDP und TCP (Client und Server), Loopback 127.0.0.1.
 //! Eigene TCP-Umsetzung: Drei-Wege-Handshake, Folgenummern, Bestätigungen, Wiederholung nach Zeitablauf,
 //! FIN/RST, Annahme-Warteschlange. Der Netzwerkstapel wird vom Planer (≈100 Hz) und bei jedem Aufruf abgefragt.
+//!
+//! Network namespaces and the "internet only" barrier (`isolation::net`): every socket belongs to the namespace
+//! of its creator and remembers whether the creator carried the barrier. Loopback frames carry the namespace
+//! they were sent in and reach only sockets of that namespace; frames from the network card are the host's and
+//! reach a socket of another namespace only as the answer to a connection or datagram that socket sent out.
 
 use crate::driver::NET;
+use crate::isolation::net::{self as netns, Device, NetView};
 use crate::net::{self, csum, eth, ipv4, CONFIG};
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec;
@@ -61,6 +67,10 @@ pub struct Sock {
     peers: Vec<([u8; 4], u16)>,
     /// Resource group of the creator: the socket's buffers are charged to it
     owner: u16,
+    /// Network namespace of the creator (0 = host)
+    pub ns: u64,
+    /// The creator carried the "internet only" barrier: it stays with the socket wherever it is passed
+    guard: bool,
 }
 
 impl Sock {
@@ -90,7 +100,21 @@ impl Sock {
             peer_win: 65535,
             peers: Vec::new(),
             owner: crate::heap::context(),
+            ns: netns::HOST,
+            guard: false,
         }
+    }
+
+    /// What this socket may reach: its namespace, and the barrier of its creator or of `caller`.
+    fn view(&self, caller: NetView) -> NetView {
+        NetView { ns: self.ns, guard: self.guard || caller.guard }
+    }
+
+    /// Whether a frame received in namespace `frame` from `src` may reach this socket: a socket sees the
+    /// frames of its own namespace; a socket of another namespace that went out through the barrier gets
+    /// the answers from the network (never the host's loopback, never a new connection – see `tcp_in`).
+    fn sees(&self, frame: u64, src: [u8; 4]) -> bool {
+        self.ns == frame || frame == netns::HOST && self.guard && !netns::is_loopback(src)
     }
 
     /// Append received bytes to the stream buffer, charged to the socket's owner. `false`: the
@@ -201,7 +225,8 @@ fn cookie_fenster() -> u64 {
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_PORT: AtomicU64 = AtomicU64::new(40000);
 static ARP: Mutex<Vec<([u8; 4], [u8; 6])>> = Mutex::new(Vec::new());
-static LOOP: Mutex<VecDeque<Vec<u8>>> = Mutex::new(VecDeque::new());
+/// Loopback frames with the namespace they were sent in
+static LOOP: Mutex<VecDeque<(u64, Vec<u8>)>> = Mutex::new(VecDeque::new());
 
 /// Griff auf einen Socket im Dateideskriptor; schließt beim letzten Freigeben
 pub struct Handle(pub usize);
@@ -214,7 +239,10 @@ impl Drop for Handle {
 /// New socket for the calling process. `None`: the table is full, or the caller's group (a group
 /// below `apps` or `cells`) already holds its share of it.
 pub fn create(udp: bool) -> Option<usize> {
-    let sock = Sock::new(udp);
+    let mut sock = Sock::new(udp);
+    let creator = NetView::current();
+    sock.ns = creator.ns;
+    sock.guard = creator.guard;
     let mut ss = SOCKS.lock();
     let branch = crate::groups::branch_of(sock.owner);
     let limited = branch == crate::groups::APPS || branch == crate::groups::CELLS;
@@ -248,8 +276,23 @@ fn my_ip() -> [u8; 4] {
     CONFIG.lock().map(|c| c.ip).unwrap_or([10, 0, 2, 15])
 }
 
-fn is_local(ip: [u8; 4]) -> bool {
-    ip[0] == 127 || ip == my_ip()
+/// Whether a packet sent in namespace `ns` to `ip` stays on this device: the loopback, and on the host
+/// also the device's own address.
+fn is_local(ns: u64, ip: [u8; 4]) -> bool {
+    ip[0] == 127 || ns == netns::HOST && ip == my_ip()
+}
+
+/// This device's addresses as the barrier needs them.
+pub fn device() -> Device {
+    let c = *CONFIG.lock();
+    match c {
+        Some(c) => Device {
+            ip: c.ip,
+            broadcast: [c.ip[0] | !c.mask[0], c.ip[1] | !c.mask[1], c.ip[2] | !c.mask[2], c.ip[3] | !c.mask[3]],
+            dns: [c.dns, c.dns2],
+        },
+        None => Device { ip: [0; 4], broadcast: [255; 4], dns: [[0; 4]; 2] },
+    }
 }
 
 fn mac() -> Option<[u8; 6]> {
@@ -260,11 +303,12 @@ fn raw_send(frame: &[u8]) {
     let _ = crate::net::active_send(frame);
 }
 
-static TXQ: Mutex<VecDeque<(u64, [u8; 4], Vec<u8>)>> = Mutex::new(VecDeque::new());
+/// Packets to send: queued at, destination, packet, namespace it was sent in
+static TXQ: Mutex<VecDeque<(u64, [u8; 4], Vec<u8>, u64)>> = Mutex::new(VecDeque::new());
 static ARP_ASKED: Mutex<Vec<([u8; 4], u64)>> = Mutex::new(Vec::new());
 
-/// IP-Paket zum Senden einreihen (gesendet wird in `flush`, ohne gehaltene Sperren)
-fn send_ip(dst: [u8; 4], proto: u8, payload: &[u8]) {
+/// IP-Paket zum Senden einreihen (gesendet wird in `flush`, ohne gehaltene Sperren); `ns`: namespace of the sender
+fn send_ip(ns: u64, dst: [u8; 4], proto: u8, payload: &[u8]) {
     if (proto == 17 || proto == 6) && payload.len() >= 4 {
         let (sp, dp) = (u16::from_be_bytes([payload[0], payload[1]]), u16::from_be_bytes([payload[2], payload[3]]));
         if !crate::verbund::erlaubt(proto, sp, dp) {
@@ -280,7 +324,7 @@ fn send_ip(dst: [u8; 4], proto: u8, payload: &[u8]) {
         while q.len() >= MAX_TXQ || bytes > MAX_TXQ_BYTES && !q.is_empty() {
             bytes -= q.pop_front().map(|e| e.2.len()).unwrap_or(0);
         }
-        q.push_back((crate::arch::uptime_ms(), dst, pkt));
+        q.push_back((crate::arch::uptime_ms(), dst, pkt, ns));
     });
 }
 
@@ -292,14 +336,17 @@ pub fn flush() {
 
 fn flush_queue() {
     let now = crate::arch::uptime_ms();
-    let q: Vec<(u64, [u8; 4], Vec<u8>)> = TXQ.lock().drain(..).collect();
+    let q: Vec<(u64, [u8; 4], Vec<u8>, u64)> = TXQ.lock().drain(..).collect();
     let Some(cfg) = *CONFIG.lock() else { return };
     let Some(my) = mac() else { return };
     let mut keep = Vec::new();
-    for (t, dst, pkt) in q {
-        if is_local(dst) {
-            LOOP.lock().push_back(eth([0; 6], [0; 6], 0x0800, &pkt));
+    for (t, dst, pkt, ns) in q {
+        if is_local(ns, dst) {
+            LOOP.lock().push_back((ns, eth([0; 6], [0; 6], 0x0800, &pkt)));
             continue;
+        }
+        if ns != netns::HOST && dst == cfg.ip {
+            continue; // a namespace never reaches the host through the device's address
         }
         // Rundruf (255.255.255.255 oder Netz-Broadcast): an alle, ohne ARP
         let bc = [cfg.ip[0] | !cfg.mask[0], cfg.ip[1] | !cfg.mask[1], cfg.ip[2] | !cfg.mask[2], cfg.ip[3] | !cfg.mask[3]];
@@ -325,7 +372,7 @@ fn flush_queue() {
                         a.extend_from_slice(&hop);
                         raw_send(&eth([0xff; 6], my, 0x0806, &a));
                     }
-                    keep.push((t, dst, pkt));
+                    keep.push((t, dst, pkt, ns));
                 }
             }
         }
@@ -370,7 +417,7 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
     let src = if s.rip[0] == 127 { [127, 0, 0, 1] } else { my_ip() };
     let c = tcp_csum(src, s.rip, &t);
     t[16..18].copy_from_slice(&c.to_be_bytes());
-    send_ip(s.rip, 6, &t);
+    send_ip(s.ns, s.rip, 6, &t);
 }
 
 /// eingehende Rahmen verarbeiten, Wiederholungen senden
@@ -384,7 +431,7 @@ pub fn poll() {
 }
 
 fn poll_network() {
-    let mut frames: Vec<Vec<u8>> = LOOP.lock().drain(..).collect();
+    let mut frames: Vec<(u64, Vec<u8>)> = LOOP.lock().drain(..).collect();
     {
         let mut buf = [0u8; 2048];
         let mut nl = NET.lock();
@@ -393,7 +440,7 @@ fn poll_network() {
                 match d.recv(&mut buf) {
                     Some(n) => {
                         crate::net::count_rx(n);
-                        frames.push(buf[..n].to_vec())
+                        frames.push((netns::HOST, buf[..n].to_vec()))
                     }
                     None => break,
                 }
@@ -403,29 +450,31 @@ fn poll_network() {
     crate::net::tick();
     let had = !frames.is_empty();
     let active = crate::net::active_nic();
-    for f in frames {
-        if !crate::net::input(active, &f) {
-            handle(&f);
+    for (ns, f) in frames {
+        // the DHCP client and other kernel listeners see only the host's frames
+        if ns != netns::HOST || !crate::net::input(active, &f) {
+            handle(ns, &f);
         }
     }
     retransmit();
     flush();
     if had || !LOOP.lock().is_empty() {
         // Loopback-Antworten sofort verarbeiten
-        let more: Vec<Vec<u8>> = LOOP.lock().drain(..).collect();
-        for f in more {
-            handle(&f);
+        let more: Vec<(u64, Vec<u8>)> = LOOP.lock().drain(..).collect();
+        for (ns, f) in more {
+            handle(ns, &f);
         }
         flush();
     }
 }
 
-fn handle(f: &[u8]) {
+/// One received frame; `ns`: the namespace it arrived in (the host's for the network card).
+fn handle(ns: u64, f: &[u8]) {
     if f.len() < 14 {
         return;
     }
     let typ = u16::from_be_bytes([f[12], f[13]]);
-    if typ == 0x0806 && f.len() >= 42 {
+    if typ == 0x0806 && f.len() >= 42 && ns == netns::HOST {
         let (op, sha, spa, tpa) = (u16::from_be_bytes([f[20], f[21]]), &f[22..28], &f[28..32], &f[38..42]);
         let mut ip = [0u8; 4];
         ip.copy_from_slice(spa);
@@ -476,7 +525,7 @@ fn handle(f: &[u8]) {
             r[3] = 0;
             let c = csum(&r);
             r[2..4].copy_from_slice(&c.to_be_bytes());
-            send_ip(src, 1, &r);
+            send_ip(ns, src, 1, &r);
         }
         17 if body.len() >= 8 => {
             let sp = u16::from_be_bytes([body[0], body[1]]);
@@ -486,9 +535,11 @@ fn handle(f: &[u8]) {
                 return;
             }
             let mut ss = SOCKS.lock();
-            if let Some(s) = ss.values_mut().find(|s| s.udp && s.lport == dp) {
+            // a socket of the frame's own namespace first, then one that went out through the barrier
+            let target = ss.iter().find(|(_, s)| s.udp && s.lport == dp && s.ns == ns).or_else(|| ss.iter().find(|(_, s)| s.udp && s.lport == dp && s.sees(ns, src))).map(|(k, _)| *k);
+            if let Some(s) = target.and_then(|k| ss.get_mut(&k)) {
                 let antwort = s.peers.contains(&(src, sp)) || (s.rip == src && s.rport == sp);
-                if !antwort && !crate::firewall::eingehend_erlaubt(17, src, dp) {
+                if !antwort && (s.ns != ns || !crate::firewall::eingehend_erlaubt(17, src, dp)) {
                     return; // Brandmauer: niemand hat diesen Port geöffnet
                 }
                 // bounded in count and bytes; charged to the socket's owner, dropped if that group gets no memory
@@ -507,7 +558,7 @@ fn handle(f: &[u8]) {
                         GEN.fetch_add(1, Ordering::Relaxed);
                     }
                 }
-            } else if dp == crate::verbund::UDP_PORT {
+            } else if dp == crate::verbund::UDP_PORT && ns == netns::HOST {
                 drop(ss);
                 crate::verbund::meldung(src, &body[8..len]);
             }
@@ -515,14 +566,14 @@ fn handle(f: &[u8]) {
         6 if body.len() >= 20 => {
             let (sp, dp) = (u16::from_be_bytes([body[0], body[1]]), u16::from_be_bytes([body[2], body[3]]));
             if crate::verbund::erlaubt(6, sp, dp) {
-                tcp_in(src, dst, body)
+                tcp_in(ns, src, dst, body)
             }
         }
         _ => {}
     }
 }
 
-fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
+fn tcp_in(ns: u64, src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
     let sp = u16::from_be_bytes([seg[0], seg[1]]);
     let dp = u16::from_be_bytes([seg[2], seg[3]]);
     let seq = u32::from_be_bytes(seg[4..8].try_into().unwrap());
@@ -533,18 +584,19 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
     let data = &seg[off..];
     let mut ss = SOCKS.lock();
     GEN.fetch_add(1, Ordering::Relaxed);
-    let id = ss.iter().find(|(_, s)| !s.udp && s.lport == dp && s.rport == sp && s.rip == src && s.st != Tcp::Listen).map(|(k, _)| *k);
+    let id = ss.iter().find(|(_, s)| !s.udp && s.lport == dp && s.rport == sp && s.rip == src && s.st != Tcp::Listen && s.sees(ns, src)).map(|(k, _)| *k);
     let Some(id) = id else {
         // neue Verbindung an einem lauschenden Socket?
         if fl & SYN != 0 && fl & ACK == 0 {
             if !crate::firewall::eingehend_erlaubt(6, src, dp) {
                 return; // Brandmauer: still verwerfen – von außen sieht der Port „gefiltert“ aus
             }
-            if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp) {
+            if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp && s.ns == ns) {
                 let halboffen = ss.values().filter(|s| s.parent == Some(lid) && s.st == Tcp::SynRcvd).count();
                 if halboffen >= MAX_HALBOFFEN || ss.len() >= MAX_SOCKS {
                     // SYN-Flut: zustandslos mit Cookie antworten
                     let mut t = Sock::new(false);
+                    t.ns = ns;
                     t.lport = dp;
                     t.rport = sp;
                     t.rip = src;
@@ -561,6 +613,8 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
                     c.rport = sp;
                     c.st = Tcp::SynRcvd;
                     c.owner = ss[&lid].owner;
+                    c.ns = ss[&lid].ns;
+                    c.guard = ss[&lid].guard;
                     c.rcv_nxt = seq.wrapping_add(1);
                     let iss = crate::arch::zufall() as u32;
                     c.snd_una = iss;
@@ -578,7 +632,7 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
             let f = cookie_fenster();
             let gueltig = [f, f.wrapping_sub(1)].iter().any(|&w| ack.wrapping_sub(1) == cookie(src, sp, dp, w));
             if gueltig && ss.len() < MAX_SOCKS {
-                if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp) {
+                if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp && s.ns == ns) {
                     if ss[&lid].backlog.len() < 64 {
                         let nid = NEXT_ID.fetch_add(1, Ordering::Relaxed) as usize;
                         let mut c = Sock::new(false);
@@ -595,6 +649,8 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
                         c.peer_win = win;
                         // the connection belongs to whoever listens
                         c.owner = ss[&lid].owner;
+                        c.ns = ss[&lid].ns;
+                        c.guard = ss[&lid].guard;
                         if !data.is_empty() && c.take(data) {
                             c.rcv_nxt = seq.wrapping_add(data.len() as u32);
                             tcp_out(&c, ack, ACK, &[]);
@@ -611,6 +667,7 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
         if fl & RST == 0 && src[0] == 127 {
             // unbekannt: nur lokal zurücksetzen – nach außen keine Antwort (verrät nichts)
             let mut t = Sock::new(false);
+            t.ns = ns;
             t.lport = dp;
             t.rport = sp;
             t.rip = src;
@@ -763,9 +820,14 @@ pub fn make_addr(ip: [u8; 4], port: u16) -> Vec<u8> {
 }
 
 pub fn bind(id: usize, ip: [u8; 4], port: u16) -> i64 {
+    let caller = NetView::current();
     let mut ss = SOCKS.lock();
-    let udp = ss.get(&id).map(|s| s.udp).unwrap_or(false);
-    if port != 0 && ss.iter().any(|(k, s)| *k != id && s.udp == udp && s.lport == port && s.parent.is_none()) {
+    let Some((udp, ns, view)) = ss.get(&id).map(|s| (s.udp, s.ns, s.view(caller))) else { return -9 };
+    if let Err(e) = view.may_bind(ip, port) {
+        return e;
+    }
+    // ports are taken per namespace
+    if port != 0 && ss.iter().any(|(k, s)| *k != id && s.udp == udp && s.lport == port && s.parent.is_none() && s.ns == ns) {
         return -EADDRINUSE;
     }
     let Some(s) = ss.get_mut(&id) else { return -9 };
@@ -775,8 +837,12 @@ pub fn bind(id: usize, ip: [u8; 4], port: u16) -> i64 {
 }
 
 pub fn listen(id: usize) -> i64 {
+    let caller = NetView::current();
     let mut ss = SOCKS.lock();
     let Some(s) = ss.get_mut(&id) else { return -9 };
+    if let Err(e) = s.view(caller).may_listen() {
+        return e;
+    }
     if s.lport == 0 {
         s.lport = ephemeral();
     }
@@ -787,8 +853,11 @@ pub fn listen(id: usize) -> i64 {
 /// Verbindung aufbauen; Ok(true) = fertig, Ok(false) = noch im Aufbau
 pub fn connect(id: usize, ip: [u8; 4], port: u16) -> Result<bool, i64> {
     let ip = if ip == [0; 4] { [127, 0, 0, 1] } else { ip };
+    let caller = NetView::current();
+    let dev = device();
     let mut ss = SOCKS.lock();
     let Some(s) = ss.get_mut(&id) else { return Err(-9) };
+    s.view(caller).may_reach(ip, port, &dev)?;
     if s.lport == 0 {
         s.lport = ephemeral();
     }
@@ -814,8 +883,13 @@ pub fn connect(id: usize, ip: [u8; 4], port: u16) -> Result<bool, i64> {
     tcp_out(s, iss, SYN, &[]);
     drop(ss);
     poll();
-    let ss = SOCKS.lock();
-    Ok(ss.get(&id).map(|s| s.st == Tcp::Established).unwrap_or(false))
+    // a local peer may already have answered inside poll(): accepted, or refused (RST)
+    let mut ss = SOCKS.lock();
+    match ss.get_mut(&id) {
+        Some(s) if s.st == Tcp::Established => Ok(true),
+        Some(s) if s.st == Tcp::Closed && s.err != 0 => Err(core::mem::replace(&mut s.err, 0)),
+        _ => Ok(false),
+    }
 }
 
 pub fn accept(id: usize) -> Option<usize> {
@@ -825,10 +899,8 @@ pub fn accept(id: usize) -> Option<usize> {
 /// Daten senden; Anzahl oder Fehler
 /// Build the UDP datagram `s` sends to `to` (or its connected peer) and remember the peer, whose
 /// answers may come in. Returns the destination and the datagram, or the negative error number.
-fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>) -> Result<([u8; 4], Vec<u8>), i64> {
-    if s.lport == 0 {
-        s.lport = ephemeral();
-    }
+/// `view`/`dev`: what the sender may reach (checked before anything is sent or remembered).
+fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>, view: NetView, dev: &Device) -> Result<([u8; 4], Vec<u8>), i64> {
     let (ip, port) = to.unwrap_or((s.rip, s.rport));
     if port == 0 {
         return Err(-89); // EDESTADDRREQ
@@ -837,6 +909,10 @@ fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>) -> Result
         return Err(-90); // EMSGSIZE
     }
     let ip = if ip == [0; 4] { [127, 0, 0, 1] } else { ip };
+    view.may_reach(ip, port, dev)?;
+    if s.lport == 0 {
+        s.lport = ephemeral();
+    }
     if !s.peers.contains(&(ip, port)) {
         if s.peers.len() >= 16 {
             s.peers.remove(0);
@@ -853,15 +929,18 @@ fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>) -> Result
 }
 
 pub fn send(id: usize, data: &[u8], to: Option<([u8; 4], u16)>) -> i64 {
+    let caller = NetView::current();
+    let dev = device();
     let mut ss = SOCKS.lock();
     let Some(s) = ss.get_mut(&id) else { return -9 };
     if s.udp {
-        let (ip, u) = match udp_datagram(s, data, to) {
+        let (view, ns) = (s.view(caller), s.ns);
+        let (ip, u) = match udp_datagram(s, data, to, view, &dev) {
             Ok(d) => d,
             Err(e) => return e,
         };
         drop(ss);
-        send_ip(ip, 17, &u);
+        send_ip(ns, ip, 17, &u);
         flush();
         poll();
         return data.len() as i64;

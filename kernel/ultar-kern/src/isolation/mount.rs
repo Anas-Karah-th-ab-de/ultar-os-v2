@@ -87,6 +87,10 @@ pub struct Target {
     pub host: String,
     /// Flags of the covering mount.
     pub opts: Opts,
+    /// The path is the mount point itself (a directory or, for a bind of a single file, a file).
+    pub mount_point: bool,
+    /// The covering mount shows the whole host tree (the initial root, or a bind of it).
+    pub whole_host: bool,
 }
 
 /// One mount namespace.
@@ -172,9 +176,12 @@ impl MountNs {
             }
         }
         match best {
-            Some((m, rest)) => Target { host: join(&m.source.host_root(), rest), opts: m.opts },
+            Some((m, rest)) => {
+                let root = m.source.host_root();
+                Target { host: join(&root, rest), opts: m.opts, mount_point: rest.is_empty(), whole_host: root == "/" }
+            }
             // unreachable: every table holds "/", kept as a closed door rather than a panic
-            None => Target { host: String::from("/\0tmpfs"), opts: Opts { read_only: true, no_exec: true } },
+            None => Target { host: String::from("/\0tmpfs"), opts: Opts { read_only: true, no_exec: true }, mount_point: false, whole_host: false },
         }
     }
 
@@ -200,6 +207,39 @@ impl MountNs {
             }
             None => (Source::Tree(String::from("/\0tmpfs")), Opts { read_only: true, no_exec: true }),
         }
+    }
+
+    /// Whether the host entry `host` is the cell's own: reachable below the root `root` through a
+    /// writable mount of this namespace that does not show the whole host tree (what the right
+    /// `CELL_CHOWN` may change).
+    pub fn owned_by_cell(&self, host: &str, root: &str) -> bool {
+        self.writable_in_view(host, root, false)
+    }
+
+    /// Whether the host entry `host` can be changed through the view with root `root`: it is visible at
+    /// some path of the view, and at that path the visible mount (not one hidden below a later mount)
+    /// is writable; with `whole_host` false that mount must not show the whole host tree. Checked from
+    /// the host side, so it also holds for a descriptor (`fchmod`, `fchown`) that was opened through a
+    /// read-only mount or came from outside the view.
+    pub fn writable_in_view(&self, host: &str, root: &str, whole_host: bool) -> bool {
+        let candidates: Vec<String> = {
+            let mounts = self.mounts.lock();
+            mounts
+                .iter()
+                .filter(|m| !m.opts.read_only && below(&m.at, root).is_some())
+                .filter_map(|m| {
+                    let src = m.source.host_root();
+                    if src == "/" && !whole_host {
+                        return None;
+                    }
+                    below(host, &src).map(|rest| join(&m.at, rest))
+                })
+                .collect()
+        };
+        candidates.iter().any(|at| {
+            let t = self.translate(at);
+            t.host == host && !t.opts.read_only && (whole_host || !t.whole_host)
+        })
     }
 
     /// Add a mount at the namespace path `at`.

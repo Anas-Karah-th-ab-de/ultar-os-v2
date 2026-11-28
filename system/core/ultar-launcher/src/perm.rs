@@ -188,7 +188,7 @@ impl PermissionSet {
 
 /// Names of the kernel rights in bit order (the Ultar kernel's
 /// `PR_ULTAR_RIGHTS_*` bits, the same as `ultar_service::Right`).
-pub const KERNEL_RIGHT_NAMES: [&str; 14] = [
+pub const KERNEL_RIGHT_NAMES: [&str; 15] = [
     "mount",
     "net_admin",
     "load_driver",
@@ -203,6 +203,7 @@ pub const KERNEL_RIGHT_NAMES: [&str; 14] = [
     "input_inject",
     "sound",
     "camera",
+    "cell_chown",
 ];
 
 /// The kernel right `sound`: the sound card's running streams `/dev/ultar/pcm`.

@@ -1,5 +1,5 @@
 //! Process isolation of the Ultar kernel, stage 1 (plan §3.7): mount namespaces, pid namespaces and
-//! the foundation of per-process rights.
+//! the foundation of per-process rights; network namespaces and the "internet only" barrier ([`net`]).
 //!
 //! A *cell* is a process whose view of the machine is narrowed by these three building blocks:
 //! what it sees of the file tree ([`mount`], [`path`], [`tmpfs`]), which processes it sees
@@ -8,6 +8,7 @@
 
 pub mod calls;
 pub mod mount;
+pub mod net;
 pub mod path;
 pub mod pid;
 pub mod rights;
@@ -56,12 +57,14 @@ pub struct Isolation {
     pub rights: Rights,
     /// User and group ids.
     pub cred: crate::cred::Cred,
+    /// Network namespace and the "internet only" barrier.
+    pub net: net::NetView,
 }
 
 impl Isolation {
     /// State of a program started by the kernel: the host tree, the initial pid namespace, every right.
     pub fn host() -> Isolation {
-        Isolation { mnt: MountNs::initial(), root: String::from("/"), root_id: 0, pid_ns_children: PidNs::initial(), rights: Rights::ALL, cred: crate::cred::Cred::ROOT }
+        Isolation { mnt: MountNs::initial(), root: String::from("/"), root_id: 0, pid_ns_children: PidNs::initial(), rights: Rights::ALL, cred: crate::cred::Cred::ROOT, net: net::NetView::HOST }
     }
 
     /// Whether the view is narrower than the host tree (anything but the initial namespace with root `/`).

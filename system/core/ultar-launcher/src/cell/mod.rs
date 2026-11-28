@@ -137,6 +137,9 @@ pub struct CellPlan {
     pub group_dir: Option<PathBuf>,
     /// Namespaces to create (none: no cell).
     pub namespaces: Namespaces,
+    /// Set the Ultar kernel's "internet only" barrier after the namespaces (a network app outside
+    /// the system profile: its own loopback, the internet, nothing of the device or the LAN).
+    pub net_guard: bool,
     /// Mount point of the cell's root (a directory of the launcher).
     pub root: PathBuf,
     /// The app's data directory on the host.
@@ -246,6 +249,9 @@ impl CellPlan {
             args.extend(["--group-dir".into(), text(dir)]);
         }
         args.extend(["--ns".into(), flags_word(self.namespaces)]);
+        if self.net_guard {
+            args.extend(["--net-guard".into(), "internet".into()]);
+        }
         args.extend([
             "--root".into(),
             text(&self.root),
@@ -288,6 +294,7 @@ impl CellPlan {
             identity: None,
             group_dir: None,
             namespaces: Namespaces::default(),
+            net_guard: false,
             root: PathBuf::new(),
             data: PathBuf::new(),
             view: Vec::new(),
@@ -318,6 +325,7 @@ impl CellPlan {
                 "--gid" => gid = Some(value.parse::<u32>().ok()?),
                 "--group-dir" => plan.group_dir = Some(path()?),
                 "--ns" => plan.namespaces = parse_flags(value)?,
+                "--net-guard" if value == "internet" => plan.net_guard = true,
                 "--root" => plan.root = path()?,
                 "--data" => plan.data = path()?,
                 "--view" => plan.view.push(path()?),

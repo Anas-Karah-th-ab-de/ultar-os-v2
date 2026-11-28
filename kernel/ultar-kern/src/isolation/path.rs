@@ -54,6 +54,8 @@ pub struct Loc {
     pub confined: bool,
     /// Tag of the view the path was resolved in.
     pub tag: ViewTag,
+    /// The path is a mount point of the view (removing or renaming it answers `EBUSY`).
+    pub mount_point: bool,
 }
 
 impl View {
@@ -71,7 +73,7 @@ impl View {
         let mut view = String::from("/");
         view.push_str(&parts.join("/"));
         let t = self.mnt.translate(&join(&self.root, &view));
-        Loc { view, host: t.host, read_only: t.opts.read_only, no_exec: t.opts.no_exec, confined: self.confined, tag: self.tag }
+        Loc { view, host: t.host, read_only: t.opts.read_only, no_exec: t.opts.no_exec, confined: self.confined, tag: self.tag, mount_point: t.mount_point }
     }
 
     /// Host path of the absolute, already resolved view path `view_path`.

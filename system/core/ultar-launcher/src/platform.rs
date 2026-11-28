@@ -8,6 +8,7 @@
 //! | `cell` | mount + pid namespaces, the root switch | a helper that tries `unshare` (`--probe`) |
 //! | `groups` | memory and process limits | a group tree with `cgroup.procs` at the configured root |
 //! | `net` | no network without the permission | the helper tries a network namespace |
+//! | `net-guard` | network apps reach only the internet (no host loopback, device address, LAN) | the helper sets the Ultar kernel's "internet only" barrier |
 //!
 //! Also detected: whether single device nodes can be bound into a cell
 //! (else the Ultar kernel's device tree, gated by modes and the right
@@ -27,11 +28,19 @@ pub enum Feature {
     Groups,
     /// Network namespaces.
     Net,
+    /// The "internet only" barrier of the Ultar kernel.
+    NetGuard,
 }
 
 impl Feature {
     /// Every feature.
-    pub const ALL: [Feature; 4] = [Self::Ids, Self::Cell, Self::Groups, Self::Net];
+    pub const ALL: [Feature; 5] = [
+        Self::Ids,
+        Self::Cell,
+        Self::Groups,
+        Self::Net,
+        Self::NetGuard,
+    ];
 
     /// Word in the configuration and in records.
     pub const fn word(self) -> &'static str {
@@ -40,6 +49,7 @@ impl Feature {
             Self::Cell => "cell",
             Self::Groups => "groups",
             Self::Net => "net",
+            Self::NetGuard => "net-guard",
         }
     }
 
@@ -59,6 +69,8 @@ pub const PROBE_NET: i32 = 2;
 pub const PROBE_FILE_BIND: i32 = 4;
 /// Probe bit: IPC namespace.
 pub const PROBE_IPC: i32 = 8;
+/// Probe bit: the "internet only" barrier (in a network namespace of its own).
+pub const PROBE_NET_GUARD: i32 = 16;
 
 /// What the kernel offers.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -71,6 +83,8 @@ pub struct Platform {
     pub cell: bool,
     /// Network namespaces.
     pub net: bool,
+    /// The "internet only" barrier.
+    pub net_guard: bool,
     /// IPC namespaces.
     pub ipc: bool,
     /// Single device nodes can be bound.
@@ -86,13 +100,14 @@ impl Platform {
     /// Combines the probe's exit code with what this process can see.
     pub fn from_probe(code: Option<i32>, rights: Option<u64>, euid: u32, groups: bool) -> Self {
         let bits = code
-            .filter(|c| (PROBE_BASE..PROBE_BASE + 16).contains(c))
+            .filter(|c| (PROBE_BASE..PROBE_BASE + 32).contains(c))
             .map_or(0, |c| c - PROBE_BASE);
         Self {
             ultar: rights.is_some(),
             ids: rights.map_or(euid == 0, |r| r & SET_ID != 0),
             cell: bits & PROBE_CELL != 0,
             net: bits & PROBE_NET != 0,
+            net_guard: bits & PROBE_NET_GUARD != 0,
             ipc: bits & PROBE_IPC != 0,
             file_binds: bits & PROBE_FILE_BIND != 0,
             groups,
@@ -126,6 +141,7 @@ impl Platform {
             Feature::Cell => self.cell,
             Feature::Groups => self.groups,
             Feature::Net => self.net,
+            Feature::NetGuard => self.net_guard,
         }
     }
 
@@ -156,7 +172,7 @@ mod tests {
             Some(0),
             Some(1),
             Some(127),
-            Some(PROBE_BASE + 16),
+            Some(PROBE_BASE + 32),
             Some(-1),
         ] {
             let p = Platform::from_probe(code, None, 1000, false);
@@ -166,6 +182,13 @@ mod tests {
         let ultar = Platform::from_probe(Some(PROBE_BASE + 1), Some(0), 0, true);
         assert!(ultar.ultar && !ultar.ids && ultar.cell && !ultar.net);
         assert!(Platform::from_probe(None, Some(SET_ID), 805, false).ids);
+        let guarded = Platform::from_probe(
+            Some(PROBE_BASE + PROBE_NET + PROBE_NET_GUARD),
+            Some(0),
+            0,
+            true,
+        );
+        assert!(guarded.net && guarded.net_guard);
     }
 
     #[test]

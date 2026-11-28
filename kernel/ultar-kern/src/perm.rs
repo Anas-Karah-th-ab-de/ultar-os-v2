@@ -18,6 +18,11 @@
 //! owner, group and mode like on Linux (devtmpfs; `fb0` and input nodes start as root `0600`, the
 //! others `0666`), changed with `FILE_ADMIN` only. Root owning a node gives no access by itself
 //! (raw devices need the right `RAW_DEVICE`, `FILE_ADMIN`, or group / other bits that grant it).
+//!
+//! In a cell (a confined view) without `FILE_ADMIN` no entry gets set-id bits (cleared silently), a
+//! change through a descriptor needs a writable mount of the view like the path calls, and the right
+//! `CELL_CHOWN` allows `chown` to any ids on the cell's own writable mounts only
+//! (`docs/integration/zell-chown.md`).
 
 use crate::cred::Cred;
 use crate::fs;
@@ -82,6 +87,37 @@ fn subject() -> (Cred, bool, u32) {
     with(|p| (p.g.iso.cred, p.g.iso.rights.has(Rights::FILE_ADMIN), p.g.umask)).unwrap_or((Cred::ROOT, true, 0o22))
 }
 
+/// Whether the caller may give an entry set-id bits: with `FILE_ADMIN`, or outside a cell. A cell
+/// never makes a set-user-id or set-group-id file (the Ultar kernel ignores the bits at `execve`
+/// anyway; this keeps such files from leaving the cell for a system that would honour them). The
+/// bits are cleared without an error, as Linux clears `S_ISGID` for a caller outside the group.
+fn may_set_ids() -> bool {
+    with(|p| p.g.iso.rights.has(Rights::FILE_ADMIN) || !p.g.iso.confined()).unwrap_or(true)
+}
+
+/// The right `CELL_CHOWN` covers the entry at host path `path`: the caller sits in a cell, holds the
+/// right, and the entry lies on one of the cell's own writable mounts (never the whole host tree).
+fn cell_owns(path: &str) -> bool {
+    let Some((mnt, root, held)) = with(|p| (p.g.iso.mnt.clone(), p.g.iso.root.clone(), p.g.iso.rights.has(Rights::CELL_CHOWN) && p.g.iso.confined())) else {
+        return false;
+    };
+    held && !exempt(path) && mnt.owned_by_cell(path, &root)
+}
+
+/// A descriptor names its entry by host path; in a cell a change through it (`fchmod`, `fchown`)
+/// needs the entry to be writable in the cell's view, as the path calls check `read_only` – else a
+/// file opened read-only from a read-only mount (or handed in from outside) could be changed.
+fn fd_writable(path: &str) -> Result<(), i64> {
+    let Some((mnt, root, confined)) = with(|p| (p.g.iso.mnt.clone(), p.g.iso.root.clone(), p.g.iso.confined())) else {
+        return Ok(());
+    };
+    if !confined || mnt.writable_in_view(path, &root, true) {
+        Ok(())
+    } else {
+        Err(-EROFS)
+    }
+}
+
 /// The kernel's own trees: no modes, their gates are rights.
 fn exempt(path: &str) -> bool {
     ["/proc", "/dev", "/sys"].iter().any(|d| crate::isolation::mount::below(path, d).is_some())
@@ -142,7 +178,8 @@ pub fn created(path: &str, kind: u32, mode: u32) {
         return;
     }
     let (cred, _, umask) = subject();
-    let perm = if kind == S_IFLNK { 0o777 } else { mode & 0o7777 & !umask };
+    let ids = if may_set_ids() { 0o7777 } else { 0o1777 };
+    let perm = if kind == S_IFLNK { 0o777 } else { mode & ids & !umask };
     store(path, Attr { mode: kind | perm, uid: cred.euid(), gid: cred.egid() });
 }
 
@@ -308,18 +345,20 @@ fn chmod_host(path: &str, mode: u64) -> i64 {
     if !admin && cred.euid() != a.uid {
         return -EPERM;
     }
-    store(path, Attr { mode: a.mode & S_IFMT | mode as u32 & 0o7777, ..a });
+    let ids = if may_set_ids() { 0o7777 } else { 0o1777 };
+    store(path, Attr { mode: a.mode & S_IFMT | mode as u32 & ids, ..a });
     0
 }
 
 /// Owner changes need `FILE_ADMIN`; the owner itself may hand the entry to a group it belongs to.
-/// Without the right the set-id bits are cleared, as on Linux.
+/// A cell holding `CELL_CHOWN` may change both on its own writable mounts ([`cell_owns`]).
+/// Without `FILE_ADMIN` the set-id bits are cleared, as on Linux.
 fn chown_host(path: &str, uid: u32, gid: u32) -> i64 {
     let (cred, admin, _) = subject();
     let Some(a) = of(path) else { return -ENOENT };
     let (new_uid, new_gid) = (if uid == KEEP { a.uid } else { uid }, if gid == KEEP { a.gid } else { gid });
     let own_group_only = cred.euid() == a.uid && new_uid == a.uid && (new_gid == a.gid || cred.in_group(new_gid));
-    if !admin && !own_group_only {
+    if !admin && !own_group_only && !cell_owns(path) {
         return -EPERM;
     }
     let mode = if admin { a.mode } else { a.mode & !0o6000 };
@@ -339,7 +378,7 @@ pub fn sys_chmod(dirfd: i64, path: u64, mode: u64, flags: u64) -> i64 {
 pub fn sys_fchmod(fd: u64, mode: u64) -> i64 {
     match fd_path(fd) {
         Ok(host) if exempt(&host) => -EPERM,
-        Ok(host) => chmod_host(&host, mode),
+        Ok(host) => fd_writable(&host).map_or_else(|e| e, |()| chmod_host(&host, mode)),
         Err(e) => e,
     }
 }
@@ -356,7 +395,7 @@ pub fn sys_chown(dirfd: i64, path: u64, uid: u64, gid: u64, flags: u64) -> i64 {
 pub fn sys_fchown(fd: u64, uid: u64, gid: u64) -> i64 {
     match fd_path(fd) {
         Ok(host) if exempt(&host) => -EPERM,
-        Ok(host) => chown_host(&host, uid as u32, gid as u32),
+        Ok(host) => fd_writable(&host).map_or_else(|e| e, |()| chown_host(&host, uid as u32, gid as u32)),
         Err(e) => e,
     }
 }

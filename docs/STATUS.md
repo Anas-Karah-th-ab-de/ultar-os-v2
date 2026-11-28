@@ -34,6 +34,19 @@ Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 | Werkzeugkasten | `BrickKind::DeskIcon`, `Ui::set_brick` (Auswahl ohne Neuaufbau, damit der Doppelklick gelingt), `HostEvent::Menu` trägt den Zeigerpunkt |
 | Geprüft | `tests/desk.rs`, `tests/desk_items.rs` (Klicks, Menüs, Reihenfolge, Ecken, Arabisch, Ziehen), Files `tests/desk_actions.rs`, CLICKS `desk.icon` jetzt in der Hülle geprüft; Bildvergleiche aller Flächen neu (der Schreibtisch zeigt jetzt den persönlichen Ordner wie Tafel „Main“) |
 
+## Netz-Abschottung der Zellen (28.11.2026) – Stufe P0 von `docs/FREMD-APPS.md`
+
+| Baustein | Stand |
+|---|---|
+| **Netz-Namensraum** im Ultar-Kern | `CLONE_NEWNET` (unshare/clone, Recht `MOUNT`): eigenes Loopback (eigene Ports, eigene abstrakte Unix-Namen), kein Host-Loopback, kein Weg nach außen, Lauscher von außen unerreichbar |
+| **Schranke „nur Internet“** | `prctl(PR_ULTAR_NET_GUARD)`, vererbt, über `execve` erhalten, nie rücknehmbar: kein Host-Loopback, keine eigene Adresse, kein LAN/Broadcast/Multicast; DNS nur zu den Servern der Netzkonfiguration auf Port 53; im Host-Namensraum zusätzlich kein `listen`/fester Port. Sockets behalten Namensraum und Schranke ihres Erzeugers |
+| `PR_SET_PDEATHSIG` | wirkt jetzt (Waise endet mit dem Elternprozess) |
+| Launcher | ohne Netz-Recht eigener Namensraum (wie bisher gefordert, jetzt auch auf dem Ultar-Kern); mit Netz-Recht außerhalb des System-Profils eigener Namensraum **mit Schranke** (Fähigkeit `net-guard`, sonst Start verweigert) |
+| Prüfung | `zell-netz-e2e.sh` (`ZELL-NETZ: ALLES OK`, in `ci.sh`) – Doku `docs/integration/zell-netz.md` |
+| **Einzelne Dateien** in der Sicht einer Zelle | Bind von Gerätedatei, Datei oder Socket-Knoten auf eine Datei (Art muss passen, sonst `ENOTDIR`), Neueinhängen/Aushängen; Einhängepunkte lassen sich nicht löschen oder umbenennen (`EBUSY`, schützt den gebundenen Wirtseintrag). Launcher: Zellen bekommen auf dem Ultar-Kern ein kleines `/dev` (null, zero, random, urandom; mit Recht `sound` auch `ultar/pcm`) statt des ganzen Gerätebaums |
+| **Recht `cell_chown`** (Bit 14) | `chown` beliebiger Ids nur in einer Zelle, nur auf ihren beschreibbaren Einhängungen (nie der ganze Wirtsbaum, nie `/dev`/`/proc`/`/sys`), Set-ID-Bits immer gelöscht; kein Profil und kein Dienst hält es (für die Installationszelle fremder Pakete). In Zellen ohne `file_admin` entstehen nie Set-ID-Bits, `fchmod`/`fchown` brauchen eine beschreibbare Einhängung (Lücke über Deskriptoren geschlossen) |
+| Prüfung | `zell-bind-e2e.sh` (`ZELL-BIND: ALLES OK`, in `ci.sh`) – Doku `docs/integration/zell-chown.md` |
+
 ## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
 
 Befund des Eigentümers in VMware (v2 gegen v1): das Firmenlogo fehlte an mehreren Stellen, besonders bei der

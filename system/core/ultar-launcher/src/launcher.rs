@@ -212,6 +212,7 @@ impl Launcher {
             .flag("cell", platform.cell)
             .flag("groups", platform.groups)
             .flag("net", platform.net)
+            .flag("net_guard", platform.net_guard)
             .flag("file_binds", platform.file_binds);
         logger.emit(record);
         Ok(std::sync::Arc::new(Self {

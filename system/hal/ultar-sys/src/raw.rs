@@ -298,6 +298,26 @@ pub fn ultar_drop_rights(mask: u64) -> Result<(), Errno> {
     check(unsafe { raw(nr::PRCTL, [PR_ULTAR_RIGHTS_DROP, mask as usize, 0, 0, 0]) }).map(|_| ())
 }
 
+/// `prctl` option of the Ultar kernel: set the "internet only" barrier (one way, inherited).
+const PR_ULTAR_NET_GUARD: usize = 0x554c_5202;
+/// `prctl` option of the Ultar kernel: whether the barrier is set.
+const PR_ULTAR_NET_GUARD_GET: usize = 0x554c_5203;
+
+/// Sets the Ultar kernel's "internet only" barrier on this process and
+/// every later child: no host loopback, no address of the device, no LAN,
+/// broadcast or multicast; only the internet and the leased DNS servers on
+/// port 53. There is no way back. Other kernels answer with an error.
+pub fn ultar_net_guard() -> Result<(), Errno> {
+    // SAFETY: the option takes no argument and only returns an integer.
+    check(unsafe { raw(nr::PRCTL, [PR_ULTAR_NET_GUARD, 0, 0, 0, 0]) }).map(|_| ())
+}
+
+/// Whether this process carries the "internet only" barrier.
+pub fn ultar_net_guarded() -> Result<bool, Errno> {
+    // SAFETY: the option takes no argument and only returns an integer.
+    check(unsafe { raw(nr::PRCTL, [PR_ULTAR_NET_GUARD_GET, 0, 0, 0, 0]) }).map(|v| v == 1)
+}
+
 /// `CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWNET`:
 /// the only flags [`unshare_namespaces`] passes on. Notably not
 /// `CLONE_FILES`, `CLONE_FS` or `CLONE_NEWUSER`.
