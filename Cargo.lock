@@ -8756,6 +8756,7 @@ dependencies = [
  "sha2 0.10.9",
  "tar",
  "toml 0.8.23",
+ "ultar-brand",
  "ultar-bus",
  "ultar-pkg",
  "ultar-service",

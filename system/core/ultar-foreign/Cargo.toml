@@ -28,4 +28,5 @@ toml = "0.8"
 rustix = { version = "1", default-features = false, features = ["std", "thread", "process", "mount", "fs"] }
 
 [dev-dependencies]
+ultar-brand = { path = "../ultar-brand" }
 ultar-svckit = { path = "../ultar-svckit", features = ["testkit"] }
