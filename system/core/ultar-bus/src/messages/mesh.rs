@@ -219,6 +219,14 @@ pub struct HandoffSend {
     pub target: Option<String>,
 }
 
+/// `mesh.offer_cancel` – the sender takes a waiting offer back; the question on the other
+/// device disappears.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct OfferCancel {
+    /// The offer this device sent.
+    pub offer: u64,
+}
+
 /// Answer to [`HandoffSend`].
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub enum SendOutcome {
@@ -352,6 +360,7 @@ version_one!(
     SetActivity,
     Target,
     HandoffSend,
+    OfferCancel,
     SendOutcome,
     HandoffIncoming,
     HandoffAnswer,
@@ -399,6 +408,7 @@ call!(Unpair, "unpair", Done);
 call!(SetRights, "set_rights", Done);
 call!(SetActivity, "set_activity", Done);
 call!(HandoffSend, "handoff_send", SendOutcome);
+call!(OfferCancel, "offer_cancel", Done);
 call!(HandoffAnswer, "handoff_answer", Done);
 call!(HandoffTargets, "handoff_targets", TargetList);
 call!(SendFile, "send_file", SendOutcome);

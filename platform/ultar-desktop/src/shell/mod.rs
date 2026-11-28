@@ -346,6 +346,11 @@ impl Shell {
         };
         if id >= crate::model::notes::LOCAL_IDS - 1024 {
             self.d.notes.dismiss(id);
+            // A mesh notice button (Cancel waiting, Retry) goes back to the mesh.
+            if let Some(out) = handoff::note_action(self, &action) {
+                return out;
+            }
+            // A plugged-in drive's notice opens Files at its place.
             Outcome::effect_and_close(Effect::Launch {
                 app: bar::FILES.to_owned(),
                 open: Opening::uri(action),

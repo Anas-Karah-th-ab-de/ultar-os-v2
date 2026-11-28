@@ -1,5 +1,6 @@
 //! The mesh as the shell sees it (docs/ui/mesh.md §2.5, §2.6): whether something can be
-//! continued on another device, what is in front, and the notices about an offer.
+//! continued on another device, what is in front, the choice of devices (board MeshSend)
+//! and the notices about an offer (board MeshStates).
 
 use super::services::Services;
 use super::{Desktop, Open};
@@ -7,17 +8,35 @@ use ultar_bus::messages::mesh::{
     HandoffProgress, MeshState, OfferState, SendOutcome, Stage, Target,
 };
 
+/// The shell's own notices.
+const SHELL: &str = "org.ultar.shell";
+
 /// What the shell knows of the mesh.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Mesh {
     /// `mesh.state` (`None`: no mesh service on this device).
     pub state: Option<MeshState>,
-    /// The devices the person chooses from (the mesh asked: more than one can take it).
+    /// The devices the person chooses from (the mesh answered `Choose`).
     pub targets: Vec<Target>,
+    /// The chosen device (index into `targets`).
+    pub chosen: usize,
 }
 
-/// The shell's own notices.
-const SHELL: &str = "org.ultar.shell";
+impl Mesh {
+    /// The id of the chosen device, if the choice is open and valid.
+    pub fn confirm(&self) -> Option<String> {
+        self.targets.get(self.chosen).map(|t| t.device.clone())
+    }
+
+    /// Chooses the device `index` of the choice; `false` when there is no such device.
+    pub fn choose(&mut self, index: usize) -> bool {
+        if index >= self.targets.len() {
+            return false;
+        }
+        self.chosen = index;
+        true
+    }
+}
 
 /// The mesh is on and a paired device is connected.
 pub fn can_send(svc: &Services) -> bool {
@@ -35,7 +54,8 @@ pub fn in_front(d: &Desktop) -> Option<(String, String)> {
     Some((app.app.id.clone(), window.title.clone()))
 }
 
-/// What will happen on a device, as the line of the choice.
+/// What will happen on a device, as the line of the choice (board MeshSend: name, then
+/// this line below it).
 pub fn stage_key(stage: Stage) -> &'static str {
     match stage {
         Stage::State => "desk.mesh.target.state",
@@ -44,15 +64,29 @@ pub fn stage_key(stage: Stage) -> &'static str {
     }
 }
 
+/// The id of a mesh notice button: the action the local notice carries.
+fn action_id(kind: &str, what: &str) -> String {
+    format!("mesh:{kind}:{what}")
+}
+
 /// The mesh answered "continue on another device": a notice, or the choice of devices.
 pub fn sent(d: &mut Desktop, outcome: SendOutcome, now: u64) {
     let notice = match outcome {
-        SendOutcome::Offered { .. } => "desk.mesh.waiting",
+        // Waiting: the sender can take the offer back (mesh.offer.cancel).
+        SendOutcome::Offered { offer, .. } => {
+            let cancel = ultar_bus::messages::notify::Action {
+                id: action_id("cancel", &offer.to_string()),
+                label: ultar_bus::Text::key("desk.mesh.offer.cancel"),
+            };
+            d.notes.post_actions(SHELL, "desk.mesh.waiting", vec![cancel], now);
+            return;
+        }
         SendOutcome::NoTarget => "desk.mesh.no_target",
         SendOutcome::NoActivity => "desk.mesh.no_activity",
         SendOutcome::Choose(targets) => {
             d.svc.mesh.targets = targets;
-            d.open = Open::AppMenu;
+            d.svc.mesh.chosen = 0;
+            d.open = Open::MeshSend;
             return;
         }
     };
@@ -69,7 +103,16 @@ pub fn report(d: &mut Desktop, progress: &[HandoffProgress], now: u64) {
             OfferState::Failed => "desk.mesh.failed",
             OfferState::Asked | OfferState::Accepted => continue,
         };
-        d.notes.post_notice(SHELL, notice, now);
+        // Nobody answered or the connection was lost: one click sends the offer again.
+        if matches!(p.state, OfferState::Expired | OfferState::Failed) {
+            let retry = ultar_bus::messages::notify::Action {
+                id: action_id("retry", &p.device),
+                label: ultar_bus::Text::key("desk.mesh.retry"),
+            };
+            d.notes.post_actions(SHELL, notice, vec![retry], now);
+        } else {
+            d.notes.post_notice(SHELL, notice, now);
+        }
     }
 }
 
@@ -102,6 +145,15 @@ mod tests {
         svc
     }
 
+    fn target(device: &str) -> Target {
+        Target {
+            device: device.into(),
+            name: device.into(),
+            kind: DeviceKind::Phone,
+            stage: Stage::State,
+        }
+    }
+
     #[test]
     fn sending_needs_the_mesh_on_and_a_connected_paired_device() {
         assert!(!can_send(&Services::default()));
@@ -114,15 +166,12 @@ mod tests {
     #[test]
     fn several_possible_devices_open_the_choice_and_one_answer_is_a_notice() {
         let mut d = Desktop::new(ultar_i18n::Lang::En);
-        let target = Target {
-            device: "p".into(),
-            name: "KM One".into(),
-            kind: DeviceKind::Phone,
-            stage: Stage::State,
-        };
-        sent(&mut d, SendOutcome::Choose(vec![target.clone(), target]), 5);
-        assert_eq!(d.open, Open::AppMenu);
+        sent(&mut d, SendOutcome::Choose(vec![target("a"), target("b")]), 5);
+        assert_eq!(d.open, Open::MeshSend);
         assert_eq!(d.svc.mesh.targets.len(), 2);
+        assert_eq!(d.svc.mesh.chosen, 0);
+        assert!(d.svc.mesh.choose(1) && !d.svc.mesh.choose(2));
+        assert_eq!(d.svc.mesh.confirm().as_deref(), Some("b"));
         let before = d.notes.banners(5).len();
         sent(&mut d, SendOutcome::NoActivity, 5);
         assert_eq!(d.notes.banners(5).len(), before + 1);
@@ -142,5 +191,24 @@ mod tests {
         assert!(d.notes.banners(0).is_empty());
         report(&mut d, &[p(true, OfferState::Declined)], 0);
         assert_eq!(d.notes.banners(0).len(), 1);
+    }
+
+    #[test]
+    fn failed_and_expired_offers_carry_a_retry_button() {
+        let mut d = Desktop::new(ultar_i18n::Lang::En);
+        let offered = 1;
+        sent(&mut d, SendOutcome::Offered { offer: offered, target: target("p") }, 0);
+        let waiting = d.notes.banners(0).pop().unwrap();
+        assert_eq!(waiting.actions.len(), 1);
+        assert_eq!(waiting.actions[0].id, "mesh:cancel:1");
+        let p = |state| HandoffProgress {
+            offer: offered,
+            device: "p".into(),
+            outgoing: true,
+            state,
+        };
+        report(&mut d, &[p(OfferState::Expired)], 0);
+        let expired = d.notes.banners(0).pop().unwrap();
+        assert_eq!(expired.actions[0].id, "mesh:retry:p");
     }
 }

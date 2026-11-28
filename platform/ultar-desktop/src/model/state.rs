@@ -88,6 +88,8 @@ pub enum Open {
     TileMenu(usize),
     /// The menu of the active app (top bar, CLICKS `shell.appmenu`).
     AppMenu,
+    /// The choice of devices to continue on (board MeshSend, `shell.mesh.send`).
+    MeshSend,
 }
 
 /// Pages of the quick settings sheet.

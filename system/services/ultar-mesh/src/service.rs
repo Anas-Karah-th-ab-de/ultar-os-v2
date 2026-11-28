@@ -15,7 +15,8 @@ use ultar_bus::messages::launcher::{List, Role, Start};
 use ultar_bus::messages::llm::LlmState;
 use ultar_bus::messages::mesh::{
     ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets, MeshState,
-    PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList, Unpair, SERVICE,
+    OfferCancel, PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList,
+    Unpair, SERVICE,
 };
 use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_bus::messages::sysdialog;
@@ -315,6 +316,12 @@ impl MeshService {
                 let (outcome, effects) = self.runtime.node.send(c.target.as_deref(), now);
                 self.act(effects, bus);
                 outcome
+            });
+        } else if method == OfferCancel::METHOD {
+            serve::<OfferCancel>(request, |c, _| {
+                let effects = self.runtime.node.cancel_outgoing(c.offer);
+                self.act(effects, bus);
+                Done { ok: true }
             });
         } else if method == SendFile::METHOD {
             serve::<SendFile>(request, |c, _| {

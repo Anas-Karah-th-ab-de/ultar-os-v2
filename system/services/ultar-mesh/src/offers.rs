@@ -127,6 +127,15 @@ impl Node {
             .collect()
     }
 
+    /// The sender takes a waiting offer back (`mesh.offer_cancel`): the question on the
+    /// receiving device disappears (it is told `Frame::Cancel`).
+    pub fn cancel_outgoing(&mut self, offer: u64) -> Vec<Effect> {
+        let Some(sent) = self.offers.sent.remove(&offer) else {
+            return Vec::new();
+        };
+        vec![send(&sent.peer, Frame::Cancel { id: offer })]
+    }
+
     /// Hands the activity in front over. Without `target`: to the only possible device,
     /// or [`SendOutcome::Choose`] when there are several.
     pub fn send(&mut self, target: Option<&str>, now: Instant) -> (SendOutcome, Vec<Effect>) {
