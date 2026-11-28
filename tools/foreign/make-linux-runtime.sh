@@ -307,7 +307,11 @@ if [ -n "${ULTAR_PKG_KEY:-}" ]; then
   # the component is two files (docs/integration/ultar-foreign.md, „Der Linux-Bereich als
   # Komponente“): the tree as a streamed archive of any size, and a small signed package that
   # pins its size and SHA-256 (the Store's and the launcher's package limits only see this one)
-  STEM="foreign.linux-runtime-$VERSION-$ARCH"
+  # „Windows-Programme“ is the same area with Wine: its own file names, the same id
+  case " $COMPONENTS " in
+    *" windows "*) STEM="foreign.linux-runtime-$VERSION-windows-$ARCH" ;;
+    *) STEM="foreign.linux-runtime-$VERSION-$ARCH" ;;
+  esac
   ARCHIVE="$OUT/$STEM.tar.gz"
   (cd "$TREE" && tar --numeric-owner --sort=name --exclude='./proc/*' --exclude='./sys/*' \
      --exclude='./dev/*' --exclude='./run/*' --exclude='./tmp/*' -cf - .) | gzip -6n >"$ARCHIVE"

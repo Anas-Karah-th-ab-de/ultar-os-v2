@@ -105,6 +105,8 @@ from the person's language (`ar_SY`, `en_US`, `de_DE`).
 | Ultar kernel (QEMU) | `AREA=OUT tools/kern-test/foreign-e2e.sh` | `FOREIGN: ALLES OK` or `FOREIGN: FEHLENDE KERN-FUNKTIONEN: …` |
 | kernel features alone (QEMU) | `tools/kern-test/fremd-kern.sh` | `FREMD-KERN: ALLES OK` |
 | GTK window (QEMU, picture) | `AREA=OUT tools/kern-test/foreign-gtk-kern.sh` | `FOREIGN-GTK: SHOT …` |
+| the component „Linux-Programme“ (root; Linux or the Ultar kernel) | `componenttest --helper ultar-foreign` (example of `ultar-foreign`) | `COMPONENT: ALLES OK` |
+| the way a person gets a program, Ultar kernel (QEMU, picture) | `AREA=OUT tools/kern-test/foreign-app-kern.sh` (in `ci.sh`, `FOREIGN_APP=0` skips) | `FOREIGN-APP-KERN: ALLES OK` |
 
 The Linux end to end uses the shipped bus policy, the real launcher (in-process, real cells) and the
 service binary: callers without a rule and files outside the areas are refused, "cancelled" installs
@@ -153,6 +155,81 @@ sandbox bwrap would have built, and the shim cannot grant more than the cell has
 
 Known approximations: file mappings with `MAP_SHARED` are copies (apt's binary cache is rebuilt each run);
 the byte count of a partial terminal write after `ONLCR` is approximate.
+
+## The way a person gets a program, on the Ultar kernel (`foreign-app-kern.sh`)
+
+`tools/kern-test/foreign-app-kern.sh` boots the Ultar kernel in QEMU with the static binaries and the
+area on the data disk (mousepad **not** in it) and runs `foreignapp` (example of `ultar-launcher`): the
+bus with the shipped policy, the launcher, a system dialog that answers "authorized" (and counts the
+questions), the compositor on the screen (`/run/ultar/ui/compositor.sock`, the app rights file of the
+launcher) and the real service `ultar-foreign`. Then:
+
+1. `componenttest` – the component „Linux-Programme“ as below, on this kernel (unpacking cell, owners,
+   set-id bits, swap, tidy);
+2. **Files** installs `mousepad.deb` through `foreign.install` (the dialog was asked);
+3. the launcher has the app: profile `app.foreign`, own uid (≥ 20000), its line in the compositor's
+   rights file with `ui.client-header` (one title bar, the app's own);
+4. it is started **through the launcher** (`launcher.start`, as from the app grid): its cell runs
+   `mousepad` behind `ultar-wayland`; the QEMU driver takes the screenshot (`SHOT=…png`);
+5. the stop ends the cell (its cgroup is empty), `foreign.remove` (keep no data) takes it off the
+   launcher, the service's list, its data and the area (`usr/bin/mousepad` gone).
+
+The service counts the bytes of the area once (a walk over ~1 GB is slow on a small device) and again
+after anything that changes the area.
+
+## In the system image
+
+`tools/vm/make-vmware.sh` (and with it `tools/release/build-release.sh`) builds `ultar-foreign` and
+`ultar-wayland`, puts the service into `SERVICES_UP` (`rootfs/etc/ultar/services/foreign.toml`: user
+844, rights `mount`/`set_id`/`cell_chown`, group 836 to read the person's files) and the bridge at
+`/usr/lib/ultar/foreign/ultar-wayland` (`[paths] foreign_bridge` of the launcher). The bridge finds the
+system compositor at `/run/ultar/ui/compositor.sock` by default. The image carries **no** Linux area: the
+person installs the component (below); until then Settings says "Not installed" and offers „Installieren“.
+
+## The Linux area as a component („Der Linux-Bereich als Komponente“)
+
+The area is about 0.7–1.2 GB (with Wine). That is more than the launcher takes as a package (256 MiB)
+and ultar-pkg reads packages whole into memory – so a component is **two files side by side**:
+
+| File | What | Limits |
+|---|---|---|
+| `foreign.linux-runtime-<version>[-windows]-<arch>.uap` | small, signed (ultar-pkg, kind `data`); manifest `[component]`: `archive`, `size`, `sha256`, `unpacked`, `components` | 4 MiB, read whole |
+| `foreign.linux-runtime-<version>[-windows]-<arch>.tar.gz` | the tree (numeric owners; the insides of `proc`/`sys`/`dev`/`run`/`tmp` left out) | any size, streamed |
+
+`tools/foreign/make-linux-runtime.sh` makes both with `ULTAR_PKG_KEY` (with `COMPONENTS=windows`:
+„Windows-Programme“, the same id with Wine). The person gets them from the Ultar Store (it puts its
+downloads into the Downloads area) or on a USB drive; Settings → Apps from other systems →
+„Installieren“ (or „Aktualisieren“) calls `foreign.runtime_update`, and the service
+(`system/services/ultar-foreign/src/component.rs`):
+
+1. looks below its sources (the person's areas, mounted drives; three levels, no links followed) for
+   `foreign.linux-runtime-*.uap`, copies each into its inbox (opened without following links) and checks
+   its signature against the device's **built-in keys** (`/etc/ultar/trusted-keys`); a component of an
+   unknown publisher, another architecture or with an odd archive name is not taken, the newest valid
+   one is;
+2. refuses to replace an area that holds the person's programs (`Failure::Refused`; they would be
+   gone) and does nothing for the same or an older version; checks the free space (archive + tree);
+3. asks an administrator in the system dialog (`foreign.confirm.runtime[.windows]`: version, signer);
+4. copies the archive into the inbox while counting its SHA-256 – only a copy with the signed size and
+   digest goes on (`Failure::Damaged` otherwise), and what is unpacked is that copy;
+5. unpacks it in the **unpacking cell** (`cellrun::Mode::Unpack`): the new area `linux.new` is the only
+   writable mount and the root of the cell, the archive read-only at `/run/inbox`, no `/proc`, no
+   devices, no network, root of the cell with `cell_chown` alone (Linux: the four file capabilities); no
+   program of the area runs – the service's own code unpacks (owners kept, device nodes, fifos and the
+   insides of mounted places left out, set-id bits taken away, nothing outside the cell's root);
+6. checks the new area (`usr/bin`, the package database, `etc/ultar-runtime` with the signed version
+   and components) and swaps: the old one becomes `linux.old`, the new one `linux`. Cells of running apps
+   keep the old one; at the service's next start `linux.old` (and a left-over `linux.new`) is emptied in
+   a cell (`Mode::Clear`) and removed.
+
+`componenttest` (above) covers it without the bus: unknown key (with a higher version) not taken, the
+tree in place with its owners, set-id gone, no device node, a damaged archive changes nothing, a newer
+one replaces it and the old one is tidied.
+
+**Store catalogue (prepared, not published):** `tools/release/catalog/foreign.linux-runtime.toml`
+(source `linux`) and `foreign.windows-runtime.toml` (source `windows`) – `[[component]]` entries with both
+files, sizes and digests filled in on the release server; `build-apps.sh` does not take them yet (only the
+apps of `apps.list`), and the Store app does not handle components yet (see open points).
 
 ## Stage P3: the surfaces (branch `feat/fa-p3-ui`, not in main)
 
@@ -266,14 +343,16 @@ the barrier of stage P0).
 
 ## Open points
 
-* The installation cell has no network: archive installs (`InstallFrom::Archive`) and `runtime_update`
-  answer `Failure::Network` – with stage P0 the cell can get its own namespace behind the barrier.
-* GTK under `foreign-gtk-kern.sh` runs as root of the area (foreignshow); the launcher's own start of a foreign
-  app on the Ultar kernel (own uid, `app.foreign`) is covered by the Linux end to end only.
+* The installation cell has no network: archive installs (`InstallFrom::Archive`) answer
+  `Failure::Network`, and so does `runtime_update` when no component is on a drive or in the areas;
+  updating the packages of an area that holds the person's programs needs the network too (a component
+  never replaces such an area) – with stage P0 the cell can get its own namespace behind the barrier.
+* The Store app does not handle `[[component]]` entries yet: download both files into the Downloads area
+  (the archive with resume; the Store's 1 GiB limit is per file and fits) and call
+  `foreign.runtime_update` (the bus policy allows `app.settings` today; the Store needs the same rule).
+* The release key must be in `/etc/ultar/trusted-keys` of the image for a published component (the
+  test uses its own key).
 * A mode of the barrier for the local network (printers, NAS); until then LAN means internet only.
-* Installing the signed component on a device (verify against `/etc/ultar/trusted-keys`, unpack into
-  `/data/ultar/foreign/linux`) is not implemented; the images do not ship the service yet
-  (`tools/vm/make-vmware.sh` `SERVICES_UP`).
 * Linux hosts: without a seccomp filter a cell can create a user namespace (all app cells, not only these;
   reported by the end to end). The Ultar kernel has no user namespaces.
 * Windows: each app's prefix is about 1.2 GB (a shared read-only prefix template would save it); the

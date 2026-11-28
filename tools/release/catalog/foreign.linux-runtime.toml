@@ -1,0 +1,36 @@
+# Component „Linux-Programme“ (docs/integration/ultar-foreign.md, „Der Linux-Bereich als Komponente“).
+# Not an app: two files, the small signed package (kind "data", pins the archive) and the archive itself
+# (any size, streamed). The Store puts both into the person's Downloads area and asks the service
+# (foreign.runtime_update), which checks the signature against the device's built-in keys, asks an
+# administrator and unpacks the area in its own cell. Built by tools/foreign/make-linux-runtime.sh with
+# ULTAR_PKG_KEY; sizes and digests are filled in on the release server after signing.
+# Not yet part of the published catalogue (build-apps.sh only takes the apps of apps.list).
+[[component]]
+id = "foreign.linux-runtime"
+kind = "component"
+source = "linux"
+icon = "package"
+publisher = "KM Code Craft"
+version = "@VERSION@"
+arch = "@ARCH@"
+package = "foreign.linux-runtime-@VERSION@-@DEBARCH@.uap"
+size_download = @SIZE:package@
+sha256 = "@SHA256:package@"
+archive = "foreign.linux-runtime-@VERSION@-@DEBARCH@.tar.gz"
+size_archive = @SIZE:archive@
+sha256_archive = "@SHA256:archive@"
+size_installed = @UNPACKED@
+installs_with = "foreign.runtime_update"
+requires = []
+[component.name]
+ar = "برامج Linux"
+en = "Linux programs"
+de = "Linux-Programme"
+[component.summary]
+ar = "شغّل برامج Linux (حزم ‎.deb) على Ultar، كلٌّ منها في خليته الخاصة."
+en = "Run Linux programs (.deb packages) on Ultar, each in its own cell."
+de = "Linux-Programme (.deb-Pakete) auf Ultar nutzen, jedes in seiner eigenen Zelle."
+[component.description]
+ar = "منطقة لينكس مشتركة (Ubuntu) للقراءة فقط لكل برنامج: كل برنامج بمستخدمه الخاص وبلا شبكة إلا بإذنك، ولا يرى إلا المجلدات التي تسمح بها. التثبيت يحتاج تأكيد المسؤول."
+en = "A shared Linux area (Ubuntu), read-only for every program: each runs as its own user, without network unless you allow it, and sees only the folders you allow. Installing needs an administrator's confirmation."
+de = "Ein gemeinsamer Linux-Bereich (Ubuntu), für jedes Programm nur lesbar: jedes läuft als eigener Benutzer, ohne Netz, außer Sie erlauben es, und sieht nur die Ordner, die Sie freigeben. Die Installation bestätigt ein Administrator."

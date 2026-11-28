@@ -2,8 +2,17 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
-## Fremde Apps, Stufe P1: Wayland-Brücke (28.11.2026, Zweig feat/fa-p1-wayland)
-## Apps aus anderen Systemen, Stufe P3 Oberfläche (28.11.2026, Zweig `feat/fa-p3-ui`, nicht in main)
+## Apps aus anderen Systemen, Integration 2 (28.11.2026, Zweig `integ/fa-windows`)
+
+| Baustein | Stand |
+|---|---|
+| Windows (P4) in main | `setup` der Zelle bleibt, die alte `net_barrier` ist ersetzt durch `Feature::NetGuard`; `foreigntest` meldet Wine gesondert (`FOREIGN-WINDOWS: …`). Grün: `FOREIGN-LINUX-E2E`, `FOREIGN-WINDOWS-E2E` (.8), `FOREIGN: ALLES OK`, `FREMD-KERN: ALLES OK` (.12) |
+| Startweg auf dem Ultar-Kern | `tools/kern-test/foreign-app-kern.sh` (in `ci.sh`): Dateien installiert `mousepad.deb` über `foreign.install` (Systemdialog), Start **über den Launcher** (`app.foreign`, eigene uid ≥ 20000, `ui.client-header`, hinter `ultar-wayland`), Bildschirmfoto, Stopp beendet die Zelle, Entfernen spurlos → `FOREIGN-APP-KERN: ALLES OK` |
+| Abbild | `ultar-foreign` (Benutzer 844) in `SERVICES_UP` von `tools/vm/make-vmware.sh`/`build-release.sh`, `ultar-wayland` unter `/usr/lib/ultar/foreign/`; die Brücke findet den System-Compositor (`/run/ultar/ui/compositor.sock`) |
+| Komponente „Linux-Programme“/„Windows-Programme“ | zwei Dateien: kleines signiertes `.uap` (pinnt Größe und SHA-256) + Archiv beliebiger Größe (gestreamt; Grenzen von Launcher 256 MiB und Store gelten nur für das `.uap`). Der Dienst sucht auf USB/in den Bereichen, prüft gegen `/etc/ultar/trusted-keys`, fragt den Administrator, packt in einer eigenen Entpack-Zelle aus (nur der neue Bereich beschreibbar, `cell_chown`, keine Geräte, set-id weg) und tauscht; Einstellungen bietet „Installieren“. `componenttest` → `COMPONENT: ALLES OK` (Linux .8 und Ultar-Kern .12). Store-Einträge vorbereitet (`tools/release/catalog/foreign.*-runtime.toml`), nicht veröffentlicht |
+| Offen | Store-App lädt Komponenten noch nicht; Aktualisieren eines Bereichs mit Apps braucht Netz (P0-Barriere in der Installationszelle); Freigabeschlüssel im Abbild für eine veröffentlichte Komponente |
+
+## Apps aus anderen Systemen, Stufe P3 Oberfläche (28.11.2026, in main)
 
 Dateien: `.deb/.exe/.msi/.apk` öffnen, doppelklicken oder „Installieren“ im Kontextmenü (auch am Schreibtisch-Symbol) → Blatt mit Warnung „Nicht geprüft“, Angaben laut Datei, Rechten (Internet, LAN nur mit Internet, jeder Ordner einzeln) – alle aus –, Fortschritt und „Öffnen“; Einstellungen › „Apps aus anderen Systemen“ (Linux-Bereich + Aktualisieren, App-Seite mit Rechten, Daten behalten, Entfernen über den Dienst); Herkunftszeichen im App-Raster (Desktop, Handy) und in der Store-Herausgeberzeile; ar/en/de, hell/dunkel (docs/integration/ultar-foreign.md, Abschnitt P3). Geprüft: Klick-/Bildtests `apps/ultar-files/tests/foreign.rs`, `apps/ultar-settings/tests/foreign.rs` und die Crate-Tests von Dateien, Einstellungen, Bus, busd, Desktop, Mobil, Store, Dialogkern auf .8; nicht im Ultar-Kern gelaufen.
 
@@ -11,7 +20,7 @@ Dateien: `.deb/.exe/.msi/.apk` öffnen, doppelklicken oder „Installieren“ im
 
 P0 (Netz-Namensraum, Netzsperre, Einzel-Binds, `cell_chown`), P2 und P3 zusammengeführt; fremde Apps nutzen `Feature::NetGuard`, die Installationszelle hält nur `cell_chown`, apt ohne `_apt`-Wechsel, `app.foreign` mit `ui.client-header`. Kern für apt/dpkg/GTK ergänzt: `execve` setzt gefangene Signale zurück (SIGILL/Seitenfehler bei 0x5555555687c0 in dpkg-deb und perl), `rmdir`/`unlink` nur für die eigene Art (`ENOTDIR`/`EISDIR`, dpkg hielt Dateien für Verzeichnisse), `close_range`/`sync_file_range`/`msync`/`fchdir`, Pseudo-Terminals `/dev/ptmx` + `/dev/pts` (Slave nur für den Besitzer), in Zellen über `mount_ptys`; im Linux-Bereich ersetzt `bubblewrap 99:0.11-ultar1` (tools/foreign/bwrap-shim.c) bwrap für glycin – die Zelle ist die Sandbox. Grün (.12 QEMU/KVM, .8): `FOREIGN: ALLES OK` bis `package-install` auf dem Ultar-Kern, `FREMD-KERN: ALLES OK` (37 Prüfungen), GTK-Bild mit Mousepad (`foreign-gtk-kern.sh`, 453 Farben), Erststart des Kern-Tors (12 Urteile), `ZELL-NETZ`, `ZELL-BIND`, `LAUNCHER`, `NETZ`, `SSH`, `ZELLTEST-EXT4`, `EXT4TEST`, `FOREIGN-LINUX-E2E: ALLES OK`, `cargo check --workspace --locked`, Tests ultar-sys (22), ultar-foreign (17). Rot wie auf main: `DESKTOP` (headless), ultar-launcher `tests/cell.rs` (`cgroup.procs` leer auf .8). Näherungen: `MAP_SHARED`-Dateiabbildungen sind Kopien, Teil-Schreibzählung am Terminal nach `ONLCR` ungefähr.
 
-## Windows-Programme (Stufe P4, Branch feat/fa-p4-windows)
+## Windows-Programme (Stufe P4, in main über `integ/fa-windows`)
 
 | Baustein | Stand |
 |---|---|
