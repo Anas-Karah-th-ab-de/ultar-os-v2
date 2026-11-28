@@ -223,10 +223,27 @@ pub fn is_ab_name(name: &str) -> bool {
     RAW_PARTS.contains(&name)
 }
 
+/// Node of the encrypted data partition while it is locked (read only, crypt.rs).
+pub const DATA_NODE: &str = "ultar/part/ultar-data";
+
 /// The node for `/dev/<rest>`, if it exists.
 pub fn node(rest: &str) -> Option<&'static str> {
     let parts = PARTS.lock();
-    NODES.iter().copied().find(|n| *n == rest && parts.iter().any(|p| Some(p.name) == n.strip_prefix("ultar/part/")))
+    NODES.iter().copied().chain([DATA_NODE]).find(|n| *n == rest && parts.iter().any(|p| Some(p.name) == n.strip_prefix("ultar/part/")))
+}
+
+/// The locked encrypted data partition becomes readable as [`DATA_NODE`] (its LUKS2 header
+/// for `ultar-luks unlock`); never writable.
+pub fn add_data(disk: usize, first: u64, sectors: u64) {
+    let ss = BLOCK.lock().get(disk).map_or(512, |d| d.sector_size());
+    let mut parts = PARTS.lock();
+    parts.retain(|p| p.name != layout::DATA_PART);
+    parts.push(Part { disk, first, sectors, sector_size: ss, name: layout::DATA_PART });
+}
+
+/// The data partition is open (mapped and mounted): its raw node goes away.
+pub fn remove_data() {
+    PARTS.lock().retain(|p| p.name != layout::DATA_PART);
 }
 
 /// Names of the existing nodes (directory listing of `/dev/ultar/part`).
@@ -241,6 +258,9 @@ pub fn open(dev: &str, write: bool, raw_right: bool) -> Result<FdKind, i64> {
     }
     let name = dev.strip_prefix("ultar/part/").ok_or(-EINVAL)?;
     let part = *PARTS.lock().iter().find(|p| p.name == name).ok_or(-EINVAL)?;
+    if write && name == layout::DATA_PART {
+        return Err(-EROFS);
+    }
     if write && name != layout::BOOTCTL_PART {
         match crate::bootslot::slot() {
             Some(running) if !layout::part_of_slot(name, running) => {}

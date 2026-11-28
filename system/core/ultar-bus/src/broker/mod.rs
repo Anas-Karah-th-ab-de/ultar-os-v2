@@ -53,6 +53,11 @@ pub struct BrokerConfig {
     pub max_subscriptions: usize,
     /// Most topics with a retained value.
     pub max_retained: usize,
+    /// Most topics with a retained value set by one identity: no service fills the whole table
+    /// and keeps the others' states out.
+    pub max_retained_per_identity: usize,
+    /// Most service names one connection registers.
+    pub max_services_per_connection: usize,
     /// How long a new connection may take to authenticate.
     pub handshake_timeout: Duration,
     /// How long one write to a client may block before it is dropped.
@@ -71,6 +76,8 @@ impl Default for BrokerConfig {
             max_handshakes: 16,
             max_subscriptions: 256,
             max_retained: 256,
+            max_retained_per_identity: 64,
+            max_services_per_connection: 16,
             handshake_timeout: Duration::from_secs(2),
             write_timeout: Duration::from_secs(2),
             pending_ttl: Duration::from_secs(60),

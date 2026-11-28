@@ -55,7 +55,7 @@ fn le32(b: &[u8], o: usize) -> u64 {
 fn rd(disk: usize, lba: u64, bytes: usize) -> Option<Vec<u8>> {
     let mut b = crate::mem::try_vec(bytes.div_ceil(512) * 512)?;
     let mut bl = crate::driver::BLOCK.lock();
-    bl.get_mut(disk)?.read(lba, &mut b).ok()?;
+    crate::driver::read_dev(&mut bl, disk, lba, &mut b).ok()?;
     Some(b)
 }
 
@@ -346,7 +346,7 @@ fn put32(b: &mut [u8], o: usize, v: u64) {
 
 fn wr(disk: usize, lba: u64, data: &[u8]) -> Option<()> {
     let mut bl = crate::driver::BLOCK.lock();
-    bl.get_mut(disk)?.write(lba, data).ok()
+    crate::driver::write_dev(&mut bl, disk, lba, data).ok()
 }
 
 pub type WResult<T> = core::result::Result<T, &'static str>;

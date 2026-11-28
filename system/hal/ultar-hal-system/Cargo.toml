@@ -9,3 +9,5 @@ description = "Reads the device description of the running system (kernel, firmw
 [dependencies]
 ultar-profile = { path = "../../core/ultar-profile" }
 ultar-driverpkg = { path = "../../core/ultar-driverpkg" }
+nix = { version = "0.29", features = ["term"] }
+zeroize = "1"

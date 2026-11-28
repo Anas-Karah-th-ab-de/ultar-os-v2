@@ -72,11 +72,12 @@ fn fail(message: &dyn std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-/// Starts the engine host in its cell.
+/// Starts the engine host in its cell; everything it fetches goes through `proxy` (Tor).
 fn start_engine(
     a: &Args,
     profile: &std::path::Path,
     downloads: &std::path::Path,
+    proxy: String,
 ) -> Result<RemoteEngine, Box<dyn std::error::Error>> {
     let program = a
         .engine
@@ -103,6 +104,7 @@ fn start_engine(
             .filter
             .clone()
             .or_else(|| Some(bundle.join("share/ultar-web/filter.json")).filter(|p| p.is_file())),
+        proxy: Some(proxy),
     };
     std::fs::create_dir_all(&config.profile)?;
     Ok(RemoteEngine::start(&config)?)
@@ -120,7 +122,17 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| home().join("Downloads"));
     std::fs::create_dir_all(&profile)?;
     std::fs::create_dir_all(&downloads)?;
-    match start_engine(&a, &profile, &downloads) {
+    // Pages go only through Tor (the persona of privacy::persona, the site never sees this
+    // device's address); if Tor cannot start, no page goes out at all. The Tor client lives in
+    // this process for the whole session, the engine reaches it only through its secret port.
+    let tor = match ultar_tor::Tor::start(&profile.join("tor")) {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "ultar-web: tor: {e}");
+            return show(OfflineEngine::new(), a, lang, Paths { profile, downloads });
+        }
+    };
+    match start_engine(&a, &profile, &downloads, tor.http_proxy_url()) {
         Ok(engine) => show(engine, a, lang, Paths { profile, downloads }),
         Err(e) => {
             // No full engine (bundle missing or refused to start, e.g. on the PC image): pages
@@ -130,15 +142,6 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
                 std::io::stderr(),
                 "ultar-web: full engine not available: {e}"
             );
-            // Pages go only through Tor (the persona of privacy::persona, the site never sees
-            // this device's address); if Tor cannot start, no page goes out at all.
-            let tor = match ultar_tor::Tor::start(&profile.join("tor")) {
-                Ok(t) => t,
-                Err(e) => {
-                    let _ = writeln!(std::io::stderr(), "ultar-web: tor: {e}");
-                    return show(OfflineEngine::new(), a, lang, Paths { profile, downloads });
-                }
-            };
             let route = Route::Tor(tor.proxy_url());
             match ReaderEngine::new(lang, &route) {
                 Ok(reader) => show(reader, a, lang, Paths { profile, downloads }),

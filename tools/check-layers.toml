@@ -203,6 +203,13 @@ from = "external"
 to = "system-core"
 crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
 
+# the browser's Servo engine host (external/servo-host, its own process of the browser) speaks the
+# browser's protocol and uses its persona: one definition, in the browser's library
+[[allow]]
+from = "external"
+to = "apps"
+crates = ["apps/ultar-web"]
+
 # App-Builder packs and signs the developer's own packages with the package format library
 # (no own crypto in the app, APP-RULES §5); nothing else of ultar-pkg is used by apps.
 [[allow]]
