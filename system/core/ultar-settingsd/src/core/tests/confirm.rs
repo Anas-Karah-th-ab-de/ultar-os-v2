@@ -374,3 +374,16 @@ fn setting_the_waiting_value_again_gives_the_full_time_once_more() {
     // Without anything waiting, the same value is no change at all.
     assert_eq!(core.set(&user(), MODE, Value::text("extend")), Ok(false));
 }
+
+/// A "Keep" that arrives after the deadline – before the tick ran – does not keep the change.
+#[test]
+fn a_late_confirm_keeps_nothing() {
+    let kit = Kit::new("confirm-late");
+    let mut core = kit.open_with_panel();
+    core.set(&user(), MODE, Value::text("mirror")).unwrap();
+    core.take_events();
+    kit.advance(16);
+    assert_eq!(core.confirm(Some(MODE)), Err(SettingsError::NotPending));
+    assert_eq!(core.get(MODE), Ok(Value::text("extend")));
+    assert!(core.pending_keys().is_empty());
+}

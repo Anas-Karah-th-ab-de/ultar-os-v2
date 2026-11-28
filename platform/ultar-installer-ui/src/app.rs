@@ -240,6 +240,8 @@ impl InstallerApp {
                     .get(i)
                     .copied()
                     .unwrap_or_default();
+                // encrypted data needs room for the LUKS2 metadata: plan again
+                w.replan();
                 self.rebuild()
             }
             _ => self.typed_entry(act, kind, node),

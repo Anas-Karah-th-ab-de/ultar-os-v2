@@ -17,6 +17,7 @@ mod buddy;
 mod arch;
 mod console;
 mod cred;
+mod crypt;
 mod devices;
 mod input;
 mod memfd;

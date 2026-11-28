@@ -5,7 +5,8 @@
 #   4. the escape tests of the process isolation pass (zelltest: mount/pid namespaces, rights),
 #   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs),
 #   5a. vfork release at exec and flock (spawntest); durable ext4 writes of large, fragmented files
-#       through a hard stop, honest ENOSPC/EIO from fsync and close (ext4-durable.sh),
+#       through a hard stop, honest ENOSPC/EIO from fsync and close (ext4-durable.sh), the encrypted
+#       data partition: LUKS2 like cryptsetup, decryption like dm-crypt, unlock at start (crypt-data.sh),
 #   5b. identities, file modes and owners, Unix socket nodes and peer credentials, fsync (rechtetest),
 #       and modes/owners/data that reach a writable ext4 disk (rechte-ext4.sh; skipped without e2fsprogs),
 #   5c. the device interfaces for ultar-devd (geraetetest: device list, driver register, bind/unbind/rebind of
@@ -151,6 +152,14 @@ if command -v mke2fs >/dev/null && command -v debugfs >/dev/null && command -v e
   EXT4_BLOCK=4096 bash tools/kern-test/ext4-durable.sh
 else
   echo "skip  EXT4TEST (e2fsprogs missing)"
+fi
+# encrypted data partition (LUKS2): kernel decryption against dm-crypt and the unlock at start
+# (crypt-data.sh); needs cryptsetup and sudo without a password for the host's dm-crypt
+if command -v cryptsetup >/dev/null && command -v debugfs >/dev/null && sudo -n true 2>/dev/null; then
+  bash tools/kern-test/luks-interop.sh | tail -1
+  bash tools/kern-test/crypt-data.sh
+else
+  echo "skip  CRYPTTEST (cryptsetup or sudo missing)"
 fi
 # Resource groups: the test brings the machine to its memory limits on purpose, so it gets its own boots
 # (GRENZ_MEM: sizes in MiB; GRENZ_LOG: keep the logs as <GRENZ_LOG>-<size>.log).

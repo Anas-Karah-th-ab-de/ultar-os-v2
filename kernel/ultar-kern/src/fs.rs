@@ -64,7 +64,7 @@ fn rd(disk: usize, lba: u64, n: usize) -> Option<Vec<u8>> {
     // up to 4 MiB at once: refused memory reads as a failed read
     let mut b = crate::mem::try_vec(n * 512)?;
     let mut bl = BLOCK.lock();
-    bl.get_mut(disk)?.read(lba, &mut b).ok()?;
+    crate::driver::read_dev(&mut bl, disk, lba, &mut b).ok()?;
     Some(b)
 }
 
@@ -130,12 +130,13 @@ pub fn mount() {
     let mut exts: Vec<(String, crate::ext4::Ext4, String)> = Vec::new();
     let mut installer_platten: Vec<String> = Vec::new();
     let mut fats: Vec<(Fat, String)> = Vec::new();
+    let mut lukss: Vec<(usize, u64, u64)> = Vec::new();
     // installer mode: only the medium's file systems; the target disks stay unmounted (they are
     // written as a whole through /dev/ultar/disk, rawpart.rs)
     let medium = crate::rawpart::installer_medium();
     for disk in (0..n).filter(|d| medium.is_none_or(|m| m == *d)) {
         let dname = BLOCK.lock()[disk].name();
-        let mut cands: Vec<(u64, String)> = vec![(0, String::new())];
+        let mut cands: Vec<(u64, String, u64)> = vec![(0, String::new(), 0)];
         if let Some(h) = rd(disk, 1, 1) {
             if &h[0..8] == b"EFI PART" {
                 let lba = le32(&h, 72) | le32(&h, 76) << 32;
@@ -151,17 +152,28 @@ pub fn mount() {
                         if name == "ULTAR-INSTALL" {
                             installer_platten.push(alloc::format!("{dname}:"));
                         }
-                        cands.push((le32(e, 32) | le32(e, 36) << 32, name));
+                        let first = le32(e, 32) | le32(e, 36) << 32;
+                        let last = le32(e, 40) | le32(e, 44) << 32;
+                        cands.push((first, name, (last + 1).saturating_sub(first)));
                     }
                 }
             }
         }
-        for (p, name) in cands {
+        for (p, name, sectors) in cands {
             if let Some(x) = crate::ext4::Ext4::probe(disk, p) {
                 exts.push((name, x, alloc::format!("{dname}:{p}")));
             } else if let Some(f) = try_fat(disk, p) {
                 fats.push((f, alloc::format!("{dname}:{p}")));
+            } else if name == ultar_slots::layout::DATA_PART && rd(disk, p, 1).is_some_and(|h| crate::crypt::is_luks2(&h)) {
+                lukss.push((disk, p, sectors));
             }
+        }
+    }
+    // encrypted data partition (crypt.rs): only on the boot disk, only without a plain one
+    let boot = crate::rawpart::boot_disk();
+    if let Some(&(disk, first, sectors)) = lukss.iter().find(|c| boot.is_none_or(|b| b == c.0)) {
+        if !exts.iter().any(|e| e.0 == ultar_slots::layout::DATA_PART) {
+            crate::crypt::found(disk, first, sectors);
         }
     }
     // A/B start: only the running slot's system (read only) and the data partition of the boot disk;
@@ -236,6 +248,12 @@ pub fn mount() {
             break;
         }
     }
+}
+
+/// The opened encrypted data partition (crypt.rs) becomes `/data`.
+pub fn attach_data(x: crate::ext4::Ext4) {
+    crate::kprintln!("[fs] ext4 on ultar-data-crypt as /data");
+    MOUNTS.lock().push((String::from("/data"), Mnt::Ext4(x, true)));
 }
 
 impl Fat {
@@ -773,7 +791,7 @@ pub fn store_file_res(path: &str, data: Arc<Vec<u8>>) -> Result<(), i64> {
     match with_ext4(i, |x| x.write_file(&rel, &data).map(|()| x.disk)) {
         Some(Ok(disk)) => {
             tmpfs::discard(path);
-            let flushed = BLOCK.lock().get_mut(disk).is_some_and(|d| d.flush().is_ok());
+            let flushed = crate::driver::flush_dev(&mut BLOCK.lock(), disk).is_ok();
             if flushed { Ok(()) } else { Err(-EIO) }
         }
         Some(Err(e)) => {

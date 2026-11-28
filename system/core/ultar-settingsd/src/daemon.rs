@@ -213,6 +213,9 @@ pub enum DaemonError {
     Bus(BusError),
     /// The bus token could not be read from its file or descriptor.
     Token(SecretError),
+    /// Another instance already serves this settings directory (two writers would lose
+    /// each other's changes).
+    AlreadyRunning(String),
 }
 
 impl DaemonError {
@@ -225,13 +228,16 @@ impl DaemonError {
             DaemonError::Store(_) => "settingsd.daemon.store_error",
             DaemonError::Bus(_) => "settingsd.daemon.bus_error",
             DaemonError::Token(_) => "settingsd.daemon.token_rejected",
+            DaemonError::AlreadyRunning(_) => "settingsd.daemon.already_running",
         }
     }
 
     /// Technical detail for the `{detail}` placeholder.
     pub fn detail(&self) -> String {
         match self {
-            DaemonError::Policy(detail) | DaemonError::Profile(detail) => detail.clone(),
+            DaemonError::Policy(detail)
+            | DaemonError::Profile(detail)
+            | DaemonError::AlreadyRunning(detail) => detail.clone(),
             DaemonError::Schema(error) => error.to_string(),
             DaemonError::Store(error) => error.to_string(),
             DaemonError::Bus(error) => error.to_string(),
@@ -398,6 +404,41 @@ fn connect(
     Ok(Some(session))
 }
 
+/// Name of the lock file in the settings directory.
+pub const LOCK_FILE: &str = ".lock";
+
+/// Takes the exclusive lock of the settings directory `store` (released when the returned file
+/// is closed, also when the process ends).
+pub fn lock_instance(store: &std::path::Path) -> Result<std::fs::File, DaemonError> {
+    let path = store.join(LOCK_FILE);
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| DaemonError::AlreadyRunning(format!("{}: {e}", path.display())))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(_) => Err(DaemonError::AlreadyRunning(path.display().to_string())),
+    }
+}
+
+/// The access rules, reloaded on SIGHUP; warns when every caller is allowed.
+fn prepare_access(
+    args: &DaemonArgs,
+    translator: &Translator,
+    log: &mut dyn Write,
+    hooks: &Hooks<'_>,
+) -> Result<Reloadable, DaemonError> {
+    let access = Reloadable::new(load_access(args)?);
+    reload_on_hangup(args, &access, hooks);
+    if args.policy.is_none() {
+        let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
+        hooks.logger.log(Level::Warn, "settingsd.allow_all");
+    }
+    Ok(access)
+}
+
 /// Runs the service until a stop signal or a `settings.shutdown` call
 /// ends it. Either way everything pending is written to disk first.
 ///
@@ -411,18 +452,16 @@ pub fn run(
     log: &mut dyn Write,
     hooks: &Hooks<'_>,
 ) -> Result<(), DaemonError> {
-    let access = Reloadable::new(load_access(args)?);
-    reload_on_hangup(args, &access, hooks);
-    if args.policy.is_none() {
-        let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
-        hooks.logger.log(Level::Warn, "settingsd.allow_all");
-    }
+    let access = prepare_access(args, translator, log, hooks)?;
     let token = token_source(args)
         .map(|source| (hooks.secret)(&source))
         .transpose()
         .map_err(DaemonError::Token)?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
     let (core, notices) = open_core(args, &clock, translator, log)?;
+    // held until the service ends: a second instance on the same directory is refused (the
+    // directory exists once the store is open)
+    let _instance = lock_instance(&args.store)?;
     log_notices(&notices, hooks.logger);
     let Some(session) = connect(args, token, hooks)? else {
         return Ok(());

@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod crypt;
 pub mod hardware;
 pub mod kernel_drivers;
 pub mod load;

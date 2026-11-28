@@ -11,6 +11,7 @@ fn config(allowed: &[&str]) -> SeatConfig {
         group: SEAT,
         torch_group: None,
         virtual_allowed: allowed.iter().map(|s| (*s).to_owned()).collect(),
+        virtual_owners: Vec::new(),
     }
 }
 
@@ -100,6 +101,11 @@ fn the_configuration_is_checked() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../rootfs/etc/ultar/devd-seat.toml");
     let shipped = SeatConfig::load(&shipped).unwrap();
     assert_eq!((shipped.group, shipped.virtual_allowed.len()), (SEAT, 0));
+    assert_eq!(
+        shipped.virtual_owners,
+        vec![827],
+        "the Bluetooth service only"
+    );
 }
 
 #[test]
@@ -363,4 +369,30 @@ fn random_event_messages_are_harmless() {
             }
         }
     }
+}
+
+/// The Bluetooth service's devices join by their maker (set by the kernel), whatever their name;
+/// another service's device named like them does not.
+#[test]
+fn software_devices_join_by_their_maker() {
+    let tree = Tree::new("owner");
+    for (event, creator, name) in [
+        ("event6", "827", "BT Tastatur"),
+        ("event7", "900", "BT Tastatur"),
+    ] {
+        let class = tree.0.join("sys/class/input").join(event);
+        fs::create_dir_all(class.join("device/id")).unwrap();
+        fs::write(class.join("device/name"), format!("{name}\n")).unwrap();
+        fs::write(class.join("device/id/bustype"), "0006\n").unwrap();
+        fs::write(class.join("device/ultar_creator"), format!("{creator}\n")).unwrap();
+    }
+    let mut c = config(&[]);
+    c.virtual_owners = vec![827];
+    let reason = |name: &str| wanted(&tree.0, name, &c).map(|w| w.reason);
+    assert_eq!(reason("input/event6"), Some(Reason::AllowedVirtual));
+    assert_eq!(reason("input/event7"), Some(Reason::RefusedVirtual));
+    assert!(
+        SeatConfig::parse("group = 812\nvirtual_owners = [0]\n").is_err(),
+        "root is no owner"
+    );
 }

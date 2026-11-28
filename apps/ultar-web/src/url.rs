@@ -286,6 +286,58 @@ pub fn is_secure(url: &str) -> bool {
     split_scheme(url).is_some_and(|(s, _)| s == "https")
 }
 
+/// An address as people read it: percent-escapes that spell letters beyond ASCII (Arabic and
+/// every other script) are shown as those letters (`/wiki/%D8%AF…` → `/wiki/دمشق`). Escapes of
+/// ASCII (`%20`, `%2F`, `%25` …), invalid UTF-8 and characters that could disguise the address
+/// (controls, direction marks and overrides) stay escaped. The host is never changed.
+pub fn readable(url: &str) -> String {
+    let bytes = url.as_bytes();
+    let mut out = String::with_capacity(url.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let run_end = escaped_run(bytes, i);
+        if run_end > i {
+            let decoded: Vec<u8> = (i..run_end)
+                .step_by(3)
+                .filter_map(|j| hex_byte(bytes, j))
+                .collect();
+            match std::str::from_utf8(&decoded) {
+                Ok(text) if text.chars().all(shows_safely) => out.push_str(text),
+                _ => out.push_str(&url[i..run_end]),
+            }
+            i = run_end;
+        } else {
+            let c = url[i..].chars().next().unwrap_or('\u{fffd}');
+            out.push(c);
+            i += c.len_utf8().max(1);
+        }
+    }
+    out
+}
+
+/// The end of a run of `%XX` escapes of bytes ≥ 0x80 starting at `i` (`i` when there is none).
+fn escaped_run(bytes: &[u8], i: usize) -> usize {
+    let mut j = i;
+    while hex_byte(bytes, j).is_some_and(|b| b >= 0x80) {
+        j += 3;
+    }
+    j
+}
+
+fn hex_byte(bytes: &[u8], at: usize) -> Option<u8> {
+    if bytes.get(at) != Some(&b'%') {
+        return None;
+    }
+    let digit = |c: u8| (c as char).to_digit(16);
+    let (hi, lo) = (digit(*bytes.get(at + 1)?)?, digit(*bytes.get(at + 2)?)?);
+    u8::try_from(hi * 16 + lo).ok()
+}
+
+fn shows_safely(c: char) -> bool {
+    !c.is_control()
+        && !matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{061c}')
+}
+
 /// The text a tab shows for an address without a title: the host, else the address.
 pub fn short_name(url: &str) -> String {
     host_of(url).unwrap_or_else(|| url.chars().take(64).collect())
@@ -297,6 +349,30 @@ mod tests {
 
     fn open(text: &str) -> String {
         resolve(text, SearchEngine::DuckDuckGo).unwrap().url
+    }
+
+    #[test]
+    fn addresses_are_shown_readable_but_never_disguised() {
+        assert_eq!(
+            readable("https://ar.wikipedia.org/wiki/%D8%AF%D9%85%D8%B4%D9%82"),
+            "https://ar.wikipedia.org/wiki/دمشق"
+        );
+        assert_eq!(
+            readable("https://a.org/x%20y%2F%25?q=%D8%B3"),
+            "https://a.org/x%20y%2F%25?q=س"
+        );
+        // a right-to-left override would turn the address around on screen
+        assert_eq!(
+            readable("https://a.org/%E2%80%AEfdp.exe"),
+            "https://a.org/%E2%80%AEfdp.exe"
+        );
+        assert_eq!(
+            readable("https://a.org/%D8"),
+            "https://a.org/%D8",
+            "cut UTF-8"
+        );
+        assert_eq!(readable("https://a.org/%zz%"), "https://a.org/%zz%");
+        assert_eq!(readable("https://a.org/سوريا"), "https://a.org/سوريا");
     }
 
     #[test]
