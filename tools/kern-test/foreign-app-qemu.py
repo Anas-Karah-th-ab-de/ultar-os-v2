@@ -31,6 +31,9 @@ PROMPT = re.compile(rb"ultar-kern[^\n>]*> ")
 def read_until(pattern, timeout):
     global log
     end = time.time() + timeout
+    # what already came (the program may have said its last line before this wait)
+    if pattern is not None and re.search(pattern, log):
+        return True
     while time.time() < end:
         r, _, _ = select.select([p.stdout], [], [], 0.2)
         if r:
