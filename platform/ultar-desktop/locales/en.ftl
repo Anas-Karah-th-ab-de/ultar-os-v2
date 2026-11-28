@@ -23,6 +23,7 @@ desk.apps.search = Search apps
 desk.apps.title = All apps
 desk.apps.uninstall = Remove app…
 desk.bar.apps = All apps
+desk.bar.battery = {level}%
 desk.bar.clock = Calendar and notifications: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = Overview
@@ -444,3 +445,7 @@ volumed.drive.mount = Mount
 desk.note.screend = {arg0} is looking at this screen
 desk.note.screend.body = Everything you do here is visible to that device, and it can type here.
 desk.note.screend.stop = Stop
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = Copied on {arg0}
+mesh.clip.body = Paste with Ctrl+V

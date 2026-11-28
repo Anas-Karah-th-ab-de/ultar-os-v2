@@ -7,10 +7,10 @@ mod common;
 use common::*;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::mesh_view::{Button, EndReason, RemoteInput, ViewEvent};
-use ultar_i18n::Lang;
-use ultar_remote::app::{Phase, Wish, WAIT_LIMIT};
+use ultar_remote::app::{Phase, RemoteApp, Wish, WAIT_LIMIT};
 use ultar_remote::port::PortEvent;
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
+use ultar_ui::snapshot::{render, Image};
 use ultar_ui::Point;
 
 #[test]
@@ -98,9 +98,15 @@ fn moves_between_two_looks_are_one_move_to_the_right_place() {
         let pos = at(&mut app, x, y);
         app.pointer(Event::PointerMove { pos }).unwrap();
     }
-    assert!(port.0.borrow().inputs.is_empty(), "held back until the next look");
+    assert!(
+        port.0.borrow().inputs.is_empty(),
+        "held back until the next look"
+    );
     app.poll(now).unwrap();
-    assert_eq!(port.0.borrow().inputs, [RemoteInput::Move { x: 100, y: 50 }]);
+    assert_eq!(
+        port.0.borrow().inputs,
+        [RemoteInput::Move { x: 100, y: 50 }]
+    );
 }
 
 fn mouse(app: &mut RemoteApp, pos: Point, button: PointerButton, down: bool) {
@@ -119,13 +125,25 @@ fn a_drag_that_leaves_the_picture_is_released_on_its_edge() {
     running(&mut app, &port, now);
     let down = at(&mut app, 5, 6);
     mouse(&mut app, down, PointerButton::Primary, true);
-    let out = Point { x: 5000.0, y: -50.0 };
+    let out = Point {
+        x: 5000.0,
+        y: -50.0,
+    };
     app.pointer(Event::PointerMove { pos: out }).unwrap();
     mouse(&mut app, out, PointerButton::Primary, false);
-    let btn = |x, y, down| RemoteInput::Button { x, y, button: Button::Left, down };
+    let btn = |x, y, down| RemoteInput::Button {
+        x,
+        y,
+        button: Button::Left,
+        down,
+    };
     assert_eq!(
         port.0.borrow().inputs,
-        [btn(5, 6, true), RemoteInput::Move { x: W - 1, y: 0 }, btn(W - 1, 0, false)]
+        [
+            btn(5, 6, true),
+            RemoteInput::Move { x: W - 1, y: 0 },
+            btn(W - 1, 0, false)
+        ]
     );
 }
 
@@ -139,9 +157,25 @@ fn a_right_click_and_the_wheel_arrive_and_every_word_is_valid() {
     mouse(&mut app, p, PointerButton::Secondary, false);
     app.pointer(Event::Scroll { pos: p, lines: 3.0 }).unwrap();
     app.pointer(Event::Scroll { pos: p, lines: 0.0 }).unwrap();
-    let btn = |down| RemoteInput::Button { x: 50, y: 60, button: Button::Right, down };
+    let btn = |down| RemoteInput::Button {
+        x: 50,
+        y: 60,
+        button: Button::Right,
+        down,
+    };
     let inputs = port.0.borrow().inputs.clone();
-    assert_eq!(inputs, [btn(true), btn(false), RemoteInput::Wheel { x: 50, y: 60, lines: 3 }]);
+    assert_eq!(
+        inputs,
+        [
+            btn(true),
+            btn(false),
+            RemoteInput::Wheel {
+                x: 50,
+                y: 60,
+                lines: 3
+            }
+        ]
+    );
     for i in inputs {
         assert_eq!(RemoteInput::parse(&i.word()), Some(i));
     }
@@ -379,4 +413,3 @@ fn a_screen_of_an_absurd_size_ends_the_session_instead_of_eating_memory() {
     assert_eq!(app.phase(), Phase::Ended(EndReason::Lost));
     assert_eq!(port.0.borrow().stops, 1);
 }
-

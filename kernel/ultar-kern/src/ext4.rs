@@ -14,7 +14,13 @@ pub struct Ext4 {
     isize: u64,
     dsize: u64,
     gdt: u64,
+    /// Group descriptor blocks read so far (disk block, content): every inode lookup and every
+    /// allocation needs one, so they are read from the disk only once.
+    gd_cache: spin::Mutex<Vec<(u64, Vec<u8>)>>,
 }
+
+/// At most this many descriptor blocks stay cached (256 × 4 KiB = 1 MiB, 16384 groups at 64 bytes).
+const GD_CACHE_MAX: usize = 256;
 
 /// Where a file lies on the disk.
 pub struct Layout {
@@ -70,11 +76,36 @@ impl Ext4 {
         let dsize = if incompat & 0x80 != 0 { le16(&sb, 254).max(32) } else { 32 };
         let first = le32(&sb, 20);
         let isize = if le32(&sb, 76) >= 1 { le16(&sb, 88) } else { 128 };
-        Some(Ext4 { disk, part, bs, ipg: le32(&sb, 40), isize, dsize, gdt: first + 1 })
+        Some(Ext4 { disk, part, bs, ipg: le32(&sb, 40), isize, dsize, gdt: first + 1, gd_cache: spin::Mutex::new(Vec::new()) })
     }
 
     fn read_blocks(&self, b: u64, n: u64) -> Option<Vec<u8>> {
         rd(self.disk, self.part + b * self.bs / 512, (n * self.bs) as usize)
+    }
+
+    /// A group descriptor block, from the cache when it was read before.
+    fn gd_block(&self, b: u64) -> Option<Vec<u8>> {
+        if let Some((_, d)) = self.gd_cache.lock().iter().find(|(n, _)| *n == b) {
+            return Some(d.clone());
+        }
+        let d = self.read_blocks(b, 1)?;
+        let mut c = self.gd_cache.lock();
+        if c.len() < GD_CACHE_MAX {
+            c.push((b, d.clone()));
+        }
+        Some(d)
+    }
+
+    /// Keeps the cache equal to the disk after `data` was written from block `b` on.
+    fn gd_written(&self, b: u64, data: &[u8]) {
+        let mut c = self.gd_cache.lock();
+        for (n, d) in c.iter_mut() {
+            if *n >= b && (*n - b) * self.bs < data.len() as u64 {
+                let o = ((*n - b) * self.bs) as usize;
+                let len = d.len().min(data.len() - o);
+                d[..len].copy_from_slice(&data[o..o + len]);
+            }
+        }
     }
 
     /// `n` blocks from disk block `b` on (for [`crate::bigfile`]).
@@ -102,7 +133,7 @@ impl Ext4 {
         let g = (ino - 1) / self.ipg;
         let idx = (ino - 1) % self.ipg;
         let doff = g * self.dsize;
-        let d = self.read_blocks(self.gdt + doff / self.bs, 1)?;
+        let d = self.gd_block(self.gdt + doff / self.bs)?;
         let o = (doff % self.bs) as usize;
         let mut table = le32(&d, o + 8);
         if self.dsize >= 64 {
@@ -378,7 +409,9 @@ impl Ext4 {
         self.read_blocks(b, 1).ok_or("Lesefehler")
     }
     fn put_block(&self, b: u64, data: &[u8]) -> WResult<()> {
-        wr(self.disk, self.part + b * self.bs / 512, data).ok_or("Schreibfehler")
+        wr(self.disk, self.part + b * self.bs / 512, data).ok_or("Schreibfehler")?;
+        self.gd_written(b, data);
+        Ok(())
     }
     fn groups(&self, sb: &[u8]) -> u64 {
         let blocks = le32(sb, 4) | if le32(sb, 96) & 0x80 != 0 { le32(sb, 0x150) << 32 } else { 0 };
@@ -388,7 +421,7 @@ impl Ext4 {
     fn gd(&self, g: u64) -> WResult<(u64, usize, Vec<u8>)> {
         let off = g * self.dsize;
         let b = self.gdt + off / self.bs;
-        Ok((b, (off % self.bs) as usize, self.block(b)?))
+        Ok((b, (off % self.bs) as usize, self.gd_block(b).ok_or("Lesefehler")?))
     }
     fn gd_field(d: &[u8], o: usize, lo: usize, hi: usize, wide: bool, bits: u32) -> u64 {
         let l = if bits == 16 { le16(d, o + lo) } else { le32(d, o + lo) };
@@ -603,15 +636,25 @@ impl Ext4 {
         for g in 0..self.groups(&sb) {
             let (db, o, mut dblk) = self.gd(g)?;
             let flags = le16(&dblk, o + 18);
-            if flags & 1 != 0 {
-                continue; // INODE_UNINIT
-            }
             let free = Self::gd_field(&dblk, o, 14, 0x2E, wide, 16);
             if free == 0 {
                 continue;
             }
             let bmb = Self::gd_field(&dblk, o, 4, 0x24, wide, 32);
-            let mut bm = self.block(bmb)?;
+            // INODE_UNINIT (a group a growth added): the bitmap on disk was never written – all
+            // inodes free, the bits past the group's inodes set; written below with the flag
+            // cleared. The inode table is not zeroed: every inode below `itable_unused` is
+            // written whole before it is used (new_inode).
+            let mut bm = if flags & 1 != 0 {
+                let mut b = alloc::vec![0u8; self.bs as usize];
+                for i in ipg..self.bs * 8 {
+                    b[(i / 8) as usize] |= 1 << (i % 8);
+                }
+                put16(&mut dblk, o + 18, flags & !1);
+                b
+            } else {
+                self.block(bmb)?
+            };
             for i in 0..ipg {
                 let ino = g * ipg + i + 1;
                 if ino < first_ino || bm[(i / 8) as usize] & (1 << (i % 8)) != 0 {

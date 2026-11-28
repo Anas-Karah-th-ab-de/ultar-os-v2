@@ -56,6 +56,7 @@ pub struct MeshService {
     net: Option<Net>,
     last: Option<MeshState>,
     pub(crate) view: crate::viewbus::ViewHost,
+    pub(crate) clip: crate::clip_service::ClipHost,
 }
 
 /// The device's key pair in `file` (mode 0600), created on first start.
@@ -134,6 +135,7 @@ impl MeshService {
             net: None,
             last: None,
             view: crate::viewbus::ViewHost::default(),
+            clip: crate::clip_service::ClipHost::default(),
         })
     }
 
@@ -166,8 +168,10 @@ impl MeshService {
             let effects = self.runtime.set_enabled(true);
             self.host(effects, bus);
             self.open_net(bus);
+            self.start_clip(bus);
             return self.net.is_some();
         }
+        self.clip.bridge = None;
         if let Some(net) = self.net.take() {
             net.stop();
         }
@@ -240,10 +244,17 @@ impl MeshService {
                     self.ask(incoming, bus);
                 }
                 Effect::Progress(progress) => bus.publish(&progress),
-                Effect::Clipboard(text) => bus.publish(&text),
+                Effect::Clipboard(text) => {
+                    bus.publish(&text);
+                    self.clip_text_arrived(text.text);
+                }
                 Effect::Open { offer, app, uri } => self.open(offer, app, uri, bus),
                 Effect::Changed => changed = true,
-                other => self.model_effect(other, bus),
+                other => {
+                    if let Some(other) = self.clip_effect(other, bus) {
+                        self.model_effect(other, bus);
+                    }
+                }
             }
         }
         if changed {

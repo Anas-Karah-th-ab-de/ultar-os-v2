@@ -141,6 +141,44 @@ fn start(w: &mut Wire) -> u64 {
     id
 }
 
+/// The viewer's words go through its node to the source's node and come out parsed.
+fn send_words(w: &mut Wire, words: [&str; 6]) -> VecDeque<RemoteInput> {
+    let peer = Wire::id(0);
+    for word in words {
+        let effects = w.nodes[0].view_input(word).unwrap();
+        w.run(0, effects);
+    }
+    let mut typed = VecDeque::new();
+    for e in w.take(1) {
+        if let Effect::ViewInput {
+            peer: p2, input, ..
+        } = e
+        {
+            assert_eq!(p2, peer);
+            typed.push_back(RemoteInput::parse(&input).unwrap());
+        }
+    }
+    typed
+}
+
+/// What the virtual devices saw of `m 12 34`, a click, `k 30` and a wheel of -2.
+fn assert_injected(p: &Recorder, k: &Recorder) {
+    let pointer = p.events();
+    assert!(
+        pointer.contains(&(3, 0, 12)) && pointer.contains(&(3, 1, 34)),
+        "placed at 12,34"
+    );
+    assert!(
+        pointer.contains(&(1, 0x110, 1)) && pointer.contains(&(1, 0x110, 0)),
+        "click down and up"
+    );
+    assert!(pointer.contains(&(2, 8, 2)), "wheel -2 scrolls up");
+    assert_eq!(
+        k.events(),
+        vec![(1, 30, 1), (0, 0, 0), (1, 30, 0), (0, 0, 0)]
+    );
+}
+
 #[test]
 fn the_screen_arrives_pixel_exact_and_the_input_arrives_in_the_injector() {
     let mut w = Wire::new("pixels");
@@ -157,9 +195,9 @@ fn the_screen_arrives_pixel_exact_and_the_input_arrives_in_the_injector() {
         Engine::begin(Fake(screen.clone()), move |s| Injector::new(pc, kc, s)).unwrap();
     assert_eq!(size, (W, H));
     let mut picture = vec![0u8; (W * H * 4) as usize];
-    let mut typed = VecDeque::new();
 
     // The whole screen goes through the mesh: encoded, framed, decoded, drawn.
+    let mut typed = VecDeque::new();
     let step = engine.step(&mut || typed.pop_front(), &mut ThroughMesh(&mut w));
     assert!(matches!(step, Step::Wait(_)));
     let frames = paint(&mut picture, &w.take(0));
@@ -173,53 +211,18 @@ fn the_screen_arrives_pixel_exact_and_the_input_arrives_in_the_injector() {
     assert_eq!(picture, screen.data());
 
     // The viewer's events reach the source's node, the source parses and injects them.
-    let (peer, words) = (
-        Wire::id(0),
-        [
-            "m 12 34",
-            "d 12 34 l",
-            "u 12 34 l",
-            "k 30 down",
-            "k 30 up",
-            "w 12 34 -2",
-        ],
-    );
-    for word in words {
-        let effects = w.nodes[0].view_input(word).unwrap();
-        w.run(0, effects);
-    }
-    for e in w.take(1) {
-        if let Effect::ViewInput {
-            peer: p2, input, ..
-        } = e
-        {
-            assert_eq!(p2, peer);
-            typed.push_back(RemoteInput::parse(&input).unwrap());
-        }
-    }
+    let words = ["m 12 34", "d 12 34 l", "u 12 34 l", "k 30 down", "k 30 up", "w 12 34 -2"];
+    let mut typed = send_words(&mut w, words);
     assert_eq!(typed.len(), 6);
     engine.step(&mut || typed.pop_front(), &mut ThroughMesh(&mut w));
-    let pointer = p.events();
-    assert!(
-        pointer.contains(&(3, 0, 12)) && pointer.contains(&(3, 1, 34)),
-        "placed at 12,34"
-    );
-    assert!(
-        pointer.contains(&(1, 0x110, 1)) && pointer.contains(&(1, 0x110, 0)),
-        "click down and up"
-    );
-    assert!(pointer.contains(&(2, 8, 2)), "wheel -2 scrolls up");
-    assert_eq!(
-        k.events(),
-        vec![(1, 30, 1), (0, 0, 0), (1, 30, 0), (0, 0, 0)]
-    );
+    assert_injected(&p, &k);
     let _ = Button::Left;
 
     // The viewer stops: the source's node ends, the engine is told to release everything.
     let effects = w.nodes[0].view_stop().unwrap();
     w.run(0, effects);
     assert!(w.take(1).contains(&Effect::ViewEnded {
-        peer,
+        peer: Wire::id(0),
         id,
         end: ViewEnd::Stopped
     }));

@@ -110,6 +110,14 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 from = "system-services"
 to = "system-core"
 
+# ultar-mesh -> compositor + surface protocol: the clipboard bridge is a client of
+# the compositor (right ui.clipboard-bridge) and its end-to-end test runs the real
+# headless compositor (docs/integration/mesh-clipboard.md).
+[[allow]]
+from = "system-services"
+to = "platform"
+crates = ["platform/ultar-surface", "platform/ultar-compositor"]
+
 # ultar-hal-linux: the generic kernel backends of the system services (power
 # supplies and sleep, sound-card controls, radio switches, network links,
 # removable drives; docs/integration/system-services.md). Device paths and

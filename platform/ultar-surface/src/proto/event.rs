@@ -245,6 +245,16 @@ pub enum Event {
         /// Offered types (empty = clipboard empty).
         mimes: Vec<String>,
     },
+    /// The clipboard changed (sent to clipboard-bridge clients on a user
+    /// copy). `confidential` marks the content of a password field: the
+    /// bridge must never read it, and a confidential selection is never
+    /// offered to it.
+    SelectionChange {
+        /// Offered types (empty = clipboard empty).
+        mimes: Vec<String>,
+        /// Never leaves the device.
+        confidential: bool,
+    },
     /// Send the next chunk (one `SendData`, ≤ `MAX_CHUNK`) of the clipboard
     /// or drag data of this type for a transfer. Sent again for every next
     /// chunk when the reader has room (flow control); chunks sent unasked
@@ -426,6 +436,7 @@ impl Event {
             Event::Text { .. } => 18,
             Event::CloseRequested { .. } => 19,
             Event::SelectionOffer { .. } => 20,
+            Event::SelectionChange { .. } => 42,
             Event::SendRequest { .. } => 21,
             Event::Data { .. } => 22,
             Event::TransferCancelled { .. } => 23,

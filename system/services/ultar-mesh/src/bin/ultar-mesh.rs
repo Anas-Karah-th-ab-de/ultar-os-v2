@@ -3,7 +3,7 @@
 //! ```text
 //! ultar-mesh --bus PATH --state DIR --inbox DIR [--name TEXT] [--kind WORD] [--port N]
 //!            [--announce N|off] [--peer ADDR,ADDR] [--opener APP] [--share DIR,DIR]
-//!            [--jobs DIR] [--relay URL --relay-token-file PATH]
+//!            [--jobs DIR] [--relay URL --relay-token-file PATH] [--compositor PATH]
 //!            [--log-socket PATH] [--token-file PATH]
 //! ```
 
@@ -22,7 +22,8 @@ use ultar_service::log::{Level, Record};
 use ultar_svckit::args::CommonArgs;
 use ultar_svckit::msg::Msg;
 
-const OPTIONS: [&str; 12] = [
+const OPTIONS: [&str; 13] = [
+    "compositor",
     "state",
     "inbox",
     "name",
@@ -117,7 +118,14 @@ fn main() -> ExitCode {
             // A device with a screen may show its windows on another device (remote view).
             remote_view: capabilities.contains(&ultar_bus::messages::mesh::Capability::Screen),
         };
-        MeshService::start_in(config, &state, listen(args)?).map_err(|e| {
+        // The shared clipboard goes through the compositor (right ui.clipboard-bridge).
+        let compositor = args.path("compositor").map_err(|_| Msg::BadArguments)?;
+        let started = MeshService::start_in(config, &state, listen(args)?);
+        let started = started.map(|s| match compositor {
+            Some(socket) => s.with_compositor(socket),
+            None => s,
+        });
+        started.map_err(|e| {
             // why the service does not start (init restarts it; the console has the code only)
             let record = Record::new(Level::Warn, "mesh.start_failed").word("step", e.step);
             log.emit(record.signed("errno", i64::from(e.errno)));

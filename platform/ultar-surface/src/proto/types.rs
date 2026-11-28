@@ -16,6 +16,10 @@ pub const MAX_MIMES: usize = 8;
 pub const MAX_DAMAGE: usize = 32;
 /// Largest chunk of clipboard/drag data or captured pixels in one message.
 pub const MAX_CHUNK: usize = 1 << 20;
+/// MIME type of a clipboard text entry that travels between devices.
+pub const CLIP_TEXT_MIME: &str = "text/plain;charset=utf-8";
+/// MIME type of a clipboard picture that travels between devices.
+pub const CLIP_IMAGE_MIME: &str = "image/png";
 /// Longest text an input method commits at once.
 pub const MAX_IME_TEXT: usize = 4096;
 /// Largest surface side in pixels.
@@ -321,8 +325,13 @@ impl Rights {
     pub const CALL_SCREEN: Rights = Rights(128);
     /// Toplevels whose header the app draws itself (`Request::ClientHeader`).
     pub const CLIENT_HEADER: Rights = Rights(256);
+    /// Read and offer the clipboard for the device mesh (`ui.clipboard-bridge`,
+    /// granted only to the mesh service): told when the selection changes, may
+    /// read `text/plain;charset=utf-8` and `image/png` and set a selection on
+    /// behalf of another device.
+    pub const CLIPBOARD_BRIDGE: Rights = Rights(512);
     /// Every right.
-    pub const ALL: Rights = Rights(511);
+    pub const ALL: Rights = Rights(1023);
 
     /// True if every bit of `other` is set.
     pub const fn contains(self, other: Rights) -> bool {

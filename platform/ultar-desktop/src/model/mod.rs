@@ -11,6 +11,7 @@ pub mod history;
 pub mod media;
 pub mod mesh;
 pub mod notes;
+pub mod prefs;
 pub mod quick;
 pub mod search;
 pub mod services;

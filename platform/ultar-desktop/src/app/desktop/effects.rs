@@ -356,7 +356,15 @@ impl DesktopApp {
     pub(super) fn rebuild(&mut self, outcome: Outcome) -> Result<(), AppError> {
         self.look.theme = self.shell.d.theme;
         let v = self.shell.d.values;
-        self.look = self.look.with_access(v.high_contrast, v.large_text);
+        self.look = self
+            .look
+            .with_access(v.high_contrast, v.large_text)
+            .with_prefs(&self.shell.d.prefs);
+        if self.look.lang != self.shell.d.lang {
+            // region.language changed: every text, the reading direction and the menus.
+            self.shell.set_lang(self.shell.d.lang);
+            self.look.lang = self.shell.d.lang;
+        }
         self.look.reduce_motion = v.reduce_motion;
         if let Some(ms) = v.double_click_ms {
             self.look.double_click_ms = ms;
@@ -366,6 +374,7 @@ impl DesktopApp {
             let view = build_bar(&self.shell, self.look, screen.w)?;
             self.host.replace(self.bar, view, None);
             self.rebuild_side_panels(screen)?;
+            self.sync_background()?;
         }
         if outcome.popup {
             self.sync_popup(screen)?;

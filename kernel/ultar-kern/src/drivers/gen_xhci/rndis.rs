@@ -3,23 +3,17 @@
 //! die Ethernet-Rahmen über zwei Bulk-Endpunkte, jeder mit einem 44-Byte-RNDIS-Kopf.
 //!
 //! So kann man ein Ultar-Gerät künftig per USB-C ans Netz bringen. CDC-ECM/NCM (viele USB-C-zu-
-//! Ethernet-Dongles) ist der nächste Weg und kommt in ein eigenes Geschwister-Modul – dieselbe
-//! Bindung an [`NetDev`], nur ohne RNDIS-Kopf und mit Umschalten auf die Daten-Alternative.
+//! Ethernet-Dongles) liegt als Geschwister-Modul `cdc_ecm` daneben – dieselbe Bindung an [`NetDev`],
+//! nur ohne RNDIS-Kopf und mit Umschalten auf die Daten-Alternative. Den gemeinsamen Unterbau
+//! (armierter Bulk-IN, 8/16/32-Bit-Zugriffe) stellt `net_common`.
 //!
 //! Empfang wie bei Bluetooth (`bt`): mehrere Bulk-IN-Übertragungen sind **dauerhaft** armiert; wenn
 //! eine fertig wird, ruft die Ereignisschleife `report`, das den Rahmen in eine Warteschlange legt
 //! und die Übertragung neu armiert. `recv` läutet die IN-Türklingel, pumpt den Controller und nimmt
 //! aus der Warteschlange. `send` schickt synchron über Bulk-OUT.
-//!
-//! STAND (28.11.2026): In QEMU sind **Binden, RNDIS-Steuerung (INIT/MAC) und Senden** belegt (die
-//! DISCOVER-Pakete erscheinen im Mitschnitt des netdev). Der **Empfang ist noch nicht bestätigt**:
-//! QEMUs `usb-net` ist ein **Full-Speed**-Gerät (speed=1, Bulk 64 Byte), und sein Bulk-IN liefert in
-//! QEMU weder synchron noch armiert eine Completion, obwohl slirp das Antwortpaket an das Gerät
-//! übergibt. Das ist eine Full-Speed-Eigenheit der QEMU-Emulation; echte RNDIS-Tethers laufen mit
-//! High Speed. Darum wird dieser Treiber erst nach einer Prüfung an echter Hardware nach `main`
-//! übernommen (`docs/integration/usb-net.md`).
 
-use super::{w32, Desc, Hc, TRB_NORMAL};
+use super::net_common::{rd32, wr32, InEp, RX_MAX, TD};
+use super::{w32, Desc, Hc};
 use crate::driver::{NetDev, Result, NET};
 use crate::mem::{alloc_pages, free_page};
 use alloc::boxed::Box;
@@ -42,78 +36,17 @@ const PACKET_MSG: u32 = 0x0000_0001;
 const OID_PERMANENT_ADDR: u32 = 0x0101_0101;
 const OID_PACKET_FILTER: u32 = 0x0001_010E;
 
-/// Armierte Bulk-IN-Übertragungen in Teilen einer DMA-Fläche (jeder Teil fasst einen RNDIS-Rahmen).
-const TDS: usize = 8;
-const TD: u32 = 2048; // ≥ 1514-Byte-Rahmen + 44-Byte-RNDIS-Kopf
-
-struct InEp {
-    dci: u32,
-    buf: u64,
-    trb: [u64; TDS],
-}
-impl InEp {
-    fn arm(&mut self, hc: &mut Hc, slot: u32, i: usize) {
-        let ring = hc.ring(slot, self.dci);
-        self.trb[i] = ring.push(self.buf + i as u64 * TD as u64, TD, (TRB_NORMAL << 10) | (1 << 5) | (1 << 2));
-    }
-    fn arm_all(&mut self, hc: &mut Hc, slot: u32) {
-        for i in 0..TDS {
-            self.arm(hc, slot, i);
-        }
-        w32(hc.db + slot as u64 * 4, self.dci);
-    }
-    fn part(&self, trb: u64) -> usize {
-        self.trb.iter().position(|&t| t == trb).unwrap_or(0)
-    }
-}
-
-/// Zustand einer USB-Netzkarte: der armierte Empfang und die Warteschlange der Rahmen.
+/// Zustand einer USB-Netzkarte: der armierte Empfang, der Sendepuffer (als DMA-Seite, hier verwaltet,
+/// damit `remove` ihn freigibt) und die Warteschlange der Rahmen.
 struct Nic {
     hc_index: usize,
     slot: u32,
+    name: String,
     in_ep: InEp,
+    tx: u64,
     rx: VecDeque<Vec<u8>>,
 }
 static NICS: Mutex<Vec<Nic>> = Mutex::new(Vec::new());
-const RX_MAX: usize = 256;
-
-fn rd32(p: u64, off: usize) -> u32 {
-    // SAFETY: callers pass a buffer (a page or a local array) holding at least `off + 4` bytes; unaligned access.
-    unsafe { core::ptr::read_unaligned((p + off as u64) as *const u32) }
-}
-fn wr32(p: u64, off: usize, v: u32) {
-    // SAFETY: callers pass a buffer (a page or a local array) holding at least `off + 4` bytes; unaligned access.
-    unsafe { core::ptr::write_unaligned((p + off as u64) as *mut u32, v) }
-}
-
-/// Eine fertige Bulk-IN-Übertragung der USB-Netzkarte: Rahmen aus dem RNDIS-Paket nehmen, in die
-/// Warteschlange legen, Übertragung neu armieren. Aus der Ereignisschleife (`pump`).
-pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, left: u32) -> bool {
-    let mut list = NICS.lock();
-    let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
-        return false;
-    };
-    let part = nic.in_ep.part(trb);
-    if matches!(code, 1 | 13) {
-        let got = TD.saturating_sub(left) as usize;
-        let base = nic.in_ep.buf + part as u64 * TD as u64;
-        if got >= 44 && rd32(base, 0) == PACKET_MSG {
-            let data_off = rd32(base, 8) as usize + 8;
-            let data_len = rd32(base, 12) as usize;
-            if data_off + data_len <= got && data_len > 0 && nic.rx.len() < RX_MAX {
-                let mut f: Vec<u8> = Vec::new();
-                if !crate::heap::kernel(|| f.try_reserve_exact(data_len).is_err()) {
-                    // SAFETY: Quelle liegt im Teil `part` der DMA-Fläche innerhalb `got`.
-                    unsafe { f.extend_from_slice(core::slice::from_raw_parts((base + data_off as u64) as *const u8, data_len)) };
-                    nic.rx.push_back(f);
-                }
-            }
-        }
-    }
-    nic.in_ep.arm(hc, slot, part);
-    w32(hc.db + slot as u64 * 4, dci);
-    true
-}
 
 /// Handle in der Netzliste: hält nur Kennungen, den Sendepuffer und die MAC; den Controller holt es
 /// je Zugriff aus `HC`, die Empfangs-Warteschlange aus `NICS`.
@@ -154,8 +87,8 @@ impl NetDev for RndisHandle {
         // SAFETY: tx ist eine ≥ TX Byte große, identisch abgebildete Seite.
         unsafe { core::ptr::copy_nonoverlapping(frame.as_ptr(), (self.tx + 44) as *mut u8, n) };
         let mut hcs = super::HC.lock();
-        let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB controller gone")?;
-        hc.transfer(self.slot, self.out_dci, self.tx, 44 + n, 100).ok_or("USB send failed")?;
+        let hc = hcs.iter_mut().find(|h| h.index == self.hc_index).ok_or("USB-Controller weg")?;
+        hc.transfer(self.slot, self.out_dci, self.tx, 44 + n, 100).ok_or("USB-Senden fehlgeschlagen")?;
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
@@ -178,13 +111,42 @@ impl NetDev for RndisHandle {
 
 /// Steuerbefehl einkapseln (SEND_ENCAPSULATED_COMMAND, Klassen-Anfrage auf EP0).
 fn send_cmd(hc: &mut Hc, slot: u32, iface: u16, buf: u64, msg: &[u8]) -> bool {
-    // SAFETY: `buf` is the driver's identity-mapped control page (4 KiB); every RNDIS message is shorter.
+    // SAFETY: `buf` is a DMA page (4096 bytes) and every control message is shorter than a page.
     unsafe { core::ptr::copy_nonoverlapping(msg.as_ptr(), buf as *mut u8, msg.len()) };
     hc.control(slot, 0x21, 0x00, 0, iface, msg.len() as u16, buf).is_some()
 }
 /// Antwort abholen (GET_ENCAPSULATED_RESPONSE), Länge zurück.
 fn get_resp(hc: &mut Hc, slot: u32, iface: u16, buf: u64, len: u16) -> Option<usize> {
     hc.control(slot, 0xA1, 0x01, 0, iface, len, buf)
+}
+
+/// Eine fertige Bulk-IN-Übertragung der USB-Netzkarte: Rahmen aus dem RNDIS-Paket nehmen, in die
+/// Warteschlange legen, Übertragung neu armieren. Aus der Ereignisschleife (`pump`).
+pub(super) fn report(hc: &mut Hc, (slot, dci): (u32, u32), trb: u64, code: u32, left: u32) -> bool {
+    let mut list = NICS.lock();
+    let Some(nic) = list.iter_mut().find(|n| n.hc_index == hc.index && n.slot == slot && n.in_ep.dci == dci) else {
+        return false;
+    };
+    let part = nic.in_ep.part(trb);
+    if matches!(code, 1 | 13) {
+        let got = TD.saturating_sub(left) as usize;
+        let base = nic.in_ep.base(part);
+        if got >= 44 && rd32(base, 0) == PACKET_MSG {
+            let data_off = rd32(base, 8) as usize + 8;
+            let data_len = rd32(base, 12) as usize;
+            if data_off + data_len <= got && data_len > 0 && nic.rx.len() < RX_MAX {
+                let mut f: Vec<u8> = Vec::new();
+                if !crate::heap::kernel(|| f.try_reserve_exact(data_len).is_err()) {
+                    // SAFETY: the source lies in part `part` of the DMA page, within `got`.
+                    unsafe { f.extend_from_slice(core::slice::from_raw_parts((base + data_off as u64) as *const u8, data_len)) };
+                    nic.rx.push_back(f);
+                }
+            }
+        }
+    }
+    nic.in_ep.arm(hc, slot, part);
+    w32(hc.db + slot as u64 * 4, dci);
+    true
 }
 
 /// RNDIS INITIALIZE and its completion.
@@ -206,20 +168,26 @@ fn rndis_init(hc: &mut Hc, slot: u32, iface: u16, buf: u64) -> core::result::Res
     Ok(())
 }
 
-/// Sets the packet filter (turns the data path on). The status is not enforced: some devices do
-/// not need the filter.
+/// Sets the packet filter (turns the data path on). A refusal is logged, not enforced: some devices
+/// do not need the filter.
 fn set_packet_filter(hc: &mut Hc, slot: u32, iface: u16, buf: u64) {
-    let mut set = [0u8; 28];
+    // the buffer follows the 28-byte header; `InformationBufferOffset` counts from the RequestID (+8),
+    // so the filter lies at byte 28 = offset 20 + 8. A 28-byte SET made QEMU drop every received frame.
+    let mut set = [0u8; 32];
     wr32(set.as_mut_ptr() as u64, 0, SET_MSG);
-    wr32(set.as_mut_ptr() as u64, 4, 28);
+    wr32(set.as_mut_ptr() as u64, 4, 32);
     wr32(set.as_mut_ptr() as u64, 8, 2);
     wr32(set.as_mut_ptr() as u64, 12, OID_PACKET_FILTER);
     wr32(set.as_mut_ptr() as u64, 16, 4);
     wr32(set.as_mut_ptr() as u64, 20, 20);
-    wr32(set.as_mut_ptr() as u64, 24, 0x2F);
+    wr32(set.as_mut_ptr() as u64, 24, 0);
+    wr32(set.as_mut_ptr() as u64, 28, 0x2F);
     if send_cmd(hc, slot, iface, buf, &set) {
-        let _ = get_resp(hc, slot, iface, buf, 1025);
-        let _ = SET_CMPLT;
+        if let Some(rl) = get_resp(hc, slot, iface, buf, 1025) {
+            if rl < 16 || rd32(buf, 0) != SET_CMPLT || rd32(buf, 12) != 0 {
+                crate::kprintln!("[usb-net] slot {slot}: packet filter not set (rl={rl}, status={})", rd32(buf, 12));
+            }
+        }
     }
 }
 
@@ -274,19 +242,15 @@ pub(super) fn attach(
     let in_dci = (ina as u32 & 0xf) * 2 + 1;
     let out_dci = (outa as u32 & 0xf) * 2;
     super::config_ep(hc, slot, ctx.0, ctx.1, ctx.2, &[(in_dci, 6, inmp as u32, 0), (out_dci, 2, outmp as u32, 0)])
-        .map_err(|_| "RNDIS: bulk endpoints not set up")?;
+        .map_err(|_| "RNDIS: Bulk-Endpunkte nicht eingerichtet")?;
 
     rndis_init(hc, slot, ctrl_iface, buf)?;
     set_packet_filter(hc, slot, ctrl_iface, buf);
     let mac = query_mac(hc, slot, ctrl_iface, buf);
 
     // Empfangsfläche + Sendepuffer, Empfang armieren
-    let in_buf = alloc_pages(TDS * TD as usize / 4096).ok_or("no memory")?;
-    let tx = alloc_pages(1).ok_or("no memory")?;
-    let mut in_ep = InEp { dci: in_dci, buf: in_buf, trb: [0; TDS] };
-    in_ep.arm_all(hc, slot);
-    NICS.lock().push(Nic { hc_index: hc.index, slot, in_ep, rx: VecDeque::new() });
-
+    let in_ep = InEp::new(in_dci).ok_or("kein Speicher")?;
+    let tx = alloc_pages(1).ok_or("kein Speicher")?;
     let mut nl = NET.lock();
     let name = format!("usb{}", nl.len());
     crate::kprintln!(
@@ -299,15 +263,31 @@ pub(super) fn attach(
         mac[5]
     );
     nl.push(Box::new(RndisHandle { name: name.clone(), hc_index: hc.index, slot, in_dci, out_dci, mac, tx }));
+    drop(nl);
+    {
+        let mut list = NICS.lock();
+        let mut nic = Nic { hc_index: hc.index, slot, name: name.clone(), in_ep, tx, rx: VecDeque::new() };
+        nic.in_ep.arm_all(hc, slot);
+        list.push(nic);
+    }
     Ok(Some(name))
 }
 
-/// Das Gerät in `slot` wurde abgezogen: Empfangsfläche freigeben, Zustand entfernen. (Die Netzkarte
-/// bleibt vorerst in `NET`; echtes Entfernen aus der Netzliste folgt – siehe docs.)
+/// Das Gerät in `slot` wurde abgezogen: die Netzkarte aus `NET` nehmen (ein Platzhalter hält den
+/// Listenplatz), DMA-Seiten freigeben. Der xHCI-Ring und der Slot werden danach von `hotplug`
+/// abgeräumt; ein erneutes Anstecken bindet eine neue Karte.
 pub(super) fn remove(hc_index: usize, slot: u32) {
+    let names: Vec<String> = NICS.lock().iter().filter(|n| n.hc_index == hc_index && n.slot == slot).map(|n| n.name.clone()).collect();
+    // erst aus der Netzliste nehmen (unter deren Sperre), dann die DMA-Seiten freigeben – so kann
+    // kein laufender `send`/`recv` mehr auf die Seiten greifen, wenn sie freigegeben werden.
+    for name in &names {
+        let _ = crate::driver::remove_net(name);
+        crate::kprintln!("[usb-net] {name}: entfernt");
+    }
     let mut list = NICS.lock();
     for n in list.iter().filter(|n| n.hc_index == hc_index && n.slot == slot) {
-        free_page(n.in_ep.buf);
+        n.in_ep.free();
+        free_page(n.tx);
     }
     list.retain(|n| !(n.hc_index == hc_index && n.slot == slot));
 }

@@ -5,7 +5,7 @@ use std::time::Instant;
 use ultar_bus::messages::mesh::{DeviceKind, Peer};
 use ultar_bus::messages::mesh_view::ViewEvent;
 use ultar_i18n::Lang;
-use ultar_remote::app::RemoteApp;
+use ultar_remote::app::{Phase, RemoteApp};
 use ultar_remote::port::{FakePort, PortEvent};
 use ultar_ui::event::{Action, ActionKind, Event, PointerButton};
 use ultar_ui::paint::PaintEnv;
@@ -155,4 +155,3 @@ pub fn check_state(a: &mut RemoteApp, tag: &str) {
         ultar_ui::snapshot::write_atomic(&path, &png).unwrap();
     }
 }
-

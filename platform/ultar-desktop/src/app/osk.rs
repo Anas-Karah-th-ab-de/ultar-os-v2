@@ -68,10 +68,14 @@ impl OskApp {
         } else {
             ThemeKind::Dark
         };
+        let mut look = Look::new(options.lang, theme);
+        if let Some(c) = &client {
+            super::look_follow::read(c, &mut look);
+        }
         Ok(OskApp {
             host,
             keyboard: Keyboard::new(settings),
-            look: Look::new(options.lang, theme),
+            look,
             surface: None,
             size: FIRST_SIZE,
             changes: client.as_ref().and_then(|c| c.subscribe::<Changed>().ok()),
@@ -103,6 +107,9 @@ impl OskApp {
 
     fn bus(&mut self) {
         while let Some(Ok(Some(c))) = self.changes.as_ref().map(|s| s.try_recv()) {
+            if super::look_follow::apply(&mut self.look, &c.key, &c.value) {
+                self.dirty = true;
+            }
             if self.keyboard.setting(&c.key, &c.value) {
                 self.dirty = true;
             }

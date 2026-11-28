@@ -45,21 +45,21 @@ fn flag(key: &str) -> ItemInfo {
 }
 
 /// settingsd as on a phone-capable laptop: the panels of the boards, the mobile network, a
-/// text row on Region, the two wired rows and one waiting row on Mouse, and Sharing in full.
+/// text row on Date and time, the two wired rows and one waiting row on Mouse, and Sharing in full.
 fn all_panels() -> Vec<PanelInfo> {
     let board = board_world(3, true).borrow().panels.clone();
     let mut panels = board.unwrap_or_default();
-    panels.retain(|p| !["sharing", "region", "pointer"].contains(&p.id.as_str()));
+    panels.retain(|p| !["sharing", "date_time", "pointer"].contains(&p.id.as_str()));
     panels.push(panel("mobile", vec![flag("mobile.data")]));
-    let currency = ItemKind::Text {
-        format: "currency".into(),
+    let zone = ItemKind::Text {
+        format: "timezone".into(),
     };
-    let region = row(
-        "region.format.currency",
-        currency,
+    let zone = row(
+        "datetime.timezone.name",
+        zone,
         SettingValue::Text(String::new()),
     );
-    panels.push(panel("region", vec![region]));
+    panels.push(panel("date_time", vec![zone]));
     let pointer = vec![
         flag("pointer.natural_scroll"),
         flag("pointer.touchpad.gestures"),
@@ -361,15 +361,15 @@ fn arrow_keys_skip_the_headings() {
 #[test]
 fn a_text_row_stores_what_is_typed_on_enter() {
     let world = world();
-    let mut app = wide(&world, Lang::En, "region");
-    let currency = app.view.node(Act::PanelItem(0)).expect("currency field");
-    click(&mut app, currency);
-    type_text(&mut app, "SYP");
+    let mut app = wide(&world, Lang::En, "datetime");
+    let zone = app.view.node(Act::PanelItem(0)).expect("time zone field");
+    click(&mut app, zone);
+    type_text(&mut app, "Asia/Damascus");
     assert!(log(&world).is_empty(), "nothing stored before Enter");
     key(&mut app, Key::Enter);
     assert_eq!(
         log(&world),
-        ["settings.set region.format.currency=Text(\"SYP\")"]
+        ["settings.set datetime.timezone.name=Text(\"Asia/Damascus\")"]
     );
 }
 

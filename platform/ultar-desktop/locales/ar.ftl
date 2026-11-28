@@ -23,6 +23,7 @@ desk.apps.search = ابحث في التطبيقات
 desk.apps.title = كل التطبيقات
 desk.apps.uninstall = إزالة التطبيق…
 desk.bar.apps = كل التطبيقات
+desk.bar.battery = {level}%
 desk.bar.clock = التقويم والإشعارات: {date} {time}
 desk.bar.date = {weekday} {day} {month}
 desk.bar.overview = نظرة عامة
@@ -444,3 +445,7 @@ volumed.drive.mount = ضمّ
 desk.note.screend = {arg0} يشاهد هذه الشاشة
 desk.note.screend.body = كل ما تفعله هنا ظاهر لذلك الجهاز، ويمكنه الكتابة هنا.
 desk.note.screend.stop = إيقاف
+
+# The device mesh: an entry of the shared clipboard arrived from another device.
+mesh.clip.title = تم النسخ على {arg0}
+mesh.clip.body = للصق اضغط Ctrl+V

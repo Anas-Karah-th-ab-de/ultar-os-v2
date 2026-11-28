@@ -1,16 +1,18 @@
-//! Settings › About (docs/BRAND.md §4): the mark 96, then name, version, build, company,
-//! developer, website, contact and licences. Names come from `ultar-brand` (`brand.*` keys of
+//! Settings › About (docs/BRAND.md §4): the mark 96, the product, the company logo, then
+//! name, version, build, company, developer, website, contact and licences. Names come from `ultar-brand` (`brand.*` keys of
 //! the translator); version and build from the installed release, never a constant.
 
-use super::{k, muted, spec, title, Cx};
+use super::{k, spec, title, Cx};
 use ultar_ui::icon::IconId;
 use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
 use ultar_ui::tokens::{ColorRole, Space};
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{Card, Icon, Label, Row, Text};
+use ultar_ui::widgets::{Brick, BrickKind, Card, Icon, Label, Row, Text};
 
 /// Size of the mark on the About page (BRAND.md §4).
 pub const MARK: u16 = 96;
+/// Width of the company logo on the About page (points).
+pub const LOGO: u16 = 220;
 
 /// The rows: label key and value.
 pub fn rows(cx: &Cx<'_>) -> Vec<(&'static str, Label)> {
@@ -50,7 +52,14 @@ pub fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     cx.ui.add(head, mark)?;
     cx.ui
         .add(head, Text::new(k("brand.product")).spec(spec::page_title()))?;
-    muted(cx.ui, head, k("brand.by"))?;
+    let logo = Brick::new(
+        BrickKind::Logo {
+            width: LOGO,
+            quiet: false,
+        },
+        k("brand.label.logo"),
+    );
+    cx.ui.add(head, logo)?;
     let card = cx.ui.add_sized(content, Card::new(), Sizing::AUTO)?;
     let rows = rows(cx);
     for (key, value) in rows {

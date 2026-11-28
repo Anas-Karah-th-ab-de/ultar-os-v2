@@ -24,6 +24,7 @@ fn function(d: &Desc) -> Option<&'static str> {
         (8, 6, 0x50) => Some("usb-storage"),
         (0xE0, 1, 1) => Some("btusb"),
         (0x0E, 1, _) => Some("uvcvideo"),
+        (0x02, 6, _) => Some("cdc-ecm"), // ECM-Steuerung (USB-Netz)
         (0x02, 2, 0xFF) => Some("rndis"), // RNDIS-Steuerung (USB-Netz)
         (0x0A, _, _) => Some("usb-net"),  // CDC-Daten (RNDIS/ECM)
         _ => None,
@@ -62,6 +63,7 @@ fn detach(hc: &mut Hc, port: u32) {
         super::bt::remove(hc, slot);
         super::uvc::remove(hc, slot);
         super::rndis::remove(hc.index, slot);
+        super::cdc_ecm::remove(hc.index, slot);
         crate::input::usb_removed(hc.index, slot);
         hc.rings.retain(|r| r.0 != slot);
         hc.command(0, (TRB_DISABLE_SLOT << 10) | (slot << 24));

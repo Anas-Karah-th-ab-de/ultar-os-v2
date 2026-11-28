@@ -1710,11 +1710,11 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "ultar-brand"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "ultar-bus"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "postcard",
  "serde",
@@ -1723,7 +1723,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-call"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "base64",
  "chacha20poly1305",
@@ -1747,7 +1747,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-cloud"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -1766,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-cloud-e2e"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "futures-util",
  "rusqlite",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-driverpkg"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -1799,7 +1799,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-hal-system"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ultar-driverpkg",
  "ultar-profile",
@@ -1807,14 +1807,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-i18n"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ultar-brand",
 ]
 
 [[package]]
 name = "ultar-pkg"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -1830,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-profile"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "serde",
  "toml",
@@ -1838,22 +1838,22 @@ dependencies = [
 
 [[package]]
 name = "ultar-sprache"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "ultar-sys"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustix",
 ]
 
 [[package]]
 name = "ultar-vpn"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "ultraos-server"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "argon2",
  "axum",

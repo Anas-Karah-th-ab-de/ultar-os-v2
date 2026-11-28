@@ -63,9 +63,9 @@ fn without_the_control_right_the_source_refuses_and_never_asks_its_person() {
     assert!(w.nodes[0].view_start("nobody").is_none());
 }
 
-#[test]
-fn a_granted_device_streams_frames_and_takes_input_end_to_end() {
-    let mut w = pair("view-e2e");
+/// A granted device asks, the source accepts with a 64x48 screen: (world, viewer, source, id).
+fn streaming(tag: &str) -> (World, String, String, u64) {
+    let mut w = pair(tag);
     grant(&mut w, 1, 0);
     let (viewer, source) = (w.id(0), w.id(1));
     let (id, effects) = w.nodes[0].view_start(&source).unwrap();
@@ -90,8 +90,12 @@ fn a_granted_device_streams_frames_and_takes_input_end_to_end() {
     };
     assert!(w.take(0).contains(&at(&source)));
     assert!(w.take(1).contains(&at(&viewer)));
+    (w, viewer, source, id)
+}
 
-    // A damaged rectangle arrives, decoded to its exact raw bytes.
+#[test]
+fn a_granted_device_streams_frames_decoded_to_their_exact_bytes() {
+    let (mut w, _viewer, source, id) = streaming("view-frames");
     let raw: Vec<u8> = (0..8 * 8 * 4).map(|i| (i * 7) as u8).collect();
     let effects = w.nodes[1].view_frame([4, 2, 8, 8], &raw);
     w.run(1, effects);
@@ -104,8 +108,11 @@ fn a_granted_device_streams_frames_and_takes_input_end_to_end() {
     assert_eq!(w.take(0), vec![frame]);
     // The viewer's ack came back: the window is open again.
     assert!(w.nodes[1].view_room());
+}
 
-    // The viewer's input reaches the source.
+#[test]
+fn the_viewers_input_reaches_the_source_and_the_viewer_can_stop() {
+    let (mut w, viewer, source, id) = streaming("view-input");
     let effects = w.nodes[0].view_input("k 42 down").unwrap();
     w.run(0, effects);
     let input = Effect::ViewInput {
