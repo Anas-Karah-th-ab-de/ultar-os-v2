@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -74,6 +75,8 @@ int main(void) {
         check("noexec-Datei: auch die Kopie im Kind (fork)", waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 0);
     }
     if (fd >= 0) close(fd);
+    errno = 0;
+    check("clone(CLONE_THREAD) ohne CLONE_VM -> EINVAL", syscall(SYS_clone, 0x10000 | 0x800 | SIGCHLD, 0, 0, 0, 0) == -1 && errno == EINVAL);
     printf("SCHUTZTEST: %d Fehler\n", fails);
     printf(fails ? "SCHUTZTEST: FEHLER\n" : "SCHUTZTEST: ALLES OK\n");
     return fails != 0;

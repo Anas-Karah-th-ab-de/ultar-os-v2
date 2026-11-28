@@ -3076,6 +3076,11 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
     const PARENT_SETTID: u64 = 0x10_0000;
     const CHILD_CLEARTID: u64 = 0x20_0000;
     const CHILD_SETTID: u64 = 0x100_0000;
+    // as Linux: a thread shares the address space (CLONE_THREAD needs CLONE_VM) – without it the
+    // "thread" was a separate process with the caller's thread-group expectations
+    if flags & THREAD != 0 && flags & VM == 0 {
+        return -EINVAL;
+    }
     let pid = proc::new_pid();
     let fs_now = unsafe { crate::paging::rdmsr(0xC000_0100) };
     let thread = flags & VM != 0 && flags & VFORK == 0;
