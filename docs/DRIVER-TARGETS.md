@@ -36,7 +36,7 @@ und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 | Akku, Netzteil, Deckel, Tasten (Helligkeit/Lautstärke), Thermik, Lüfter – über ACPI/EC | ✔ | Thermik/Lüfter | ⬜ (braucht AML) | ACPI, ThinkPad-EC |
 | Energie: Frequenz (HWP), C-Zustände, Schlafen S3/s2idle, TDP-Grenzen (RAPL) | ✔ | ✔ | ⬜ | Intel SDM |
 | USB-Klassen: Audio (Headset), UVC (Kamera), CDC/ECM | ✔ | ✔ | ⬜ | USB-Klassen-Normen |
-| SD-Kartenleser | Genesys | O2 Micro | ⬜ SDHCI für T2; Genesys prüfen | SD Host Spec |
+| SD-Kartenleser | Genesys | O2 Micro | 🔧 `gen-sdhci` (SDHCI): Hochfahren am echten O2 Micro (VFIO) belegt – Reset, Fähigkeiten (v5, 200 MHz), Karten-Erkennung; Karten-Init + PIO-Lesen codiert, endgültig mit eingelegter Karte zu prüfen; Schreiben offen; Genesys (T1) prüfen | SD Host Spec |
 | SMBus/SPD, Sensoren | ✔ | ✔ | 🔧 | SMBus 2.0 |
 | TPM 2.0 (für Verschlüsselung im Installer) | ✔ | ✔ | ⬜ | TCG TIS/CRB |
 | Thunderbolt/USB4 (PCIe-Tunnel, Hotplug) | Titan Ridge | integriert | ⬜ spät; USB-C-Anzeige läuft über die Grafik | USB4-Norm |
