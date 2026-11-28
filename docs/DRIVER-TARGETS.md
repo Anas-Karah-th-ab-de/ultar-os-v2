@@ -22,7 +22,7 @@ und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 | Anzeige über UEFI-GOP (feste Auflösung) | ✔ | ✔ | ✅ | UEFI |
 | Ethernet Intel I219-LM | ✔ | – | 🔧 `gen-intel-eth` deckt I219 ab, am Gerät prüfen | Intel-Datenblatt |
 | Ethernet Intel E610 10 GbE | – | ✔ | ✅ geprüft; Verbindung mit Kabel, MSI-X offen | Intel-Datenblatt |
-| MSI/MSI-X, IOMMU (DMAR) für DMA-Schutz | ✔ | ✔ | ⬜ | PCI 3.0, VT-d |
+| MSI/MSI-X, IOMMU (DMAR) für DMA-Schutz | ✔ | ✔ | 🔧 MSI/MSI-X: Rahmen `msi.rs` (Vektoren 0x90–0xEF, Tabelle in BAR); E610-10G nutzt es, am echten Gerät (VFIO) belegt. IOMMU `iommu.rs`: VT-d an, RAM 1:1, in QEMU geprüft; echte 2 Einheiten des Beelink: beim Direktstart | PCI 3.0, VT-d |
 | PS/2 (Tastatur, TrackPoint) | ✔ | – (kein i8042) | ✅ | |
 
 ## Stufe 2 – vollwertiger Desktop

@@ -1,6 +1,18 @@
 # Ultar OS v2 – Stand
 
-Stand 26.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
+Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
+
+## Treiber-Welle A (28.11.2026) – Netzwerk-Fundament und DMA-Schutz
+
+| Baustein | Stand |
+|---|---|
+| **MSI/MSI-X** (`msi.rs`) | Gemeinsamer Rahmen: Vektoren 0x90–0xEF, je Vektor ein Handler (bekommt seinen Vektor), Einzel-MSI und MSI-X-Tabelle in einem BAR. 96 IDT-Tore aus einer Einsprungtabelle. Fundament für Unterbrechungen je Warteschlange (10G, NVMe) statt reinem Abfragen |
+| **10G-Netz (E610)** | `gen-ixgbe` richtet MSI-X für RxQ0 ein (Auto-Maske + Auto-Quittung + EITR-Drossel → kein Sturm). **Am echten E610-Port des Beelink über VFIO belegt**: Treiber bindet, Firmware 7.8.18, Kabel erkannt, und nach dem Boot zeigt `netz` „10G MSI-X-Unterbrechungen: 1" (die im Treiberstart bei IF=0 angestoßene Schleifentest-Unterbrechung wird nach `sti` zugestellt) → MSI-X-Zustellung auf echter Hardware bewiesen. Datenpfad pollt weiter; der IRQ ist die Grundlage für einen blockierenden Empfang |
+| **IOMMU (VT-d)** (`iommu.rs`) | DMA-Schutz Stufe 1: DMAR gelesen, Einheit(en) an, nutzbarer RAM 1:1 (2-MiB-Seiten), sonst nichts. **In QEMU (`-device intel-iommu`) geprüft**: „VT-d 1.0: 1/1 Einheit(en) an", virtio-blk/-net arbeiten durch die IOMMU, DHCP holt eine Adresse, keine vIOMMU-Fehler. Eigene Domäne je Gerät und Prüfung auf der echten 2-Einheiten-Hardware offen (`docs/integration/iommu.md`) |
+
+Offen in Welle A: NVMe am echten Gerät (die Crucial-Platten tragen Linux → nur beim Direktstart prüfbar),
+E610-Verbindung mit Gegenstelle und Durchsatz (braucht ein Kabel zur Gegenstelle), VT-d auf echter Hardware.
+
 
 ## Installation auf dem Ultar-Kern vollständig geprüft (26.11.2026)
 
