@@ -1,9 +1,10 @@
 //! Sharing the clipboard: text copied on one device can be pasted on the paired devices.
 //! A confidential entry (a password) never leaves the device, and text that came from
-//! another device is not sent back.
+//! another device is not sent back. Pictures and the life of an entry: [`crate::clip_share`].
 
 use crate::node::{Effect, Node};
 use crate::wire::Frame;
+use std::time::Instant;
 use ultar_bus::messages::mesh::{Capability, ClipboardRemote, Right};
 
 /// Longest clipboard text that travels.
@@ -16,36 +17,35 @@ impl Node {
         if confidential || echo || text.is_empty() || text.len() > MAX_CLIP {
             return Vec::new();
         }
-        if !self.config.capabilities.contains(&Capability::Clipboard) {
+        let targets = self.clip_targets();
+        if targets.is_empty() {
             return Vec::new();
         }
         self.clip_seq += 1;
+        self.clip.image = None;
         let seq = self.clip_seq;
-        self.links
-            .iter()
-            .filter(|(id, l)| {
-                self.trust.knows(id, &l.key)
-                    && l.device
-                        .as_ref()
-                        .is_some_and(|d| d.can(Capability::Clipboard))
-            })
-            .map(|(id, _)| {
+        targets
+            .into_iter()
+            .map(|id| {
                 let text = text.to_owned();
-                Effect::Send(id.clone(), Frame::Clip { seq, text })
+                Effect::Send(id, Frame::Clip { seq, text })
             })
             .collect()
     }
 
-    pub(crate) fn on_clip(&mut self, peer: &str, text: String) -> Vec<Effect> {
+    pub(crate) fn on_clip(&mut self, peer: &str, text: String, now: Instant) -> Vec<Effect> {
         let fits = !text.is_empty() && text.len() <= MAX_CLIP;
         let wanted = self.config.capabilities.contains(&Capability::Clipboard);
         if !fits || !wanted || !self.allows(peer, Right::Clipboard) {
             return Vec::new();
         }
         self.clip_remote = Some(text.clone());
-        vec![Effect::Clipboard(ClipboardRemote {
+        self.clip.image = None;
+        let mut effects = vec![Effect::Clipboard(ClipboardRemote {
             from: peer.to_owned(),
             text,
-        })]
+        })];
+        effects.extend(self.clip_arrived(peer, now));
+        effects
     }
 }

@@ -8906,7 +8906,10 @@ dependencies = [
  "spake2",
  "tungstenite",
  "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal",
  "ultar-service",
+ "ultar-surface",
  "ultar-svckit",
 ]
 

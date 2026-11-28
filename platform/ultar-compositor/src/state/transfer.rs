@@ -7,6 +7,7 @@
 //! focus; a drop can only be read by the client it was dropped on, once,
 //! within the transfer time limit.
 
+use super::clipboard_bridge::PASSWORD_PURPOSE;
 use super::input::PointerGrab;
 use super::{ClientId, State, SurfaceKey};
 use crate::decor::Part;
@@ -29,6 +30,22 @@ struct Transfer {
     held: VecDeque<(Vec<u8>, bool)>,
     held_bytes: usize,
     asked: bool,
+    /// Longest this transfer may carry (clipboard entries are smaller than
+    /// a 16 MiB paste).
+    limit: usize,
+}
+
+/// The current clipboard selection.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+struct Selection {
+    /// Who provides the data.
+    owner: ClientId,
+    /// Offered types.
+    mimes: Vec<String>,
+    /// The content of a password field: never leaves the device.
+    confidential: bool,
+    /// Offered on behalf of another device (source: "other device").
+    remote: bool,
 }
 
 /// A drop waiting to be read.
@@ -43,7 +60,7 @@ struct Dropped {
 /// Clipboard owner, transfers, drag and drop.
 #[derive(Debug, Default)]
 pub struct Transfers {
-    selection: Option<(ClientId, Vec<String>)>,
+    selection: Option<Selection>,
     drag: Option<(ClientId, Vec<String>)>,
     dropped: Option<Dropped>,
     active: HashMap<u32, Transfer>,
@@ -56,13 +73,44 @@ impl Transfers {
     pub fn selection_mimes(&self) -> Vec<String> {
         self.selection
             .as_ref()
-            .map(|s| s.1.clone())
+            .map(|s| s.mimes.clone())
             .unwrap_or_default()
+    }
+
+    /// The current selection is a password's content.
+    pub(crate) fn selection_confidential(&self) -> bool {
+        self.selection.as_ref().is_some_and(|s| s.confidential)
+    }
+
+    /// The current selection was offered on behalf of another device.
+    pub(crate) fn selection_remote(&self) -> bool {
+        self.selection.as_ref().is_some_and(|s| s.remote)
+    }
+
+    /// Who owns the current selection (provides its data).
+    pub(crate) fn selection_owner(&self) -> Option<ClientId> {
+        self.selection.as_ref().map(|s| s.owner)
+    }
+
+    /// Replaces the current selection.
+    pub(crate) fn set_selection(
+        &mut self,
+        owner: ClientId,
+        mimes: Vec<String>,
+        confidential: bool,
+        remote: bool,
+    ) {
+        self.selection = (!mimes.is_empty()).then_some(Selection {
+            owner,
+            mimes,
+            confidential,
+            remote,
+        });
     }
 
     /// Forgets everything of a client; its transfers are cancelled.
     pub fn client_gone(&mut self, client: ClientId) {
-        if self.selection.as_ref().is_some_and(|s| s.0 == client) {
+        if self.selection.as_ref().is_some_and(|s| s.owner == client) {
             self.selection = None;
         }
         if self.drag.as_ref().is_some_and(|d| d.0 == client) {
@@ -128,7 +176,7 @@ impl Transfers {
     }
 
     /// A transfer number that is answered at once with `TransferCancelled` (nothing to read).
-    fn empty(&mut self) -> TransferId {
+    pub(crate) fn empty(&mut self) -> TransferId {
         self.next = self.next.wrapping_add(1).max(1);
         TransferId(self.next)
     }
@@ -138,6 +186,7 @@ impl Transfers {
         (source, dest): (ClientId, ClientId),
         mime: &str,
         deadline: u64,
+        limit: usize,
     ) -> TransferId {
         self.next = self.next.wrapping_add(1).max(1);
         self.active.insert(
@@ -151,6 +200,7 @@ impl Transfers {
                 held: VecDeque::new(),
                 held_bytes: 0,
                 asked: true,
+                limit,
             },
         );
         TransferId(self.next)
@@ -165,7 +215,7 @@ impl State {
             .is_some_and(|c| c.recent_serial(serial, self.now, max))
     }
 
-    fn focused_client(&self) -> Option<ClientId> {
+    pub(super) fn focused_client(&self) -> Option<ClientId> {
         self.focus.map(|k| k.client)
     }
 
@@ -179,10 +229,18 @@ impl State {
                 if !self.user_action(client, serial) || self.focused_client() != Some(client) {
                     return Err(ErrorCode::Permission);
                 }
-                self.transfers.selection = (!mimes.is_empty()).then(|| (client, mimes.clone()));
+                let confidential = self.focused_field_purpose() == Some(PASSWORD_PURPOSE);
+                self.transfers
+                    .set_selection(client, mimes.clone(), confidential, false);
                 if let Some(focus) = self.focused_client() {
-                    self.send(focus, Event::SelectionOffer { mimes });
+                    self.send(
+                        focus,
+                        Event::SelectionOffer {
+                            mimes: mimes.clone(),
+                        },
+                    );
                 }
+                self.notify_bridge_selection(mimes, confidential);
                 Ok(())
             }
             Request::ReadSelection { serial, mime } => {
@@ -196,14 +254,22 @@ impl State {
                     .transfers
                     .selection
                     .clone()
-                    .filter(|(_, mimes)| mime.len() <= MAX_MIME && mimes.contains(&mime));
-                let Some((owner, mimes)) = offered else {
+                    .filter(|s| mime.len() <= MAX_MIME && s.mimes.contains(&mime));
+                let Some(selection) = offered else {
                     let transfer = self.transfers.empty();
                     self.send(client, Event::TransferCancelled { transfer });
                     return Ok(());
                 };
-                self.begin_transfer(owner, client, &mimes, mime)
+                self.begin_transfer(
+                    selection.owner,
+                    client,
+                    &selection.mimes,
+                    mime,
+                    self.config.limits.transfer.bytes,
+                )
             }
+            Request::BridgeSetSelection { mimes } => self.bridge_set_selection(client, mimes),
+            Request::BridgeReadSelection { mime } => self.bridge_read_selection(client, mime),
             Request::SendData {
                 transfer,
                 data,
@@ -228,7 +294,13 @@ impl State {
                     return Err(ErrorCode::Permission);
                 };
                 self.transfers.dropped = None;
-                self.begin_transfer(d.source, client, &d.mimes, mime)
+                self.begin_transfer(
+                    d.source,
+                    client,
+                    &d.mimes,
+                    mime,
+                    self.config.limits.transfer.bytes,
+                )
             }
             _ => Err(ErrorCode::Malformed),
         }
@@ -252,12 +324,13 @@ impl State {
             .is_none_or(|c| c.conn.pending() > limit)
     }
 
-    fn begin_transfer(
+    pub(crate) fn begin_transfer(
         &mut self,
         source: ClientId,
         dest: ClientId,
         offered: &[String],
         mime: String,
+        limit: usize,
     ) -> Result<(), ErrorCode> {
         if mime.len() > MAX_MIME || !offered.contains(&mime) {
             return Err(ErrorCode::UnknownObject);
@@ -266,7 +339,7 @@ impl State {
             return Err(ErrorCode::Limit);
         }
         let deadline = self.now + self.config.limits.transfer.ms;
-        let id = self.transfers.start((source, dest), &mime, deadline);
+        let id = self.transfers.start((source, dest), &mime, deadline, limit);
         self.send(source, Event::SendRequest { transfer: id, mime });
         Ok(())
     }
@@ -288,7 +361,7 @@ impl State {
         }
         t.bytes += data.len();
         t.asked = false;
-        if t.bytes > limits.bytes || t.held_bytes + data.len() > limits.held {
+        if t.bytes > t.limit || t.held_bytes + data.len() > limits.held {
             // Too big, or sent unasked faster than the reader reads.
             self.cancel_transfer(transfer);
             return Ok(());
@@ -429,12 +502,17 @@ mod tests {
     #[test]
     fn transfers_expire_and_clients_are_forgotten() {
         let mut t = Transfers {
-            selection: Some((1, vec!["text/plain".into()])),
+            selection: Some(Selection {
+                owner: 1,
+                mimes: vec!["text/plain".into()],
+                confidential: false,
+                remote: false,
+            }),
             ..Transfers::default()
         };
         assert_eq!(t.selection_mimes(), vec!["text/plain".to_string()]);
-        let a = t.start((1, 2), "text/plain", 100);
-        let _b = t.start((3, 4), "text/plain", 50);
+        let a = t.start((1, 2), "text/plain", 100, 1000);
+        let _b = t.start((3, 4), "text/plain", 50, 1000);
         assert_eq!(t.next_deadline(), Some(50));
         t.expire(60);
         assert_eq!(t.take_cancelled(), vec![(4, TransferId(2))]);

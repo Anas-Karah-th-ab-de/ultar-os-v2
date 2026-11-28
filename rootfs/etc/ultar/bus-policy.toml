@@ -344,12 +344,14 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 # progress; lists and starts apps for what arrives, asks the person through the system
 # dialog before anything is accepted (`sysdialog.handoff`), and lets a paired device with
 # the right "model" think with this device's language model and one with the right
-# "control" ask this device's helper (`agent.ask`).
+# "control" ask this device's helper (`agent.ask`). Shared clipboard
+# (docs/integration/mesh-clipboard.md): when an entry of another device arrives it posts one
+# short notice (`notify.post`, at most one in ten seconds, only the device's name inside).
 [[rule]]
 identity  = "system.mesh"
 register  = ["mesh"]
 publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask"]
+call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask", "notify.post"]
 subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
