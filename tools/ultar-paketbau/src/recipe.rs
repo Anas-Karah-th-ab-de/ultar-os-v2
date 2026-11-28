@@ -107,6 +107,13 @@ pub struct Check {
     pub share: Vec<String>,
 }
 
+/// `/usr/lib/ultar/<name>`: the place of a bundle that is part of the system image.
+fn is_bundle_prefix(prefix: &str) -> bool {
+    prefix
+        .strip_prefix("/usr/lib/ultar/")
+        .is_some_and(plain_name)
+}
+
 fn plain_name(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
@@ -195,8 +202,10 @@ impl Recipe {
         if !plain_name(&self.id) {
             out.push("id: lower-case letters, digits and - only".into());
         }
-        if self.prefix != format!("/pkg/{}", self.id) {
-            out.push(format!("prefix must be /pkg/{}", self.id));
+        // a package lives at /pkg/<id>; a bundle that is part of the system image (the browser
+        // engine's runtime) lives at its place under /usr/lib/ultar/
+        if self.prefix != format!("/pkg/{}", self.id) && !is_bundle_prefix(&self.prefix) {
+            out.push(format!("prefix must be /pkg/{} or /usr/lib/ultar/<name>", self.id));
         }
         let mut seen = BTreeSet::new();
         for part in &self.parts {
@@ -326,6 +335,21 @@ build = ["./configure --prefix={prefix}", "make -j{jobs} install"]
             ),
             "make -j8 PREFIX=/pkg/probe T=/t V=1.3.1"
         );
+    }
+
+    #[test]
+    fn a_bundle_of_the_system_image_may_live_under_usr_lib_ultar() {
+        let at = |prefix: &str| {
+            let text = GOOD.replace("prefix = \"/pkg/probe\"", &format!("prefix = \"{prefix}\""));
+            Recipe::parse(&text).unwrap().problems(true)
+        };
+        assert_eq!(at("/usr/lib/ultar/web"), Vec::<String>::new());
+        // other places stay refused
+        assert_eq!(at("/pkg/other").len(), 1);
+        assert_eq!(at("/usr/lib/ultar/").len(), 1);
+        assert_eq!(at("/usr/lib/ultar/Web").len(), 1);
+        assert_eq!(at("/usr/lib/other/web").len(), 1);
+        assert_eq!(at("/usr/lib/ultar/web/../../..").len(), 1);
     }
 
     #[test]

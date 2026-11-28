@@ -2893,3 +2893,9 @@ rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
 
+# servo-host is its own workspace and cannot use the HAL crate; it names the kernel's sound node once
+[[entry]]
+rule = "paths"
+path = "external/servo-host/src/pcm.rs"
+count = 1
+

@@ -25,6 +25,10 @@ euclid = "0.22"
 dpi = "0.1"
 url = "2"
 rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event", "pipe"] }
+# the sound sink for /dev/ultar/pcm (feature media): the same GStreamer bindings Servo's
+# media backend uses (one version in the lock file)
+gstreamer = { version = "0.25", optional = true }
+gstreamer-base = { version = "0.25", optional = true }
 
 [dev-dependencies]
 # examples/shot.rs: a PNG of the frame. The Tor port comes from a separate process
@@ -36,7 +40,7 @@ ultar-ui = { path = "../../platform/ultar-ui" }
 [features]
 default = []
 # sound and video of pages through GStreamer (servo-media); the runtime bundle carries it
-media = ["servo/media-gstreamer"]
+media = ["servo/media-gstreamer", "dep:gstreamer", "dep:gstreamer-base"]
 
 [profile.release]
 opt-level = 3

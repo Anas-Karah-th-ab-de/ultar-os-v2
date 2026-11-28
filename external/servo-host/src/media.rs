@@ -7,7 +7,8 @@
 //! without sound; on Linux (no `/dev/ultar/pcm`) the card is a no-op and the pictures keep
 //! following the clock.
 
-/// Registers the Ultar audio sink with GStreamer before Servo starts (only with `media`).
+/// Starts GStreamer and registers the Ultar audio sink (ranked above the distributions' sinks)
+/// before Servo starts (only with `media`; otherwise nothing happens).
 pub fn install() {
     #[cfg(feature = "media")]
     gst::install();
