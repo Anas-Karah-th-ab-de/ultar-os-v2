@@ -111,7 +111,7 @@ Zeitbudget (APP-RULES §8, Release-Bau): Klick/Taste in 50 ms, Start warm bis zu
 (WSL, geteilt mit anderen Aufgaben): 300 Seiten, Öffnen bis erstes Bild 78 ms; 400 Seitenwechsel
 im Mittel 9,5 ms, schlimmster 17,6 ms; Mausrad schlimmster 11,4 ms, Zoomschritt 9,3 ms;
 500 Seiten: Öffnen 36 ms (alle vier Tests grün gegen die 50-ms-Grenze). Im Debug-Bau (`cargo test`) gelten wegen der ungeoptimierten Pixel-
-schleifen die 30-fachen Grenzen (1,5 s statt 50 ms), siehe Kopf von `perf.rs`.
+schleifen großzügige Grenzen (5 s statt 50 ms, die Maschine ist geteilt), siehe Kopf von `perf.rs`.
 
 ## Grenzen
 

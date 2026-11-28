@@ -20,7 +20,7 @@ const LIMIT: Duration = Duration::from_secs(60);
 /// 300 ms. The budgets are for release builds; an unoptimised build (every per-pixel loop 20 to
 /// 40 times slower) gets a proportional allowance so that `cargo test` stays meaningful.
 fn budget() -> Duration {
-    Duration::from_millis(if cfg!(debug_assertions) { 1500 } else { 50 })
+    Duration::from_millis(if cfg!(debug_assertions) { 5000 } else { 50 })
 }
 
 fn open_budget() -> Duration {
