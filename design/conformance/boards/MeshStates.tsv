@@ -1,0 +1,14 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+MeshStates	1	mesh.toggle	switch	الترابط	0	false	982.34	60.97	48	32	31,35,44	1440	440	dark	ar	0
+MeshStates	2	mesh.pair	button	إقران جهاز	0	-	1137.28	367	114.78	32	212,175,55	1440	440	dark	ar	0
+MeshStates	3	mesh.offer.cancel	button	إلغاء	0	-	602.34	55.19	39.03	32	31,35,44	1440	440	dark	ar	0
+MeshStates	4	toast.close	button	إغلاق	0	-	562.34	55.19	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	5	toast.close	button	إغلاق	0	-	562.34	111.19	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	6	toast.close	button	إغلاق	0	-	562.34	167.19	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	7	mesh.retry	button	إعادة المحاولة	0	-	602.34	226.58	88.27	32	31,35,44	1440	440	dark	ar	0
+MeshStates	8	toast.close	button	إغلاق	0	-	562.34	226.58	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	9	mesh.retry	button	إعادة المحاولة	0	-	602.34	289.36	88.27	32	31,35,44	1440	440	dark	ar	0
+MeshStates	10	toast.close	button	إغلاق	0	-	562.34	289.36	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	11	mesh.received.open	button	فتح	0	-	602.34	348.75	36.88	32	31,35,44	1440	440	dark	ar	0
+MeshStates	12	toast.close	button	إغلاق	0	-	562.34	348.75	32	32	31,35,44	1440	440	dark	ar	0
+MeshStates	13	mesh.retry	button	إعادة المحاولة	0	-	33	225.72	106.27	32	31,35,44	1440	440	dark	ar	0

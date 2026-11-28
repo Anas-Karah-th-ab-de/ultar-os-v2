@@ -68,4 +68,14 @@ pub enum Click {
     MeshConfirm,
     /// The choice: cancel.
     MeshCancel,
+    /// The choice: back to the page before (the arrow of the header).
+    MeshBack,
+    /// A notice: take the waiting offer back.
+    MeshOfferCancel,
+    /// A notice: send again.
+    MeshRetry,
+    /// A notice: open the file that arrived.
+    MeshOpen,
+    /// A notice: close it.
+    MeshNoticeClose,
 }

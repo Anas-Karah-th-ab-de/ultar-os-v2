@@ -1,6 +1,6 @@
 [package]
 name = "ultar-mobile"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
@@ -41,3 +41,5 @@ ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-ui = { path = "../ultar-ui" }
 ultar-compositor = { path = "../ultar-compositor" }
 ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-desktop = { path = "../ultar-desktop" }
+ultar-svckit = { path = "../../system/core/ultar-svckit", features = ["testkit"] }

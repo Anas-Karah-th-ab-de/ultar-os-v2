@@ -39,6 +39,7 @@ pub fn build(
             QuickPage::Wifi => super::wifi::page(view, card, d),
             QuickPage::WifiJoin => super::wifi::join(view, card, d),
             QuickPage::Vpn => super::wifi::vpn_page(view, card, d),
+            QuickPage::Mesh => super::mesh_list::page(view, card, d),
         },
     )
 }

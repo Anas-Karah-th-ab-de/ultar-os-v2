@@ -3,6 +3,7 @@
 mod banners;
 mod effects;
 pub mod link;
+mod mesh_toasts;
 mod panels;
 mod slow;
 mod topics;
@@ -47,6 +48,8 @@ struct BannerSurface {
     surface: Option<(SurfaceId, (i32, i32))>,
     /// When the banners' clocks were last looked at (ms).
     tick: u64,
+    /// The mesh's toasts (board MeshStates).
+    toasts: mesh_toasts::ToastSurface,
 }
 
 /// The running shell.
@@ -420,6 +423,9 @@ impl DesktopApp {
         if self.banners.surface.is_some_and(|(b, _)| b == id) {
             return self.on_banner(&target, kind);
         }
+        if target == Target::MeshToasts {
+            return self.on_mesh_toast(kind);
+        }
         match (kind, &target) {
             (ActionKind::MenuChosen(item), t) if !matches!(t, Target::AppItem(_)) => {
                 self.shell.on_menu(*item)
@@ -459,7 +465,12 @@ impl DesktopApp {
     fn compositor(&mut self, event: Event) -> Result<Outcome, AppError> {
         let d = &mut self.shell.d;
         Ok(match event {
-            Event::ShellKey { code, .. } => self.shell.on_shell_key(code),
+            Event::ShellKey {
+                code, modifiers, ..
+            } => {
+                let shift = modifiers.has(ultar_surface::proto::Modifiers::SHIFT);
+                self.shell.on_shell_key_with(code, shift)
+            }
             Event::WindowsChanged { windows } => self.shell.on_windows(windows),
             Event::Workspaces { current, count } => {
                 d.overview.workspaces = Some((current, count));

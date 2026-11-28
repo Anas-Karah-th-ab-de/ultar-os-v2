@@ -55,7 +55,14 @@ fn check_into(
         ThemeKind::Dark => DARK.get(ColorRole::Ground),
         ThemeKind::Light => LIGHT.get(ColorRole::Ground),
     };
-    let px = canvas.pixel(1, size.h as i32 / 2).unwrap();
+    // The choice of a device dims the page behind its sheet (board CompactMeshSend): there
+    // the ground shows beside the back arrow, above the dimmed part.
+    let row = if name.starts_with("mesh") {
+        44
+    } else {
+        size.h as i32 / 2
+    };
+    let px = canvas.pixel(1, row).unwrap();
     if (px.r, px.g, px.b) != (ground.r, ground.g, ground.b) {
         problems.push(format!("{name}: ground"));
     }

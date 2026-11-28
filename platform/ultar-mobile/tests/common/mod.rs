@@ -149,3 +149,18 @@ pub fn targets() -> Vec<ultar_bus::messages::mesh::Target> {
         },
     ]
 }
+
+/// Taps the `i`-th device card of the choice (a radio of the group, in reading order down).
+pub fn tap_card(a: &mut MobileApp, i: usize) -> Vec<Effect> {
+    use ultar_ui::ui::Role;
+    a.ui().layout();
+    let mut cards: Vec<_> = a
+        .ui()
+        .a11y_tree()
+        .into_iter()
+        .filter(|n| n.role == Role::Radio && n.part.is_some())
+        .collect();
+    cards.sort_by(|x, y| x.rect.y.total_cmp(&y.rect.y));
+    let pos = cards[i].rect.center();
+    tap_at(a, pos)
+}

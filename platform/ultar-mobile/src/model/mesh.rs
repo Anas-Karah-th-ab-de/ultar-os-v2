@@ -14,8 +14,32 @@ pub struct Mesh {
     pub state: Option<MeshState>,
     /// The choice: what is offered (app id) and the devices that can take it.
     pub choice: Option<Choice>,
-    /// The last notice (catalog key, without `.body`) and until when it shows (ms).
-    pub notice: Option<(&'static str, u64)>,
+    /// The last notice, with its button.
+    pub notice: Option<Notice>,
+    /// What was sent last (app, device), for "try again".
+    pub last: Option<(String, Option<String>)>,
+}
+
+/// What the button of a notice does (board MeshStates).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Act {
+    /// Take the waiting offer back.
+    Cancel(u64),
+    /// Send again.
+    Retry,
+    /// Open the file that arrived (its address).
+    Open(String),
+}
+
+/// A short notice about an offer: what happened and, where it helps, what to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    /// Catalog key.
+    pub key: &'static str,
+    /// Until when it shows (ms).
+    pub until: u64,
+    /// Its button.
+    pub act: Option<Act>,
 }
 
 /// The choice on the sending device (two or more devices can take the activity).
@@ -31,6 +55,8 @@ pub struct Choice {
 
 /// How long a notice shows.
 pub const NOTICE_MS: u64 = 6_000;
+/// How long "waiting for the other device" shows (the question there ends after a minute).
+pub const WAIT_MS: u64 = 65_000;
 
 impl Mesh {
     /// The mesh service is there (tile and entries shown).
@@ -58,10 +84,17 @@ impl Mesh {
     /// The mesh answered a send: a notice, or the choice of devices.
     pub fn sent(&mut self, app: &str, outcome: SendOutcome, now_ms: u64) {
         self.choice = None;
-        let key = match outcome {
-            SendOutcome::Offered { .. } => "mobile.mesh.waiting",
-            SendOutcome::NoTarget => "mobile.mesh.no_target",
-            SendOutcome::NoActivity => "mobile.mesh.no_activity",
+        let (key, until, act) = match outcome {
+            SendOutcome::Offered { offer, target } => {
+                self.last = Some((app.to_owned(), Some(target.device)));
+                (
+                    "mobile.mesh.waiting",
+                    now_ms.saturating_add(WAIT_MS),
+                    Some(Act::Cancel(offer)),
+                )
+            }
+            SendOutcome::NoTarget => ("mobile.mesh.no_target", now_ms + NOTICE_MS, None),
+            SendOutcome::NoActivity => ("mobile.mesh.no_activity", now_ms + NOTICE_MS, None),
             SendOutcome::Choose(targets) => {
                 self.choice = Some(Choice {
                     app: app.to_owned(),
@@ -71,29 +104,53 @@ impl Mesh {
                 return;
             }
         };
-        self.notice = Some((key, now_ms.saturating_add(NOTICE_MS)));
+        self.notice = Some(Notice { key, until, act });
     }
 
-    /// What became of the offers this device sent (`mesh.handoff_progress`).
+    /// What became of the offers this device sent (`mesh.handoff_progress`): the end of an
+    /// own offer replaces its "waiting" notice; one nobody answered or that was lost can be
+    /// sent again.
     pub fn progress(&mut self, p: &HandoffProgress, now_ms: u64) {
         if !p.outgoing {
             return;
         }
-        let key = match p.state {
-            OfferState::Opened => "mobile.mesh.opened",
-            OfferState::Declined => "mobile.mesh.declined",
-            OfferState::Expired => "mobile.mesh.expired",
-            OfferState::Failed => "mobile.mesh.failed",
+        let (key, retry) = match p.state {
+            OfferState::Opened => ("mobile.mesh.opened", false),
+            OfferState::Declined => ("mobile.mesh.declined", false),
+            OfferState::Expired => ("mobile.mesh.expired", true),
+            OfferState::Failed => ("mobile.mesh.failed", true),
             OfferState::Asked | OfferState::Accepted => return,
         };
-        self.notice = Some((key, now_ms.saturating_add(NOTICE_MS)));
+        let act = (retry && self.last.is_some()).then_some(Act::Retry);
+        self.notice = Some(Notice {
+            key,
+            until: now_ms.saturating_add(NOTICE_MS),
+            act,
+        });
+    }
+
+    /// A file from another device arrived (`mesh.received`): tell, and offer to open it.
+    pub fn received(&mut self, uri: String, now_ms: u64) {
+        self.notice = Some(Notice {
+            key: "mobile.mesh.received",
+            until: now_ms.saturating_add(NOTICE_MS),
+            act: Some(Act::Open(uri)),
+        });
+    }
+
+    /// Takes the button of the notice away (it was pressed) and closes the notice.
+    pub fn take_act(&mut self) -> Option<Act> {
+        self.notice.take().and_then(|n| n.act)
     }
 
     /// The notice shown at `now_ms`, if any.
     pub fn notice_at(&self, now_ms: u64) -> Option<&'static str> {
-        self.notice
-            .filter(|(_, until)| now_ms < *until)
-            .map(|(k, _)| k)
+        self.notice_card(now_ms).map(|n| n.key)
+    }
+
+    /// The whole notice shown at `now_ms`, if any.
+    pub fn notice_card(&self, now_ms: u64) -> Option<&Notice> {
+        self.notice.as_ref().filter(|n| now_ms < n.until)
     }
 }
 

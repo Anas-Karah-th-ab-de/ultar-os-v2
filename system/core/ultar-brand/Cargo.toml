@@ -1,6 +1,6 @@
 [package]
 name = "ultar-brand"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]

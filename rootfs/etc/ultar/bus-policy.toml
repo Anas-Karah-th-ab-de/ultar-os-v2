@@ -360,7 +360,7 @@ call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invok
 [[rule]]
 identity  = "system.mesh"
 register  = ["mesh"]
-publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state", "mesh.call_incoming", "mesh.call_progress", "mesh.call_audio", "mesh.note", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress"]
+publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard", "mesh.view", "mesh.view_serve", "mesh.view_state", "mesh.call_incoming", "mesh.call_progress", "mesh.call_audio", "mesh.note", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress", "mesh.received"]
 call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask", "notify.post"]
 subscribe = ["llm.state"]
 

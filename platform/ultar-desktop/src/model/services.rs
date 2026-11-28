@@ -86,6 +86,8 @@ pub enum Call {
     /// `mesh.handoff_send`: continue what is in front on the device, or on the one device
     /// that can take it; with the app and title in front for apps that report nothing.
     MeshSend(Option<String>, Option<(String, String)>),
+    /// `mesh.offer_cancel`: the sender takes a waiting offer back (board MeshStates).
+    OfferCancel(u64),
     /// `agent.ask`: the helper does or answers this.
     AskHelper(String),
     /// `mesh.call_answer {id, accept}`: answer or decline a call another device offers.

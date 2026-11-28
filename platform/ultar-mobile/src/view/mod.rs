@@ -72,6 +72,8 @@ pub struct Built {
     pub volume: Option<NodeId>,
     /// The search field (search screen).
     pub search: Option<NodeId>,
+    /// The radio group of the devices (the choice screen).
+    pub targets: Option<NodeId>,
     /// The app grid (swipes turn its pages).
     pub grid: Option<NodeId>,
     /// The password or PIN field (sign-in).
@@ -183,9 +185,10 @@ pub fn status_time(screen: Screen) -> bool {
     !matches!(screen, Screen::Lock | Screen::Quick)
 }
 
-/// The navigation bar is there (not while locked).
+/// The navigation bar is there (not while locked; the choice of a device covers it in a
+/// whole-screen tree, as the board's sheet does – the shell keeps its own bar surface).
 pub fn has_nav(screen: Screen) -> bool {
-    screen != Screen::Lock
+    !matches!(screen, Screen::Lock | Screen::Mesh)
 }
 
 /// Builds `part` of `model`'s screen into `ui` (cleared first) and paints its clocks.
@@ -216,6 +219,12 @@ pub fn build(ui: &mut Ui, model: &Mobile, part: Part) -> Result<Built, UiError> 
 }
 
 fn body(b: &mut Builder<'_>, root: NodeId, model: &Mobile) -> Result<(), UiError> {
+    let shown = body_of(b, root, model);
+    mesh::notice(b, root, model)?;
+    shown
+}
+
+fn body_of(b: &mut Builder<'_>, root: NodeId, model: &Mobile) -> Result<(), UiError> {
     match model.screen {
         Screen::Lock => lock::body(b, root, model),
         Screen::Home => home::body(b, root, model),
