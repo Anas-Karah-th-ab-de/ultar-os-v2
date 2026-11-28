@@ -17,6 +17,9 @@ use ultar_bus::messages::mesh::{
     ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets, MeshState,
     PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList, Unpair, SERVICE,
 };
+use ultar_bus::messages::mesh_calls::{
+    CallAnswer, CallAudioIn, CallEnd, CallOffer, CallOffered, NoteMirror,
+};
 use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_bus::messages::sysdialog;
 use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
@@ -239,6 +242,10 @@ impl MeshService {
                 }
                 Effect::Progress(progress) => bus.publish(&progress),
                 Effect::Clipboard(text) => bus.publish(&text),
+                Effect::CallIncoming(incoming) => bus.publish(&incoming),
+                Effect::CallProgress(progress) => bus.publish(&progress),
+                Effect::CallAudio(audio) => bus.publish(&audio),
+                Effect::Note(note) => bus.publish(&note),
                 Effect::Open { offer, app, uri } => self.open(offer, app, uri, bus),
                 Effect::Changed => changed = true,
                 other => self.model_effect(other, bus),
@@ -332,6 +339,64 @@ impl MeshService {
             self.pairing(request, bus);
         }
     }
+
+    fn calling(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
+        let method = request.method().to_owned();
+        if method == CallOffer::METHOD {
+            serve::<CallOffer>(request, |c, _| {
+                let (id, effects) = self.runtime.node.call_offer(&c.device, &c.caller, c.video);
+                self.act(effects, bus);
+                CallOffered {
+                    id,
+                    device: if id == 0 {
+                        String::new()
+                    } else {
+                        c.device.clone()
+                    },
+                }
+            });
+        } else if method == CallAnswer::METHOD {
+            serve::<CallAnswer>(request, |c, _| {
+                let effects = self.runtime.node.call_answer(c.id, c.accept);
+                let ok = !effects.is_empty();
+                self.act(effects, bus);
+                Done { ok }
+            });
+        } else if method == CallEnd::METHOD {
+            serve::<CallEnd>(request, |c, _| {
+                let effects = self.runtime.node.call_end(c.id);
+                let ok = !effects.is_empty();
+                self.act(effects, bus);
+                Done { ok }
+            });
+        } else if method == CallAudioIn::METHOD {
+            serve::<CallAudioIn>(request, |c, _| {
+                let effects = match crate::device::decode(&c.pcm) {
+                    Some(pcm) => self.runtime.node.call_audio(&c.device, c.id, c.seq, &pcm),
+                    None => Vec::new(),
+                };
+                let ok = !effects.is_empty();
+                self.act(effects, bus);
+                Done { ok }
+            });
+        } else if method == NoteMirror::METHOD {
+            serve::<NoteMirror>(request, |c, _| {
+                let effects = self.runtime.node.note_mirror(
+                    &c.title,
+                    &c.text,
+                    &c.app,
+                    c.urgency,
+                    c.confidential,
+                    c.hide_on_locked,
+                );
+                let ok = !c.confidential;
+                self.act(effects, bus);
+                Done { ok }
+            });
+        } else {
+            let _ = request.fail(ErrorCode::UnknownMethod);
+        }
+    }
 }
 
 impl Service for MeshService {
@@ -398,6 +463,13 @@ impl Service for MeshService {
                 self.act(effects, bus);
                 Done { ok: true }
             });
+        } else if method == CallOffer::METHOD
+            || method == CallAnswer::METHOD
+            || method == CallEnd::METHOD
+            || method == CallAudioIn::METHOD
+            || method == NoteMirror::METHOD
+        {
+            self.calling(request, bus);
         } else {
             self.handing(request, bus);
         }

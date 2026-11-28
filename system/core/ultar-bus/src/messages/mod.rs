@@ -98,6 +98,7 @@ pub mod lock;
 pub mod log;
 pub mod media;
 pub mod mesh;
+pub mod mesh_calls;
 pub mod mesh_dialog;
 pub mod mesh_model;
 pub mod mesh_remote;
@@ -243,6 +244,19 @@ mod tests {
         check_call::<super::power::Restart>();
         check_call::<super::power::PowerOff>();
         check_call::<super::init::Power>();
+    }
+
+    #[test]
+    fn mesh_call_contract_names_are_valid() {
+        check_call::<super::mesh_calls::CallOffer>();
+        check_call::<super::mesh_calls::CallAnswer>();
+        check_call::<super::mesh_calls::CallEnd>();
+        check_call::<super::mesh_calls::CallAudioIn>();
+        check_call::<super::mesh_calls::NoteMirror>();
+        check_topic::<super::mesh_calls::CallIncoming>();
+        check_topic::<super::mesh_calls::CallProgress>();
+        check_topic::<super::mesh_calls::CallAudio>();
+        check_topic::<super::mesh_calls::NoteRemote>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

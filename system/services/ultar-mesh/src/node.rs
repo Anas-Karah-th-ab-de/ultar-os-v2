@@ -113,6 +113,14 @@ pub enum Effect {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// A paired device offers a call; the person answers with [`Node::call_answer`].
+    CallIncoming(ultar_bus::messages::mesh_calls::CallIncoming),
+    /// A call changed on this device.
+    CallProgress(ultar_bus::messages::mesh_calls::CallProgress),
+    /// One 20 ms of a call's voice from a paired device.
+    CallAudio(ultar_bus::messages::mesh_calls::CallAudio),
+    /// A notification of a paired device to show here.
+    Note(ultar_bus::messages::mesh_calls::NoteRemote),
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -140,6 +148,7 @@ pub struct Node {
     pub(crate) clip_remote: Option<String>,
     pub(crate) thinking: u64,
     pub(crate) serving: u32,
+    pub(crate) calls: crate::calls::Calls,
 }
 
 impl Node {
@@ -160,6 +169,7 @@ impl Node {
             clip_remote: None,
             thinking: 0,
             serving: 0,
+            calls: crate::calls::Calls::default(),
         }
     }
 
@@ -244,6 +254,7 @@ impl Node {
             return Vec::new();
         }
         let mut effects = self.drop_offers(peer);
+        effects.extend(self.calls.peer_down(peer));
         effects.push(Effect::Changed);
         effects
     }
@@ -357,6 +368,11 @@ impl Node {
             }
             Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
             Frame::Act { .. } | Frame::Acted { .. } => self.on_remote_frame(peer, frame),
+            Frame::Call { .. }
+            | Frame::CallAnswer { .. }
+            | Frame::CallEnd { .. }
+            | Frame::CallAudio { .. }
+            | Frame::Note { .. } => self.on_call_frame(peer, frame),
             other => self.on_offer_frame(peer, other, now),
         }
     }

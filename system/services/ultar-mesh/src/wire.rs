@@ -183,6 +183,51 @@ pub enum Frame {
         /// What it did.
         steps: Vec<Step>,
     },
+    /// Offer a call that rings here (who calls is only what the phone shows).
+    Call {
+        /// Id chosen by the offering device.
+        id: u64,
+        /// Name or number of the caller.
+        caller: String,
+        /// Video call.
+        video: bool,
+    },
+    /// The person's answer to a [`Frame::Call`].
+    CallAnswer {
+        /// The call.
+        id: u64,
+        /// Accepted.
+        accept: bool,
+    },
+    /// Hang up (either side).
+    CallEnd {
+        /// The call.
+        id: u64,
+    },
+    /// One 20 ms of the call's voice: PCM 16-bit, 48 kHz mono, base64.
+    CallAudio {
+        /// The call.
+        id: u64,
+        /// Frame counter.
+        seq: u64,
+        /// The PCM bytes.
+        pcm: String,
+    },
+    /// A notification of this device to mirror on the other.
+    Note {
+        /// Counter of the sender's notifications.
+        seq: u64,
+        /// Title (data).
+        title: String,
+        /// Body (data).
+        text: String,
+        /// Application id of the sender.
+        app: String,
+        /// Attention level: 0 low, 1 normal, 2 high.
+        urgency: u8,
+        /// The source asks to show it only on an unlocked target.
+        hide_on_locked: bool,
+    },
     /// Anything this version does not know.
     #[serde(other)]
     Unknown,
@@ -243,5 +288,30 @@ mod tests {
             text: "x".repeat(MAX_FRAME),
         };
         assert!(pack(&huge).is_none());
+    }
+
+    #[test]
+    fn call_and_note_frames_survive_the_wire() {
+        let call = Frame::Call {
+            id: 9,
+            caller: "+963 000".into(),
+            video: false,
+        };
+        assert_eq!(unpack(&pack(&call).unwrap()), Some(call));
+        let audio = Frame::CallAudio {
+            id: 9,
+            seq: 0xCAFE,
+            pcm: "aGVsbG8=".into(),
+        };
+        assert_eq!(unpack(&pack(&audio).unwrap()), Some(audio));
+        let note = Frame::Note {
+            seq: 4,
+            title: "SMS".into(),
+            text: "مرحبا".into(),
+            app: "messages".into(),
+            urgency: 2,
+            hide_on_locked: true,
+        };
+        assert_eq!(unpack(&pack(&note).unwrap()), Some(note));
     }
 }
