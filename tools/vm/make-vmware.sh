@@ -21,7 +21,9 @@
 # for a USB stick): the same system tree plus ultar-installer-ui and ultar-firstboot, the medium's marker asks for
 # the graphical installer session (session=init, docs/integration/installer-boot.md), NO account and no password
 # in the image (the installer's account step creates it, ultar-firstboot writes it at the first start); its check
-# boots it in QEMU with an empty NVMe disk until the installer reports its first step (screenshot).
+# boots it in QEMU with an empty NVMe disk until the installer reports its first step (screenshot). It also
+# writes the VMware machine out/vmware/UltarOS-v2-installer.zip (medium as SATA disk, empty NVMe target of
+# TARGET_GIB, default 32, sparse) to try the installation in VMware Workstation.
 # EDITION=phone (with INSTALLER_IMG=1) builds the phone edition on the Ultar kernel for x86_64 phones and tablets
 # (and QEMU): the phone's own session (ultar-mobile, ultar-mobile-lock, ultar-mobile-dialog) instead of the
 # desktop's, edition marker "phone"; out/vmware/UltarOS-v2-phone-installer.img.
@@ -311,7 +313,36 @@ if [ -n "$INSTALLER_IMG" ]; then
     python3 tools/vm/vmware-vm.py installer "$OUT/$NAME-installer.img" "$OUT/$NAME-installer" || fail "the installer image does not reach the installer"
   fi
   (cd "$OUT" && sha256sum "$NAME-installer.img" | tee "$NAME-installer.img.sha256")
-  echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME-installer.img)"
+  # VMware machine to try the installation: the medium as SATA disk (VMware's AHCI, disks only), an empty
+  # NVMe disk as the target (TARGET_GIB, sparse), no account; started from the medium because the target has
+  # nothing bootable yet. After "Restart" at the end of the installation remove the SATA disk (README).
+  IVM=$OUT/$NAME-installer
+  rm -f "$OUT/$NAME-installer-target.raw"
+  rm -rf "$IVM" "$OUT/$NAME-installer.zip"; mkdir -p "$IVM"
+  qemu-img convert -f raw -O vmdk -o subformat=monolithicSparse,adapter_type=lsilogic \
+    "$OUT/$NAME-installer.img" "$IVM/$NAME-medium.vmdk"
+  qemu-img create -q -f vmdk -o subformat=monolithicSparse,adapter_type=lsilogic "$IVM/$NAME-target.vmdk" "${TARGET_GIB:-32}G"
+  sed -e "s/@NAME@/$NAME-installer/g" \
+      -e "s/^nvme0:0.fileName = .*/nvme0:0.fileName = \"$NAME-target.vmdk\"/" \
+      -e 's/^sata0.present = "FALSE"/sata0.present = "TRUE"/' \
+      -e 's/^displayName = .*/displayName = "Ultar OS v2 Installation – KM Code Craft"/' \
+      tools/vm/UltarOS-v2.vmx.in >"$IVM/$NAME-installer.vmx"
+  printf 'sata0:0.present = "TRUE"\nsata0:0.fileName = "%s"\n' "$NAME-medium.vmdk" >>"$IVM/$NAME-installer.vmx"
+  grep -q "^nvme0:0.fileName = \"$NAME-target.vmdk\"$" "$IVM/$NAME-installer.vmx" || fail "installer .vmx: target disk"
+  grep -q '^sata0.present = "TRUE"$' "$IVM/$NAME-installer.vmx" || fail "installer .vmx: medium disk"
+  cat >"$IVM/README.txt" <<'TXT'
+Ultar OS v2 - installation in VMware Workstation (KM Code Craft, https://code-craft.tech)
+
+1. Open the .vmx (File > Open) or run tools/vm/install-vmware.ps1 -Installer -Zip <this zip>.
+2. The machine starts the graphical installer from the medium (SATA disk). The target is the empty
+   NVMe disk. Go through the steps; the account is created in the installer.
+3. On the last step press "Restart". Then power the machine off, remove the SATA disk
+   ("...-medium.vmdk") under VM > Settings and start it again: Ultar OS starts from the NVMe disk.
+   The kernel log of every start is in serial.log beside the .vmx.
+TXT
+  python3 tools/vm/vmware-vm.py zip "$IVM" "$OUT/$NAME-installer.zip"
+  (cd "$OUT" && sha256sum "$NAME-installer.zip" | tee "$NAME-installer.zip.sha256")
+  echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME-installer.img, $OUT/$NAME-installer.zip)"
   exit 0
 fi
 

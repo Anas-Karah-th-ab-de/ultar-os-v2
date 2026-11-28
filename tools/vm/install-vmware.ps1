@@ -5,6 +5,8 @@
 #   powershell -ExecutionPolicy Bypass -File install-vmware.ps1 -Disk sata        (disk on SATA/AHCI instead of NVMe)
 #   powershell -ExecutionPolicy Bypass -File install-vmware.ps1 -Ps2Mouse         (no USB pointer: PS/2 mouse)
 #   powershell -ExecutionPolicy Bypass -File install-vmware.ps1 -Zip C:\x\UltarOS-v2.zip   (a zip that is already here)
+#   powershell -ExecutionPolicy Bypass -File install-vmware.ps1 -Installer -Zip C:\x\UltarOS-v2-installer.zip
+#                                   (the installation machine: medium on SATA, empty NVMe target, no account)
 #
 # Nothing is downloaded from the internet: the only source is the build computer in the local network (or -Zip).
 # A machine of the same name that is already there is stopped and replaced (its disk is deleted).
@@ -16,10 +18,16 @@ param(
     [string]$Zip = "",
     [ValidateSet("nvme", "sata")][string]$Disk = "nvme",
     [switch]$Ps2Mouse,
+    [switch]$Installer,
     [switch]$NoStart
 )
 $ErrorActionPreference = "Stop"
 $name = "UltarOS-v2"
+if ($Installer) {
+    $name = "UltarOS-v2-installer"
+    $RemoteZip = $RemoteZip -replace "UltarOS-v2\.zip$", "UltarOS-v2-installer.zip"
+    if ($Disk -ne "nvme") { throw "-Installer: the target stays on NVMe (the medium is the SATA disk)" }
+}
 $base = Join-Path $env:USERPROFILE "Documents\Virtual Machines"
 $target = Join-Path $base $name
 $vmx = Join-Path $target "$name.vmx"
@@ -62,11 +70,12 @@ if ($Zip -ne "") {
     Remove-Item -LiteralPath "$localZip.sha256" -Force
 }
 
-# 3) unpack: the zip holds the folder UltarOS-v2 with the .vmx and the .vmdk
+# 3) unpack: the zip holds the folder $name with the .vmx and the .vmdk (installer: medium + target)
 Expand-Archive -LiteralPath $localZip -DestinationPath $base -Force
 Remove-Item -LiteralPath $localZip -Force
 if (-not (Test-Path $vmx)) { throw "the zip does not hold $name\$name.vmx" }
-if (-not (Test-Path (Join-Path $target "$name.vmdk"))) { throw "the zip does not hold $name\$name.vmdk" }
+$diskFile = if ($Installer) { "UltarOS-v2-target.vmdk" } else { "$name.vmdk" }
+if (-not (Test-Path (Join-Path $target $diskFile))) { throw "the zip does not hold $name\$diskFile" }
 
 # 4) options: the .vmx is UTF-8 without a byte order mark and must stay so
 if ($Disk -eq "sata" -or $Ps2Mouse) {

@@ -13,7 +13,7 @@ binaries (the patch deletes the committed test binaries below).
    round 1 arrive now (the PS/2 path was reworked by the VMware fixes, `da001dfa`). It runs by default in
    `ci.sh` (`INSTALLER_E2E=0` skips it) and as its own GitHub job (`installer`, about 15 minutes under TCG).
    Fixed on the way: the test's account check ran as root without a right and could not read the account file
-   (mode 0600, owner authd) – it has the right `file_admin` now, like `ultar-firstboot`. `make-vmware.sh --installer` is still **not done**.
+   (mode 0600, owner authd) – it has the right `file_admin` now, like `ultar-firstboot`. The VMware machine for the installation is built now (2026-11-28): `INSTALLER_IMG=1 tools/vm/make-vmware.sh` writes `out/vmware/UltarOS-v2-installer.zip` (medium as SATA disk, empty NVMe target, README); GitHub workflow `Installer image` builds it on demand.
 2. **Encryption (task 4) not done – the installer option stays disabled** with its reason
    (`installer.reason.encryption`: "the Ultar kernel cannot unlock an encrypted disk at start"). Nothing of a
    LUKS2 writer or a kernel XTS layer is in this patch; no half-working encryption ships. Plan: (a) a no_std

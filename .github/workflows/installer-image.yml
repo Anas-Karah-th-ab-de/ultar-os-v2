@@ -1,0 +1,50 @@
+# The installation image and the VMware machine to try the graphical installation:
+#   UltarOS-v2-installer.img  raw UEFI GPT for a USB stick
+#   UltarOS-v2-installer.zip  VMware Workstation machine: the medium as SATA disk, an empty NVMe target
+# Built by tools/vm/make-vmware.sh (INSTALLER_IMG=1), checked in QEMU up to the installer's first step.
+# Start: Actions -> "Installer image" -> "Run workflow", or a push that changes this file.
+name: Installer image
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/installer-image.yml"]
+permissions:
+  contents: read
+jobs:
+  image:
+    name: Installation image and VMware machine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src gcc make \
+            qemu-system-x86 qemu-utils ovmf mtools dosfstools e2fsprogs python3
+      - name: Build the image and the machine
+        run: |
+          PATH=/usr/lib/rust-1.97/bin:$PATH INSTALLER_IMG=1 LANG_CODE=ar bash tools/vm/make-vmware.sh | tee make.log
+          grep -q "^MAKE-VMWARE: ALLES OK" make.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UltarOS-v2-installer-vmware
+          path: |
+            out/vmware/UltarOS-v2-installer.zip
+            out/vmware/UltarOS-v2-installer.zip.sha256
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UltarOS-v2-installer-usb
+          path: |
+            out/vmware/UltarOS-v2-installer.img
+            out/vmware/UltarOS-v2-installer.img.sha256
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: installer-image-logs
+          path: |
+            make.log
+            out/vmware/*.log
+            out/vmware/*.png

@@ -173,3 +173,13 @@ Open points:
   bands of the owner's VMware screenshot were not reproduced (that picture shows the bottom start corner of
   the sign-in with the accessibility menu opened by a click). Only the Arabic image was run; the English
   catalogue is the same program with other strings (the fonts are inside the programs).
+
+## Installation machine (2026-11-28)
+
+`INSTALLER_IMG=1 tools/vm/make-vmware.sh` also writes `out/vmware/UltarOS-v2-installer.zip`: the installation
+medium as a SATA disk (`UltarOS-v2-medium.vmdk`, VMware's AHCI – the kernel reads disks only, no CD/DVD, so the
+medium is not an ISO), an empty sparse NVMe disk as the target (`UltarOS-v2-target.vmdk`, `TARGET_GIB`, 32) and
+`README.txt`. No account is in it: the installer creates it. The machine starts from the medium (the target has
+nothing bootable); after "Restart" on the last step power it off and remove the SATA disk, then it starts from
+NVMe. On the PC: `install-vmware.ps1 -Installer -Zip <zip>`. GitHub: Actions → "Installer image" → Run workflow
+(artifacts `UltarOS-v2-installer-vmware` and `-usb`).
