@@ -107,7 +107,15 @@ fn main() {
     let work = PathBuf::from(arg("--work").unwrap_or_else(|| "/data/componenttest".into()));
     let _ = std::fs::remove_dir_all(&work);
     for d in ["root", "keys", "media"] {
-        std::fs::create_dir_all(work.join(d)).unwrap();
+        let at = work.join(d);
+        let made = std::fs::create_dir_all(&at);
+        let probe = std::fs::write(at.join(".probe"), b"x");
+        if made.is_err() || probe.is_err() {
+            // which step of the kernel's file system refuses (a directory the disk does not take)
+            let parent = std::fs::write(work.join(format!(".probe-{d}")), b"x");
+            fail(&format!("{}: mkdir {made:?}, a file in it {probe:?}, a file next to it {parent:?}", at.display()));
+        }
+        let _ = std::fs::remove_file(at.join(".probe"));
     }
     let (secret, public) = ultar_pkg::keygen();
     let (stranger, _) = ultar_pkg::keygen();
