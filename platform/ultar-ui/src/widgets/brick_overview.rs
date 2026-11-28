@@ -74,6 +74,7 @@ pub(super) fn measure_kind(cx: &mut MeasureCx<'_>, brick: &Brick) -> Size {
         }
         BrickKind::Art(_) => Size::new(size::ICON, size::ICON),
         BrickKind::Logo { width, .. } => super::brick_logo::measure(cx, *width),
+        BrickKind::DeskIcon { side, .. } => super::brick_desk::measure(cx, *side),
         BrickKind::Handle { width } => Size::new(*width, super::brick::TARGET),
         _ => Size::new(0.0, 0.0),
     }
@@ -103,6 +104,11 @@ pub(super) fn paint_kind(
             brick_art::paint_picture(p, Picture::Mark, rect, edge)
         }
         BrickKind::Logo { width, quiet } => super::brick_logo::paint(p, rect, *width, *quiet, v),
+        BrickKind::DeskIcon {
+            icon,
+            side,
+            selected,
+        } => super::brick_desk::paint(p, cx, rect, v, (label, *icon, *side, *selected)),
         BrickKind::Avatar => {
             let bg = p.color(ColorRole::Raised);
             let border = p.color(ColorRole::ControlBorder);

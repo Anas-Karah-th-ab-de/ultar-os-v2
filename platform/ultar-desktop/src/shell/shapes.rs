@@ -74,7 +74,11 @@ pub(super) fn for_top_bar(open: Open, popup: &mut Popup, screen: Size) {
             popup.offset.1 = (TOP_HEIGHT + gap - popup.inset_top).round() as i32;
         }
         Open::TileMenu(_) | Open::DriveMenu(_) => popup.offset.1 += bottom_panel - gap as i32,
-        Open::Apps(_) | Open::Projection(_) => popup.offset.1 += bottom_panel,
+        Open::Apps(_)
+        | Open::Projection(_)
+        | Open::DeskMenu(..)
+        | Open::ItemMenu(..)
+        | Open::Rename(_) => popup.offset.1 += bottom_panel,
     }
 }
 

@@ -1,7 +1,8 @@
 //! The app grid (board AppGrid; DESKTOP-SPEC §5.1; CLICKS `apps.*`): a search field, the
 //! categories as tabs, the apps of the bar ("On the bar") and every app in alphabetical
-//! order of the language, each a cell with a context menu (open, new window, pin, details
-//! in the Store, remove), and at the bottom how the grid is ordered and its keys.
+//! order of the language, each a cell with a context menu (open, new window, pin, add to
+//! the desktop, details in the Store, remove) that can be dragged onto the desktop, and at
+//! the bottom how the grid is ordered and its keys.
 
 use super::geometry::{self, Placement};
 use super::{new_ui, Look, Target, View};
@@ -41,6 +42,8 @@ pub mod item {
     pub const DETAILS: u32 = 4;
     /// Remove the app.
     pub const UNINSTALL: u32 = 5;
+    /// Put a shortcut on the desktop / take it off.
+    pub const DESKTOP: u32 = 6;
 }
 
 /// The categories that have apps (tabs after "All").
@@ -95,12 +98,7 @@ pub fn build(
         top: Some(place.top),
         bottom: None,
     }));
-    let flex = Flex::column()
-        .padding(Padding::all(Space::S24))
-        .gap(Space::S16);
-    let card = Card::new().floating().flex(flex);
-    let root = ui.root();
-    let card = ui.add_sized(root, card, Sizing::width(rect.w).with_height(rect.h))?;
+    let card = card(&mut ui, rect)?;
     ui.set_size(place.surface)?;
     let mut view = View::new(ui);
     let field = SearchField::new(Label::key("desk.apps.search"))
@@ -114,6 +112,7 @@ pub fn build(
         .add_sized(card, Flex::column().gap(Space::S16), Sizing::grow(1))?;
     if d.overview.query.trim().is_empty() && category.is_none() {
         let pinned: Vec<AppInfo> = d
+            .places
             .pinned
             .iter()
             .filter_map(|id| d.catalog.iter().find(|a| &a.id == id))
@@ -128,10 +127,33 @@ pub fn build(
             Text::new(Label::key("desk.apps.none")).color(ColorRole::TextMuted),
         )?;
     } else {
-        section(&mut view, body, d, "desk.apps.title", &list)?;
+        section(&mut view, body, d, list_title(d), &list)?;
     }
     footer(&mut view, card)?;
     Ok((view, place))
+}
+
+/// The title of "all apps"; opened by the desktop's "New shortcut" it says what a click
+/// does there (it puts the app's shortcut on the desktop).
+fn list_title(d: &Desktop) -> &'static str {
+    if d.places.picking {
+        "desk.desk.pick"
+    } else {
+        "desk.apps.title"
+    }
+}
+
+/// The floating card of the grid. It takes the drops of its own cells: an app dragged out
+/// of it and dropped beside it lands on the desktop as a shortcut.
+fn card(ui: &mut ultar_ui::ui::Ui, rect: Rect) -> Result<NodeId, UiError> {
+    let flex = Flex::column()
+        .padding(Padding::all(Space::S24))
+        .gap(Space::S16);
+    let card = Card::new().floating().flex(flex);
+    let root = ui.root();
+    let card = ui.add_sized(root, card, Sizing::width(rect.w).with_height(rect.h))?;
+    ui.set_drop_target(card, true)?;
+    Ok(card)
 }
 
 fn tabs(
@@ -184,10 +206,14 @@ fn section(
             let id = view.ui.add_sized(row, cell, Sizing::grow(1))?;
             view.mark(id, Target::AppItem(app.id.clone()));
             view.ui.set_context_menu(id, Some(menu(d, app)))?;
-            if !d.presence.launcher && !d.windows.iter().any(|w| w.app_id == app.id) {
+            let runs = d.windows.iter().any(|w| w.app_id == app.id);
+            if !d.presence.launcher && !runs && !d.places.picking {
                 view.ui.set_disabled(id, true)?;
                 view.ui
                     .set_tooltip(id, Some(Label::key("desk.reason.no_launcher")))?;
+            } else {
+                // Dragged out of the grid onto the desktop: its shortcut goes there.
+                view.ui.set_draggable(id, true)?;
             }
         }
         // Keep the columns of a short last row.
@@ -202,10 +228,15 @@ fn section(
 pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
     let launcher = d.presence.launcher;
     let gate = |i: MenuItem| if launcher { i } else { i.disabled() };
-    let pin = if d.pinned.contains(&app.id) {
+    let pin = if d.places.pinned.contains(&app.id) {
         "desk.menu.unpin"
     } else {
         "desk.menu.pin"
+    };
+    let desktop = if d.places.on_desktop(&app.id) {
+        "desk.desk.remove_shortcut"
+    } else {
+        "desk.desk.add_shortcut"
     };
     // Details and removal open the app's page in the Store (`store://app/<id>`, with
     // `?action=remove` its removal dialog: the Store holds the right to uninstall). Apps of
@@ -218,6 +249,7 @@ pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
             Label::key("desk.menu.new_window"),
         )),
         MenuItem::new(item::PIN, Label::key(pin)).separated(),
+        MenuItem::new(item::DESKTOP, Label::key(desktop)),
         gate(MenuItem::new(
             item::DETAILS,
             Label::key("desk.apps.details"),

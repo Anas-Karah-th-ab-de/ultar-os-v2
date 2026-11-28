@@ -100,6 +100,16 @@ pub enum BrickKind {
     },
     /// A round picture of a person (lock and login screens).
     Avatar,
+    /// A shortcut on the desktop background: the app's tile of `side` points with its name
+    /// below in up to two lines; quiet until hovered, filled and edged while `selected`.
+    DeskIcon {
+        /// The app icon.
+        icon: IconId,
+        /// Edge of the tile in logical points (desktop.icons.size).
+        side: u16,
+        /// The selected shortcut.
+        selected: bool,
+    },
     /// A cell of the phone's home screen and app grid: the icon in a box above the name
     /// (boards CompactHome, CompactApps); `open` while its menu is shown.
     PhoneCell {
@@ -269,7 +279,10 @@ impl Brick {
             BrickKind::QuickTile { on, .. } => Some(on),
             BrickKind::ModeCard { chosen, .. }
             | BrickKind::UserCard { chosen }
-            | BrickKind::WorkspaceCard { chosen, .. } => Some(chosen),
+            | BrickKind::WorkspaceCard { chosen, .. }
+            | BrickKind::DeskIcon {
+                selected: chosen, ..
+            } => Some(chosen),
             _ => None,
         }
     }

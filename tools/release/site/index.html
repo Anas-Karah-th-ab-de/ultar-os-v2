@@ -7,143 +7,16 @@
 <meta name="color-scheme" content="dark">
 <title>Ultar OS – KM Code Craft</title>
 <meta name="description" content="Ultar OS – نظام تشغيل مستقل بنواة خاصة مكتوبة بلغة Rust من KM Code Craft. العربية أولاً، خصوصية، حزم وتحديثات موقّعة.">
+<link rel="canonical" href="https://ultar.code-craft.tech/"><link rel="alternate" hreflang="ar" href="https://ultar.code-craft.tech/"><link rel="alternate" hreflang="en" href="https://ultar.code-craft.tech/en/"><link rel="alternate" hreflang="de" href="https://ultar.code-craft.tech/de/"><link rel="alternate" hreflang="x-default" href="https://ultar.code-craft.tech/">
 <link rel="icon" href="/img/icon-192.png">
-<link rel="stylesheet" href="/style.css?v=082">
-<script src="/app.js?v=082" defer></script>
+<link rel="stylesheet" href="/style.css?v=092">
+<script src="/app.js?v=092" defer></script>
 </head>
-<body>
-<header class="top">
-  <a class="brand" href="/"><img src="/img/logo.png" alt="KM Code Craft" width="130" height="55"></a>
-  <nav class="lang" aria-label="Language">
-    <button type="button" data-lang="ar">العربية</button>
-    <button type="button" data-lang="en">English</button>
-    <button type="button" data-lang="de">Deutsch</button>
-  </nav>
-</header>
+<body data-page="home">
+<a class="skip" href="#main">انتقل إلى المحتوى</a>
+<header class="top" id="top"><div class="bar"><a class="brand" href="/?lang=ar"><img src="/img/logo.png" alt="KM Code Craft" width="130" height="55"><span>Ultar OS</span></a><button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav"><span class="burger" aria-hidden="true"></span>القائمة</button><nav id="nav" class="nav" aria-label="التنقل الرئيسي"><div class="menus"><details class="dd"><summary>المنتجات</summary><div class="panel"><div class="mcol"><p class="col-h">النظام</p><a href="/desktop/"><b>Ultar Desktop</b><span>للحاسوب المكتبي والمحمول</span></a><a href="/server/"><b>Ultar Server</b><span>بلا شاشة، عبر SSH والويب</span></a><a href="/phone/"><b>Ultar للهاتف</b><span>واجهة خاصة بالهاتف</span></a><a href="/kernel/"><b>نواة Ultar</b><span>نواتنا الخاصة بلغة Rust</span></a></div><div class="mcol"><p class="col-h">المزايا</p><a href="/mesh/"><b>مجموعة الأجهزة</b><span>اربط أجهزتك وتابع العمل بينها</span></a><a href="/assistant/"><b>المساعد</b><span>ذكاء اصطناعي على جهازك</span></a><a href="/apps/"><b>المتجر والتطبيقات</b><span>تطبيقات موقّعة في خلايا معزولة</span></a><a href="/security/"><b>الأمان والخصوصية</b><span>تواقيع وتشفير من طرف إلى طرف</span></a></div><div class="mcol"><p class="col-h">المزيد</p><a href="/hardware/"><b>العتاد المختبَر</b><span>الأجهزة وحالتها</span></a><a href="/developers/"><b>للمطوّرين</b><span>بناء التطبيقات ونشرها</span></a><a href="/account/"><b>حساب Ultar</b><span>الرقم والمكالمات والمجموعة</span></a></div></div></details><details class="dd"><summary>التنزيل</summary><div class="panel"><div class="mcol"><a href="/download/desktop/"><b>Desktop</b><span>صورة تثبيت USB</span></a><a href="/download/server/"><b>Server</b><span>نفس المثبّت، نوع «خادم»</span></a><a href="/download/phone/"><b>الهاتف</b><span>إصدار تجريبي للهاتف</span></a><a href="/download/vm/"><b>آلة افتراضية</b><span>للتجربة بأمان</span></a><a href="/releases/"><b>كل الإصدارات</b><span>الملاحظات والحالة</span></a></div></div></details><details class="dd"><summary>الأدلّة</summary><div class="panel"><div class="mcol"><a href="/install/desktop/"><b>التثبيت على حاسوب</b><span>Desktop وServer عبر USB</span></a><a href="/install/vm/"><b>في آلة افتراضية</b><span>QEMU · VMware</span></a><a href="/install/phone/"><b>على الهاتف</b><span>Samsung Galaxy A30</span></a><a href="/install/verify/"><b>التحقق من التنزيل</b><span>SHA-256 · Ed25519</span></a><a href="/update/"><b>تحديث النظام</b><span>A/B مع رجوع تلقائي</span></a></div></div></details><details class="dd"><summary>المساعدة</summary><div class="panel"><div class="mcol"><a href="/support/"><b>أسئلة شائعة</b></a><a href="/account/"><b>حساب Ultar</b></a><a href="/support/#contact"><b>الإبلاغ عن خطأ</b></a><a href="/security/#report"><b>الإبلاغ عن ثغرة أمنية</b></a></div></div></details><a class="navlink" href="/news/">الأخبار</a><a class="navlink" href="/about/">من نحن</a></div><div class="nav-end"><details class="dd lang-dd"><summary aria-label="اللغة"><span class="globe" aria-hidden="true"></span>ع</summary><div class="panel"><a hreflang="ar" lang="ar" href="/?lang=ar" aria-current="true"><b>العربية</b></a><a hreflang="en" lang="en" href="/en/"><b>English</b></a><a hreflang="de" lang="de" href="/de/"><b>Deutsch</b></a></div></details><a class="btn primary small" href="/download/">تنزيل Ultar OS</a></div></nav></div></header>
 
-<main>
-  <section class="hero">
-    <p class="badge" data-t="badge">Ultar OS 0.8 تجريبي · نواة خاصة مكتوبة بلغة Rust</p>
-    <h1 data-t="h1">نظام تشغيل مستقل، العربية أولاً.</h1>
-    <p class="lead" data-t="lead">Ultar OS نظام مبني من الأساس لدى KM Code Craft: نواة خاصة مكتوبة بلغة Rust، وواجهة سطح مكتب وواجهة هاتف، ومتجر تطبيقات موقّع، وكل تطبيق في خلية معزولة بأقل الصلاحيات.</p>
-    <div class="cta">
-      <a class="btn primary" href="#promise" data-t="cta0">وعدنا لك</a>
-      <a class="btn" href="#download" data-t="cta1">التنزيل والتثبيت</a>
-      <a class="btn" href="#status" data-t="cta2">ما الذي يعمل اليوم؟</a>
-      <a class="btn" href="#security" data-t="cta3">الخصوصية والأمان</a>
-    </div>
-  </section>
-
-  <section class="facts" aria-label="Facts">
-    <div><b>Rust</b><span data-t="f1">نواة خاصة وكل مكوّنات النظام من صنعنا</span></div>
-    <div><b>‎~145 ms</b><span data-t="f2">حتى تجهز النواة في المحاكي</span></div>
-    <div><b>‎~2 450</b><span data-t="f3">اختبار آلي ينجح بدون أخطاء</span></div>
-    <div><b>AR · EN · DE</b><span data-t="f4">العربية من اليمين لليسار في كل مكان</span></div>
-  </section>
-
-
-  <section id="promise" class="grid">
-    <h2 data-t="pr">وعدنا لك</h2>
-    <p class="lead wide" data-t="prl">هذا ما نبني Ultar OS من أجله. كل قرار في النظام يُقاس بهذه الوعود.</p>
-    <article><h3 data-t="p1">سريع من أول لمسة</h3><p data-t="p1p">يقلع خلال ثوانٍ، ويستجيب لكل لمسة ونقرة فوراً، ويستهلك القليل من الذاكرة – فيبقى جهازك سريعاً بعد سنوات كما في يومه الأول.</p></article>
-    <article><h3 data-t="p2">جهازك ملكك</h3><p data-t="p2p">لا برامج مخفية، لا إعلانات، لا تتبّع. لا شيء يعمل على جهازك دون علمك، وأنت وحدك من يقرّر.</p></article>
-    <article><h3 data-t="p3">خصوصية بلا تنازل</h3><p data-t="p3p">مكالماتك مشفّرة من طرف إلى طرف، وبياناتك لا تغادر جهازك إلا بإذنك، والتشخيص والموقع مطفآن من البداية.</p></article>
-    <article><h3 data-t="p4">يعمل بلا إنترنت</h3><p data-t="p4p">التثبيت والتعريفات والتحديثات تعمل بالكامل دون اتصال – يكفي ذاكرة USB.</p></article>
-    <article><h3 data-t="p5">لا يتعطّل بعد التحديث</h3><p data-t="p5p">كل تحديث موقّع ويُثبَّت بجانب النسخة الحالية. إذا فشل شيء، يعود النظام تلقائياً إلى النسخة السابقة.</p></article>
-    <article><h3 data-t="p6">يتكيّف مع جهازك</h3><p data-t="p6p">النظام يعرف عتاد جهازك ويضبط نفسه عليه. صِل هاتفك بشاشة ولوحة مفاتيح فيصبح حاسوباً كاملاً.</p></article>
-    <article><h3 data-t="p7">مساعد ذكي داخل جهازك</h3><p data-t="p7p">قل «Hey KM» وتحدّث بالعربية أو الإنجليزية. الذكاء الاصطناعي يعمل على جهازك نفسه، دون سحابة ودون أن يُرسل كلمة واحدة.</p></article>
-    <article><h3 data-t="p8">برامجك تبقى معك</h3><p data-t="p8p">النظام صغير ويحتوي ما تحتاجه فقط. ما تريده تضيفه من المتجر وتزيله دون أثر، وبرامجك الحالية تجد مكاناً آمناً في خليّة خاصة بها.</p></article>
-    <p class="muted wide" data-t="prn">هذه أهدافنا التي نعمل عليها كل يوم. ما يعمل منها اليوم تجده في قسم «الحالة».</p>
-  </section>
-
-  <section class="grid">
-    <h2 data-t="feat">ما هو Ultar OS اليوم</h2>
-    <article><h3 data-t="a1">نواة خاصة</h3><p data-t="a1p">نواة Ultar مكتوبة بلغة Rust: ذاكرة بحدود لكل مجموعة، مستخدمون وصلاحيات حقيقية، عزل العمليات، ومحمّل UEFI خاص بنسختين A/B يعود تلقائياً إلى النسخة السابقة إذا فشل الإقلاع.</p></article>
-    <article><h3 data-t="a2">سطح مكتب وهاتف</h3><p data-t="a2p">مركّب نوافذ خاص (compositor)، شريط وقوائم ونظرة عامة، شاشة قفل، وواجهة هاتف. النظام يتكيّف مع الجهاز: لمس، بطارية، شاشة ثانية.</p></article>
-    <article><h3 data-t="a3">متجر Ultar</h3><p data-t="a3p">فهرس موقّع من خادم المتجر عبر HTTPS أو من ذاكرة USB أو من النظام نفسه. كل حزمة تُفحص مرتين قبل التثبيت، والمتجر يعمل دون إنترنت بآخر فهرس موثوق.</p></article>
-    <article><h3 data-t="a4">كل تطبيق في خليته</h3><p data-t="a4p">كل تطبيق عملية مستقلة بمستخدم خاص ومجلد بيانات خاص، ولا يحصل إلا على الصلاحيات المذكورة في بيانه الموقّع والتي وافقت عليها.</p></article>
-    <article><h3 data-t="a5">تحديثات آمنة</h3><p data-t="a5p">تحديثات النظام موقّعة، مع حماية من الرجوع إلى نسخة أقدم، وتثبيت على النسخة الثانية A/B مع رجوع تلقائي، وحزمة بدون إنترنت عبر USB.</p></article>
-    <article><h3 data-t="a7">مكالمات مشفّرة من طرف إلى طرف</h3><p data-t="a7p">مكالمات صوت وصورة عبر رقم Ultar: المفاتيح والصوت والصورة بين الجهازين فقط، ويرى الطرفان رقم أمان واحداً للمقارنة. الخادم يوصل الطرفين فقط ولا يعرف ولا يحفظ شيئاً عن المكالمة، ويمكن للطرفين إخفاء عنوانيهما عبر المرحِّل.</p></article>
-    <article><h3 data-t="a8">تطبيقات للعمل اليومي</h3><p data-t="a8p">الملفات، محرّر النصوص (العربية والشيفرة في ملف واحد)، الطرفية بأوامر عربية وإنجليزية، متصفح يعرض الصفحات في وضع القراءة، والهاتف مع الكاميرا – كلها من محرّك Ultar الخاص بلغة Rust.</p></article>
-    <article><h3 data-t="a6">العربية أولاً</h3><p data-t="a6p">كل نص يُكتب بالعربية أولاً: صيغ الجمع العربية الست، التقويم الهجري، وبحث يتجاهل التشكيل واختلاف الإملاء. الأرقام دائماً 0–9.</p></article>
-  </section>
-
-  <section class="shots">
-    <h2 data-t="look">لقطات من النظام الحقيقي</h2>
-    <p class="muted" data-t="lookl">صور شاشة حقيقية من Ultar OS 0.8 في آلة افتراضية (QEMU)، وليست تصاميم.</p>
-    <div class="strip" id="shots">
-      <figure><img src="/img/v2-desktop-ar.png" alt="" loading="lazy" width="1280" height="800"><figcaption data-t="s1">سطح المكتب بعد الإقلاع: الشريط، البحث، التطبيقات، اللغة والوقت</figcaption></figure>
-    </div>
-  </section>
-
-  <section id="status" class="sec">
-    <h2 data-t="st">الحالة بصدق: نسخة تجريبية</h2>
-    <p class="lead" data-t="stl">Ultar OS 0.8 نسخة تجريبية للتجربة على آلة افتراضية أو جهاز اختبار، وليست لجهاز العمل اليومي بعد.</p>
-    <div class="cols">
-      <div class="col"><h3 data-t="ok">يعمل</h3>
-        <ul class="checks">
-          <li data-t="ok1">الإقلاع عبر UEFI على الحاسوب في VMware وQEMU</li>
-          <li data-t="ok2">جلسة سطح المكتب: مركّب النوافذ، الشريط، شاشة القفل، حوارات النظام</li>
-          <li data-t="ok3">المتجر والإعدادات والملفات كتطبيقات مستقلة، وحزم موقّعة من خادم المتجر</li>
-          <li data-t="ok4">تحديثات النظام الموقّعة على النسختين A/B مع الرجوع التلقائي</li>
-          <li data-t="ok5">مكالمات صوت وصورة مشفّرة من طرف إلى طرف عبر خادمنا ومرحِّله، مع الصوت وكاميرات USB في النواة</li>
-          <li data-t="ok6">الملفات ومحرّر النصوص والطرفية ومتصفح وضع القراءة</li>
-        </ul>
-      </div>
-      <div class="col"><h3 data-t="no">لا يعمل بعد</h3>
-        <ul class="checks no">
-          <li data-t="no1">محرّك الويب الكامل: المتصفح يعرض الصفحات حالياً في وضع القراءة فقط</li>
-          <li data-t="no2">تعريفات Wi-Fi للأجهزة الحقيقية</li>
-          <li data-t="no3">تشفير القرص: الخيار في برنامج التثبيت معطّل حتى تستطيع النواة فتح قرص مشفّر عند الإقلاع</li>
-          <li data-t="no5">برنامج التثبيت الرسومي ما زال قيد الإنهاء</li>
-          <li data-t="no4">نسخة الهاتف ليست جزءاً من هذا الإصدار، والتشغيل المباشر على الأجهزة الحقيقية ما زال قيد الاختبار</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section id="security" class="sec">
-    <h2 data-t="sec">الخصوصية والأمان</h2>
-    <p class="lead" data-t="secl">جهازك لا يثق بخادمنا: كل ما يُثبَّت يفحصه الجهاز بنفسه.</p>
-    <ul class="checks">
-      <li data-t="c1">التطبيقات والفهرس وصور النظام موقّعة بثلاثة مفاتيح منفصلة (النظام، تطبيقات النظام، المتجر). يحفظها على هذا الخادم برنامج توقيع مستقل بمستخدم خاص، لا يوقّع إلا بصمات بصيغة ثابتة، بحدّ لعدد التواقيع، ويسجّل كل توقيع.</li>
-      <li data-t="c2">الجهاز يتحقق من كل توقيع بمفاتيح الثقة المدمجة في النظام ويرفض كل ما هو غير موقّع أو موقّع بمفتاح ملغى – مهما قال الخادم.</li>
-      <li data-t="c3">لا يوجد على الخادم أي وصول عن بعد إلى الأجهزة: لا أوامر، لا تحكم، لا تثبيت صامت.</li>
-      <li data-t="c4">هذه الصفحة بلا ملفات تعريف ارتباط، بلا تتبّع، بلا خطوط أو نصوص من جهات خارجية، ولا نحفظ عناوين IP للزوار.</li>
-      <li data-t="c5">كل ملف للتنزيل يأتي مع بصمة SHA-256 وتوقيع Ed25519 يمكنك التحقق منهما بنفسك.</li>
-    </ul>
-  </section>
-
-  <section id="download" class="dl">
-    <h2 data-t="dl">التنزيل والتثبيت</h2>
-    <div id="releases"><p class="muted" data-t="dl0">تحميل قائمة الإصدارات… إذا لم تظهر، فافتح ‎/downloads/‎ مباشرة.</p></div>
-    <details>
-      <summary data-t="vh">كيف أتحقق من الملف؟</summary>
-      <p data-t="vp1">١. البصمة: احسب SHA-256 وقارنها بالقيمة المعروضة هنا.</p>
-      <pre>sha256sum &lt;file&gt;                              # Linux
-shasum -a 256 &lt;file&gt;                           # macOS
-Get-FileHash &lt;file&gt; -Algorithm SHA256          # Windows PowerShell</pre>
-      <p data-t="vp2">٢. التوقيع: نزّل ملف ‎.sig‎ وملف المفاتيح ‎ultar-allowed-signers‎ ثم تحقّق بأداة ssh-keygen الموجودة في Linux وmacOS وWindows 10/11:</p>
-      <pre>ssh-keygen -Y verify -f ultar-allowed-signers -I release@ultar.code-craft.tech \
-  -n ultar-release -s &lt;file&gt;.sig &lt; &lt;file&gt;</pre>
-      <p><a href="/downloads/ultar-allowed-signers" data-t="keys">ملف المفاتيح ultar-allowed-signers</a></p>
-    </details>
-    <details>
-      <summary data-t="gu">التثبيت على حاسوب عبر USB</summary>
-      <ol>
-        <li data-t="gu1">نزّل صورة USB ‏(‎.img‎) وتحقّق من بصمتها وتوقيعها.</li>
-        <li data-t="gu2">اكتبها على ذاكرة USB (8 GB على الأقل) كصورة خام، مثلاً بالأمر dd في لينكس أو بأداة لكتابة الصور الخام. كل ما على الذاكرة سيُمسح.</li>
-        <li data-t="gu3">أقلع الحاسوب من الذاكرة عبر قائمة الإقلاع UEFI. عطّل Secure Boot لأن المحمّل غير موقّع منه بعد.</li>
-        <li data-t="gu4">برنامج التثبيت يكتب النظام على قرص فارغ ويمسح كل ما عليه – استخدم جهاز اختبار أو قرصاً فارغاً.</li>
-      </ol>
-      <pre>sudo dd if=&lt;file&gt;.img of=/dev/sdX bs=4M status=progress conv=fsync</pre>
-    </details>
-  </section>
-</main>
-
-<footer>
-  <p><b>Ultar OS</b> · <span data-t="by">تطوير</span> محمد أنس قرة محمد · Mohamad Anas Kara Mohamad</p>
-  <p><a href="https://code-craft.tech" rel="noopener noreferrer">KM Code Craft</a> · <a href="mailto:info@code-craft.tech">info@code-craft.tech</a></p>
-</footer>
+<main id="main"><section class="hero"><div class="hero-in"><div class="hero-tx"><p class="badge">Ultar OS 0.8 تجريبي · نواة خاصة مكتوبة بلغة Rust</p><h1>نظام تشغيل مستقل، العربية أولاً.</h1><p class="lead">Ultar OS نظام مبني من الأساس لدى KM Code Craft: نواة خاصة بلغة Rust، وواجهة لسطح المكتب وللخادم وللهاتف، ومتجر تطبيقات موقّع، وكل تطبيق في خلية معزولة بأقل الصلاحيات.</p><div class="cta"><a class="btn primary" href="/download/">تنزيل Ultar OS</a><a class="btn" href="/releases/">ما الجديد</a></div><p class="tags"><a class="tag" href="#mesh">مجموعة الأجهزة</a><a class="tag" href="#ai">ذكاء اصطناعي محلي</a><a class="tag" href="#security">التشفير والأمان</a><a class="tag" href="/about/">العربية أولاً</a></p><p class="latest" data-latest>جارٍ تحميل أحدث إصدار…</p></div><figure class="hero-img"><img src="/img/shots/apps-ar.webp" alt="قائمة التطبيقات في Ultar OS" width="1440" height="900"></figure></div></section><section class="band"><div class="wrap"><h2>نظام واحد لكل جهاز</h2><p class="lead">القاعدة نفسها والنواة نفسها والأمان نفسه – بواجهة تناسب كل جهاز.</p><div class="cards c4"><article class="card"><p class="kicker">Desktop</p><h3>لحاسوبك المكتبي والمحمول</h3><p>شريط وقائمة تطبيقات وبحث وإعدادات سريعة، فاتح وداكن، العربية من اليمين لليسار في كل مكان.</p><a class="more" href="/desktop/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article><article class="card"><p class="kicker">Server</p><h3>لخادمك</h3><p>بلا شاشة: إدارة عبر SSH بالمفاتيح فقط وواجهة ويب مشفّرة.</p><a class="more" href="/server/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article><article class="card"><p class="kicker">الهاتف</p><h3>لهاتفك</h3><p>واجهة خاصة باللمس: شاشة قفل، شاشة رئيسية، إعدادات سريعة. إصدار تجريبي.</p><a class="more" href="/phone/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article><article class="card"><p class="kicker">المجموعة</p><h3>لكل أجهزتك معاً</h3><p>اقرن أجهزتك مرة واحدة وتابع ما تعمل عليه على جهاز آخر – مشفّر من طرف إلى طرف.</p><a class="more" href="/mesh/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article></div></div></section><section class="band alt" id="mesh"><div class="wrap"><div class="split"><div class="split-tx"><p class="kicker">مجموعة الأجهزة</p><h2>أجهزتك فريق واحد</h2><p>ابدأ على الهاتف وتابع على الحاسوب. أجهزتك تجد بعضها، تُقرَن مرة واحدة برمز من ستة أرقام، وتتبادل العمل والملفات والحافظة – مشفّرة من طرف إلى طرف، ولا شيء يصل دون سؤالك.</p><ul class="checks dot"><li>«المتابعة على جهاز آخر» من قائمة أي تطبيق – والجهاز الهدف يسأل دائماً</li><li>حافظة مشتركة بين الأجهزة المقترنة؛ ما هو سرّي لا يغادر الجهاز</li><li>جهاز ضعيف يستعير نموذج الذكاء الاصطناعي من جهاز أقوى – بإذنك</li><li>في الشبكة نفسها مباشرة، وعبر الإنترنت من خلال مرحِّل لا يرى إلا نصاً مشفّراً</li></ul><div class="cta"><a class="btn" href="/mesh/">مجموعة الأجهزة</a></div></div><figure class="split-img"><img src="/img/shots/handoff-ar.webp" alt="سؤال الجهاز الهدف قبل المتابعة" loading="lazy" width="1440" height="900"></figure></div></div></section><section class="band" id="ai"><div class="wrap"><div class="split rev"><div class="split-tx"><p class="kicker">الذكاء الاصطناعي المحلي</p><h2>مساعد يفكّر على جهازك</h2><p>اطلب بكلماتك – «افتح الملفات»، «أطفئ البلوتوث»، «تابع هذا على الحاسوب» – والمساعد ينفّذ عبر النظام بصلاحيات ضيقة. كل خطوة مرئية، وما هو خطير يحتاج إلى تأكيدك. وهو مطفأ حتى تشغّله أنت.</p><div class="cta"><a class="btn" href="/assistant/">المساعد</a></div></div><div class="split-aside"><ol class="ladder"><li><b>نموذج على جهازك</b><span>أفضل خيار: لا شيء يغادر الجهاز.</span></li><li><b>نموذج من جهاز مقترن</b><span>عبر المجموعة المشفّرة، إن سمح الجهاز بذلك.</span></li><li><b>نموذج سحابي بمفتاحك</b><span>آخر خيار فقط، وبمفتاحك الخاص لدى المزوّد.</span></li><li><b>أصغر مساعدة</b><span>أوامر ثابتة وأجوبة عن النظام بثلاث لغات – دون أي نموذج.</span></li></ol></div></div></div></section><section class="band alt" id="security"><div class="wrap"><div class="split"><div class="split-tx"><p class="kicker">التشفير والأمان</p><h2>بياناتك مشفّرة، وجهازك لا يثق إلا بالتواقيع</h2><p>جهازك لا يثق بخادمنا: يفحص بنفسه توقيع كل ما يُثبَّت – النظام والتعريفات والتطبيقات – ويرفض ما ليس موقّعاً.</p><ul class="checks dot"><li>تشفير قسم البيانات (LUKS2، AES-XTS) بعبارة مرور وشاشة فتح عند الإقلاع؛ المفاتيح تُمسح عند الإطفاء – جديد، يأتي مع الإصدارات القادمة</li><li>مكالمات صوت وصورة مشفّرة من طرف إلى طرف – الخادم لا يعرف ولا يحفظ شيئاً عنها</li><li>كل تطبيق في خليته بأقل الصلاحيات، والأجهزة لا تصل إلى ذاكرة ليست لها (IOMMU)</li><li>تحديثات موقّعة بنسختين A/B مع رجوع تلقائي وحماية من النسخ الأقدم</li></ul><div class="cta"><a class="btn" href="/security/">الأمان والخصوصية</a></div></div><figure class="split-img"><img src="/img/shots/permission-ar.webp" alt="حوار صلاحية من النظام" loading="lazy" width="1440" height="900"></figure></div></div></section><section class="band"><div class="wrap"><h2>صور من النظام</h2><div class="strip"><figure><img src="/img/shots/desktop-ar.webp" alt="سطح المكتب: الشريط والبحث والتطبيقات" loading="lazy" width="1440" height="900"><figcaption>سطح المكتب: الشريط والبحث والتطبيقات</figcaption></figure><figure><img src="/img/shots/overview-ar.webp" alt="نظرة عامة على النوافذ" loading="lazy" width="1440" height="900"><figcaption>نظرة عامة على النوافذ</figcaption></figure><figure><img src="/img/shots/quick-ar.webp" alt="الإعدادات السريعة" loading="lazy" width="1440" height="900"><figcaption>الإعدادات السريعة</figcaption></figure><figure><img src="/img/shots/lock-ar.webp" alt="شاشة القفل" loading="lazy" width="1440" height="900"><figcaption>شاشة القفل</figcaption></figure></div><p class="muted small">صور من برنامج واجهة Ultar OS الحقيقي (صور الاختبار الآلي)، وليست تصاميم.</p></div></section><section class="band alt"><div class="wrap"><h2>وعدنا لك</h2><p class="lead">هذا ما نبني Ultar OS من أجله. كل قرار في النظام يُقاس بهذه الوعود.</p><div class="cards c4"><article class="card"><h3>سريع من أول لمسة</h3><p>يقلع خلال ثوانٍ، ويستجيب فوراً، ويستهلك القليل من الذاكرة – فيبقى جهازك سريعاً بعد سنوات كما في يومه الأول.</p></article><article class="card"><h3>جهازك ملكك</h3><p>لا برامج مخفية، لا إعلانات، لا تتبّع. لا شيء يعمل على جهازك دون علمك.</p></article><article class="card"><h3>خصوصية بلا تنازل</h3><p>مكالماتك مشفّرة من طرف إلى طرف، وبياناتك لا تغادر جهازك إلا بإذنك، والتشخيص والموقع مطفآن من البداية.</p></article><article class="card"><h3>يعمل بلا إنترنت</h3><p>التثبيت والتعريفات تعمل دون اتصال، والمتجر يعمل بآخر فهرس موثوق – يكفي ذاكرة USB.</p></article></div><div class="cta"><a class="btn" href="/about/">كل الوعود</a></div></div></section><section class="band"><div class="wrap"><h2>المتجر والعتاد</h2><div class="cards c3"><article class="card"><h3>متجر Ultar</h3><p>فهرس موقّع عبر HTTPS أو من ذاكرة USB. يعمل دون حساب ودون إنترنت بآخر فهرس موثوق.</p><a class="more" href="/apps/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article><article class="card"><h3>العتاد المختبَر</h3><p>على أي أجهزة يعمل Ultar OS اليوم، وما الذي ما زال قيد الاختبار.</p><a class="more" href="/hardware/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article><article class="card"><h3>نواة Ultar</h3><p>نواة خاصة بلغة Rust تجهز في المحاكي خلال نحو 145 ميلي ثانية، مع نحو 2 450 اختباراً آلياً.</p><a class="more" href="/kernel/">اعرف المزيد <span aria-hidden="true" class="arr">›</span></a></article></div></div></section><section class="band alt"><div class="wrap"><h2>آخر الأخبار</h2><div class="news"><article class="card news-item"><p class="kicker"><time datetime="2026-11-28">2026-11-28</time></p><h3>تشفير البيانات وSSH وشبكة USB-C على نواة Ultar</h3><p>برنامج التثبيت يشفّر قسم البيانات بعبارة مرور، ويطلبها النظام عند الإقلاع بشاشة فتح رسومية. خادم SSH مكتوب بلغة Rust يعمل مباشرة على نواتنا (مفاتيح فقط)، والاتصال بالشبكة عبر كابل USB-C يعمل. وتُطبَّق اللغة والمظهر وحجم النص فوراً دون إعادة تشغيل.</p></article><article class="card news-item"><p class="kicker"><time datetime="2026-11-28">2026-11-28</time></p><h3>الإصدار 0.8.1: تحديثات النظام عبر الشبكة</h3><p>الإعدادات ← تحديث النظام: بحث، تنزيل، تثبيت، ثم إعادة تشغيل. يُكتب التحديث في القسم الثاني (A/B) وتبقى النسخة السابقة جاهزة. الأجهزة المثبّت عليها 0.8.0 تحتاج إلى إعادة تثبيت مرة واحدة. التفاصيل في <a href="/update/">صفحة التحديث</a>.</p></article><article class="card news-item"><p class="kicker"><time datetime="2026-11-26">2026-11-26</time></p><h3>التثبيت الرسومي مكتمل ومختبَر</h3><p>الخطوات الست عشرة كلها تُختبر آلياً: من اللغة حتى إعادة التشغيل، ثم الإقلاع الأول من القرص المثبّت. ويأخذ الإقلاع الأول كل اختياراتك: اللغة ولوحة المفاتيح والمنطقة الزمنية والمكوّنات.</p></article></div><div class="cta"><a class="btn" href="/news/">كل الأخبار</a></div></div></section><section class="band" id="contact"><div class="wrap"><h2>أسئلة؟ نحن هنا.</h2><p class="lead">اكتب لنا على <a href="mailto:info@code-craft.tech" rel="noopener noreferrer">info@code-craft.tech</a> – بالعربية أو الإنجليزية أو الألمانية.</p><div class="cta"><a class="btn" href="/support/">أسئلة شائعة</a><a class="btn primary" href="/download/">تنزيل Ultar OS</a></div></div></section></main>
+<footer class="foot"><div class="wrap"><div class="fcols"><div><h2 class="fh">المنتجات</h2><ul><li><a href="/desktop/">Ultar Desktop</a></li><li><a href="/server/">Ultar Server</a></li><li><a href="/phone/">Ultar للهاتف</a></li><li><a href="/kernel/">نواة Ultar</a></li><li><a href="/mesh/">مجموعة الأجهزة</a></li><li><a href="/assistant/">المساعد</a></li><li><a href="/apps/">المتجر والتطبيقات</a></li><li><a href="/hardware/">العتاد المختبَر</a></li></ul></div><div><h2 class="fh">التنزيل</h2><ul><li><a href="/download/desktop/">Desktop</a></li><li><a href="/download/server/">Server</a></li><li><a href="/download/phone/">الهاتف</a></li><li><a href="/download/vm/">آلة افتراضية</a></li><li><a href="/releases/">كل الإصدارات</a></li></ul></div><div><h2 class="fh">الأدلّة</h2><ul><li><a href="/install/desktop/">التثبيت على حاسوب</a></li><li><a href="/install/vm/">في آلة افتراضية</a></li><li><a href="/install/phone/">على الهاتف</a></li><li><a href="/install/verify/">التحقق من التنزيل</a></li><li><a href="/update/">تحديث النظام</a></li></ul></div><div><h2 class="fh">المساعدة</h2><ul><li><a href="/support/">أسئلة شائعة</a></li><li><a href="/account/">حساب Ultar</a></li><li><a href="/security/">الأمان والخصوصية</a></li><li><a href="/developers/">للمطوّرين</a></li></ul></div><div><h2 class="fh">KM Code Craft</h2><ul><li><a href="/about/">من نحن</a></li><li><a href="/news/">الأخبار</a></li><li><a href="/privacy/">خصوصية هذا الموقع</a></li><li><a href="https://code-craft.tech" rel="noopener noreferrer">code-craft.tech</a></li></ul></div></div><div class="fbottom"><p><b>Ultar OS</b> · تطوير محمد أنس قرة محمد · Mohamad Anas Kara Mohamad</p><p>© 2026 <a href="https://code-craft.tech" rel="noopener noreferrer">KM Code Craft</a> · <a href="mailto:info@code-craft.tech">info@code-craft.tech</a> · <a href="/privacy/">خصوصية هذا الموقع</a> · <a href="#top">إلى الأعلى</a></p></div></div></footer>
 </body>
 </html>
