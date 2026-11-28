@@ -8,6 +8,7 @@
 #include <asm/prctl.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdint.h>
@@ -19,6 +20,10 @@
 #include <sys/ucontext.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#ifndef SS_AUTODISARM
+#define SS_AUTODISARM (1U << 31)
+#endif
 
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
@@ -52,7 +57,10 @@ static void placement(void) {
     char *nr2 = map_at(hint + 8 * PG, PG, PROT_READ | PROT_WRITE, MAP_FIXED_NOREPLACE);
     check(nr2 == hint + 8 * PG, "MAP_FIXED_NOREPLACE: free -> that address");
     char *kern = map_at((void *)0x20000000, PG, PROT_READ, MAP_FIXED_NOREPLACE);
-    check(kern == MAP_FAILED && errno == EEXIST, "MAP_FIXED_NOREPLACE: the kernel's range -> EEXIST");
+    // the Ultar kernel keeps 0x10000000..0x7c000000 for itself (EEXIST); Linux maps it there – never elsewhere
+    check(kern == MAP_FAILED ? errno == EEXIST : kern == (char *)0x20000000,
+          "MAP_FIXED_NOREPLACE: a range the kernel keeps -> EEXIST, never another address");
+    if (kern != MAP_FAILED) munmap(kern, PG);
     got[0] = 42;
     char *fx = map_at(got, PG, PROT_READ | PROT_WRITE, MAP_FIXED);
     check(fx == got && fx[0] == 0, "MAP_FIXED replaces a mapping");
