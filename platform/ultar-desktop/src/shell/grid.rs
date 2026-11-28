@@ -22,11 +22,12 @@ pub(super) fn app_menu(s: &mut Shell, app: &str, id: u32) -> Outcome {
         item::NEW_WINDOW => launch(s, app, Opening::new_window()),
         item::DETAILS => launch(s, STORE, Opening::store_page(app, false)),
         item::UNINSTALL => launch(s, STORE, Opening::store_page(app, true)),
+        item::DESKTOP => super::desk::toggle_shortcut(s, app),
         item::PIN => {
-            if s.d.pinned.iter().any(|p| p == app) {
-                s.d.pinned.retain(|p| p != app);
+            if s.d.places.pinned.iter().any(|p| p == app) {
+                s.d.places.pinned.retain(|p| p != app);
             } else if s.d.catalog.iter().any(|a| a.id == app) {
-                s.d.pinned.push(app.to_owned());
+                s.d.places.pinned.push(app.to_owned());
             }
             Outcome::surfaces()
         }

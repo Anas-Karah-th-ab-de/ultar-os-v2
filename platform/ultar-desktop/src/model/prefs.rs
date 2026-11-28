@@ -1,6 +1,7 @@
 //! What the person set in Settings that changes how the shell looks and reads (the settings
 //! service's values, taken while the shell runs – a change shows at once, without a new
-//! start): accent colour, text size, the clock of the bar, the time zone, the bar's icons.
+//! start): accent colour, text size, the clock of the bar, the time zone, the bar's icons
+//! and the desktop's shortcuts.
 
 use ultar_i18n::datefmt::ClockStyle;
 use ultar_ui::tokens::Accent;
@@ -36,6 +37,136 @@ impl Default for ClockPrefs {
     }
 }
 
+/// Size of the desktop's shortcuts (`desktop.icons.size`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum IconSize {
+    /// Small.
+    Small,
+    /// Medium (standard).
+    #[default]
+    Medium,
+    /// Large.
+    Large,
+}
+
+impl IconSize {
+    /// All sizes, small to large.
+    pub const ALL: [IconSize; 3] = [IconSize::Small, IconSize::Medium, IconSize::Large];
+
+    /// The value of the setting (`small`, `medium`, `large`).
+    pub fn parse(word: &str) -> Option<IconSize> {
+        IconSize::ALL.into_iter().find(|s| s.word() == word)
+    }
+
+    /// The word of the setting.
+    pub const fn word(self) -> &'static str {
+        match self {
+            IconSize::Small => "small",
+            IconSize::Medium => "medium",
+            IconSize::Large => "large",
+        }
+    }
+
+    /// Edge of the shortcut's tile in points.
+    pub fn side(self) -> u16 {
+        use ultar_ui::tokens::{size, Space};
+        let side = match self {
+            IconSize::Small => size::TARGET_POINTER_MIN,
+            IconSize::Medium => Space::S48.points(),
+            IconSize::Large => 2.0 * Space::S32.points(),
+        };
+        side as u16
+    }
+}
+
+/// The corner the first shortcut stands in (`desktop.icons.start_corner`); the others
+/// follow down (or up) the column, then in the next column away from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Corner {
+    /// Top, start side (standard).
+    #[default]
+    TopStart,
+    /// Top, end side.
+    TopEnd,
+    /// Bottom, start side.
+    BottomStart,
+    /// Bottom, end side.
+    BottomEnd,
+}
+
+impl Corner {
+    /// The value of the setting (`top_start` …).
+    pub fn parse(word: &str) -> Option<Corner> {
+        Some(match word {
+            "top_start" => Corner::TopStart,
+            "top_end" => Corner::TopEnd,
+            "bottom_start" => Corner::BottomStart,
+            "bottom_end" => Corner::BottomEnd,
+            _ => return None,
+        })
+    }
+
+    /// The corner is at the bottom.
+    pub fn bottom(self) -> bool {
+        matches!(self, Corner::BottomStart | Corner::BottomEnd)
+    }
+
+    /// The corner is on the end side.
+    pub fn end(self) -> bool {
+        matches!(self, Corner::TopEnd | Corner::BottomEnd)
+    }
+}
+
+/// The desktop's shortcuts as set in Settings › Desktop bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DeskPrefs {
+    /// `desktop.icons.enabled`: shortcuts shown at all.
+    pub shown: bool,
+    /// `desktop.icons.size`.
+    pub size: IconSize,
+    /// `desktop.icons.start_corner`.
+    pub corner: Corner,
+}
+
+impl Default for DeskPrefs {
+    fn default() -> DeskPrefs {
+        DeskPrefs {
+            shown: true,
+            size: IconSize::Medium,
+            corner: Corner::TopStart,
+        }
+    }
+}
+
+impl DeskPrefs {
+    /// The settings of the desktop's shortcuts.
+    pub const KEYS: [&'static str; 3] = [
+        "desktop.icons.enabled",
+        "desktop.icons.size",
+        "desktop.icons.start_corner",
+    ];
+
+    /// Takes one of [`DeskPrefs::KEYS`]; `false` for any other key or value type.
+    pub fn apply(
+        &mut self,
+        key: &str,
+        value: &ultar_bus::messages::settings::SettingValue,
+    ) -> bool {
+        use ultar_bus::messages::settings::SettingValue;
+        match (key, value) {
+            ("desktop.icons.enabled", SettingValue::Flag(on)) => self.shown = *on,
+            ("desktop.icons.size", SettingValue::Text(t)) => {
+                self.size = IconSize::parse(t).unwrap_or_default();
+            }
+            ("desktop.icons.start_corner", SettingValue::Text(t)) => {
+                self.corner = Corner::parse(t).unwrap_or_default();
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
 /// The shell's preferences.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prefs {
@@ -55,6 +186,8 @@ pub struct Prefs {
     pub show_volumes: bool,
     /// `power.show_battery_percent`.
     pub battery_percent: bool,
+    /// The desktop's shortcuts (`desktop.icons.*`).
+    pub desk: DeskPrefs,
 }
 
 impl Default for Prefs {
@@ -68,6 +201,7 @@ impl Default for Prefs {
             show_trash: true,
             show_volumes: true,
             battery_percent: false,
+            desk: DeskPrefs::default(),
         }
     }
 }
@@ -100,5 +234,25 @@ mod tests {
         assert_eq!(p.offset_s(1_795_636_560_000, 0), 3 * 3600);
         p.font_percent = 500;
         assert_eq!(p.font_factor(), 2.0);
+    }
+
+    #[test]
+    fn the_desktop_icons_follow_their_settings() {
+        use ultar_bus::messages::settings::SettingValue;
+        let mut d = DeskPrefs::default();
+        assert!(d.shown && d.size == IconSize::Medium && d.corner == Corner::TopStart);
+        let text = |t: &str| SettingValue::Text(t.into());
+        assert!(d.apply("desktop.icons.enabled", &SettingValue::Flag(false)));
+        assert!(d.apply("desktop.icons.size", &text("large")));
+        assert!(d.apply("desktop.icons.start_corner", &text("bottom_end")));
+        assert!(!d.shown && d.size == IconSize::Large);
+        assert!(d.corner.bottom() && d.corner.end());
+        assert!(d.apply("desktop.icons.size", &text("huge")));
+        assert_eq!(d.size, IconSize::Medium, "an unknown size is the standard");
+        assert!(!d.apply("desktop.icons.size", &SettingValue::Flag(true)));
+        assert!(!d.apply("bar.show_trash", &SettingValue::Flag(true)));
+        let sides: Vec<u16> = IconSize::ALL.iter().map(|s| s.side()).collect();
+        assert_eq!(sides, vec![32, 48, 64]);
+        assert!(Corner::parse("middle").is_none());
     }
 }

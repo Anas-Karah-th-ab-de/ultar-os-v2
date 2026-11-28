@@ -195,7 +195,7 @@ Die Zeichnung zeigt die Latein-Richtung; in Arabisch ist alles gespiegelt (Über
 | **Übersicht** | Oben Suchfeld (sofort tippen). Mitte: Fenster der aktuellen Arbeitsfläche als Vorschau (Klick holt, Kreuz schließt, Ziehen verschiebt auf Arbeitsfläche/Bildschirm). Darüber: Arbeitsflächen-Streifen (dynamisch: immer eine leere am Ende). |
 | **Suche** | Ein Feld für alles, Ergebnisse gruppiert: Apps · Einstellungen (springt zur Zeile) · Dateien · Rechnen/Einheiten · Zeichen · Store (nicht installierte Apps) · Befehle („ausschalten“). Arabische Suche ohne Rücksicht auf Vokalzeichen/Schreibvarianten. Quellen einzeln abschaltbar. |
 | **App-Raster** | alle Apps alphabetisch (arabische Reihenfolge), Ordner per Ziehen, Seiten; Rechtsklick wie im Dock + Deinstallieren. |
-| **Arbeitsfläche (Hintergrund)** | Dateien/Ordner des Schreibtisch-Ordners als Symbole (abschaltbar); Rechtsklick: Neuer Ordner, Einfügen, Hintergrund ändern, Anzeige-Einstellungen, Terminal hier. |
+| **Arbeitsfläche (Hintergrund)** | Dateien/Ordner des Schreibtisch-Ordners als Symbole (abschaltbar); dazu App-Verknüpfungen der Person (Klick wählt, Doppelklick öffnet; Rechtsklick: Öffnen, Umbenennen, An Leiste anheften, Vom Schreibtisch entfernen, Eigenschaften; je Person gespeichert; Größe und Startecke aus `desktop.icons.*`). Rechtsklick auf den Hintergrund: Neue Verknüpfung (App im App-Raster wählen), Neuer Ordner, Einfügen, Symbolgröße, Symbole anzeigen, Nach Name sortieren, Hintergrund ändern, Anzeige-Einstellungen, Schreibtisch anpassen, Terminal hier. Im App-Raster hat jede App „Zum Schreibtisch hinzufügen“. |
 
 ### 5.2 Fenster
 

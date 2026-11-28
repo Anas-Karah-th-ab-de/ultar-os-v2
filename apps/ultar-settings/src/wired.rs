@@ -76,6 +76,10 @@ pub const WIRED: &[(&str, &str)] = &[
     ("bar.show_trash", "shell"),
     ("bar.show_volumes", "shell"),
     ("power.show_battery_percent", "shell"),
+    // The app shortcuts on the desktop background: shown, their size, their corner.
+    ("desktop.icons.enabled", "shell"),
+    ("desktop.icons.size", "shell"),
+    ("desktop.icons.start_corner", "shell"),
     // The power mode (quick settings), followed by displayd and the updater as well.
     ("power.mode", "shell + displayd + updated"),
     // Do not disturb: the shell shows no banners.
@@ -373,6 +377,9 @@ mod tests {
             "bar.icon_alignment",
             "power.show_battery_percent",
             "notifications.do_not_disturb",
+            "desktop.icons.enabled",
+            "desktop.icons.size",
+            "desktop.icons.start_corner",
         ] {
             assert!(takes_effect(panel(key), key), "{key}");
         }
@@ -389,7 +396,6 @@ mod tests {
             "notifications.dnd_schedule.enabled",
             "bar.autohide",
             "dock.size",
-            "desktop.icons.enabled",
             "datetime.automatic",
         ] {
             assert!(!takes_effect(panel(key), key), "{key}");

@@ -16,6 +16,8 @@ use ultar_ui::tokens::ThemeKind;
 const ELSEWHERE: [&str; 5] = ["files.", "win.", "desk.icon", "toast.", "shell.drive"];
 /// The notification contract has no actions yet (see the conformance matrix).
 const NOT_YET: [&str; 1] = ["note.action"];
+/// The app whose menu pins and unpins.
+const BROWSER: &str = "org.ultar.browser";
 
 fn actions() -> BTreeSet<String> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/ui/CLICKS.md");
@@ -86,10 +88,11 @@ fn check(action: &str) -> bool {
         }
         "apps.pin" => {
             let mut h = grid();
-            menu(&mut h, "org.ultar.browser", item::PIN);
-            let gone = !h.shell.d.pinned.iter().any(|p| p == "org.ultar.browser");
-            menu(&mut h, "org.ultar.browser", item::PIN);
-            gone && h.shell.d.pinned.iter().any(|p| p == "org.ultar.browser")
+            menu(&mut h, BROWSER, item::PIN);
+            let pinned = |h: &Harness| h.shell.d.places.pinned.contains(&BROWSER.to_owned());
+            let gone = !pinned(&h);
+            menu(&mut h, BROWSER, item::PIN);
+            gone && pinned(&h)
         }
         // The Store opens the app's page or its removal dialog (launcher.start version 2);
         // an app of the base system cannot be removed.

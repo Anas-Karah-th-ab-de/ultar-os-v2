@@ -2,6 +2,19 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Rechtsklick auf den Schreibtisch und App-Verknüpfungen (28.11.2026)
+
+| Baustein | Stand |
+|---|---|
+| Rechtsklick auf den Hintergrund | Menü am Zeiger (öffnet zur Endseite, kippt an Rand und Leiste): Neue Verknüpfung…, Neuer Ordner und Einfügen (gesperrt, bis der Schreibtisch-Ordner von Files erreichbar ist), große/mittlere/kleine Symbole, Schreibtischsymbole anzeigen, Nach Name sortieren, Hintergrund ändern, Anzeigeeinstellungen, Schreibtisch anpassen, Im Terminal öffnen |
+| Verknüpfungen | anlegen über „Neue Verknüpfung…“ (App-Raster wählt die App) oder im Menü einer App im App-Raster („Zum Schreibtisch hinzufügen“/„Vom Schreibtisch entfernen“); Klick wählt, Doppelklick öffnet (Fenster nach vorn oder Start); Rechtsklick: Öffnen, Umbenennen (Dialog, Enter), An Leiste anheften/lösen, Vom Schreibtisch entfernen, Eigenschaften (Einstellungen › App) |
+| Gespeichert | je Person neben der Hülle (`<state>/<person>/desktop.json`), beim Start gelesen; nicht installierte Apps werden nicht gezeigt |
+| Einstellungen | `desktop.icons.enabled`, `.size`, `.start_corner` wirken sofort (vorher „noch nicht verfügbar“) |
+| Werkzeugkasten | `BrickKind::DeskIcon` (Kachel 32/48/64, Name zweizeilig, Auswahl mit Akzentkante), `Ui::set_brick` (Auswahl ohne Neuaufbau, damit der Doppelklick gelingt), `HostEvent::Menu` trägt jetzt den Zeigerpunkt |
+| Geprüft | `tests/desk.rs` (Klicks, Menüs, Umbenennen, Ecken, Arabisch, Leiste oben) und 16 neue Bildvergleiche (beide Themen, beide Sprachen) |
+
+Offen: Dateien und Ordner des Schreibtisch-Ordners selbst (Files `--desktop` hat dafür eine eigene Hintergrundfläche, die noch nicht gestartet wird) und Verknüpfungen per Ziehen aus dem App-Raster.
+
 ## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
 
 Befund des Eigentümers in VMware (v2 gegen v1): das Firmenlogo fehlte an mehreren Stellen, besonders bei der

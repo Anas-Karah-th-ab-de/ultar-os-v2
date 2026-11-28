@@ -41,6 +41,8 @@ pub mod item {
     pub const DETAILS: u32 = 4;
     /// Remove the app.
     pub const UNINSTALL: u32 = 5;
+    /// Put a shortcut on the desktop / take it off.
+    pub const DESKTOP: u32 = 6;
 }
 
 /// The categories that have apps (tabs after "All").
@@ -114,6 +116,7 @@ pub fn build(
         .add_sized(card, Flex::column().gap(Space::S16), Sizing::grow(1))?;
     if d.overview.query.trim().is_empty() && category.is_none() {
         let pinned: Vec<AppInfo> = d
+            .places
             .pinned
             .iter()
             .filter_map(|id| d.catalog.iter().find(|a| &a.id == id))
@@ -128,10 +131,20 @@ pub fn build(
             Text::new(Label::key("desk.apps.none")).color(ColorRole::TextMuted),
         )?;
     } else {
-        section(&mut view, body, d, "desk.apps.title", &list)?;
+        section(&mut view, body, d, list_title(d), &list)?;
     }
     footer(&mut view, card)?;
     Ok((view, place))
+}
+
+/// The title of "all apps"; opened by the desktop's "New shortcut" it says what a click
+/// does there (it puts the app's shortcut on the desktop).
+fn list_title(d: &Desktop) -> &'static str {
+    if d.places.picking {
+        "desk.desk.pick"
+    } else {
+        "desk.apps.title"
+    }
 }
 
 fn tabs(
@@ -184,7 +197,8 @@ fn section(
             let id = view.ui.add_sized(row, cell, Sizing::grow(1))?;
             view.mark(id, Target::AppItem(app.id.clone()));
             view.ui.set_context_menu(id, Some(menu(d, app)))?;
-            if !d.presence.launcher && !d.windows.iter().any(|w| w.app_id == app.id) {
+            let runs = d.windows.iter().any(|w| w.app_id == app.id);
+            if !d.presence.launcher && !runs && !d.places.picking {
                 view.ui.set_disabled(id, true)?;
                 view.ui
                     .set_tooltip(id, Some(Label::key("desk.reason.no_launcher")))?;
@@ -202,10 +216,15 @@ fn section(
 pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
     let launcher = d.presence.launcher;
     let gate = |i: MenuItem| if launcher { i } else { i.disabled() };
-    let pin = if d.pinned.contains(&app.id) {
+    let pin = if d.places.pinned.contains(&app.id) {
         "desk.menu.unpin"
     } else {
         "desk.menu.pin"
+    };
+    let desktop = if d.places.on_desktop(&app.id) {
+        "desk.desk.remove_shortcut"
+    } else {
+        "desk.desk.add_shortcut"
     };
     // Details and removal open the app's page in the Store (`store://app/<id>`, with
     // `?action=remove` its removal dialog: the Store holds the right to uninstall). Apps of
@@ -218,6 +237,7 @@ pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
             Label::key("desk.menu.new_window"),
         )),
         MenuItem::new(item::PIN, Label::key(pin)).separated(),
+        MenuItem::new(item::DESKTOP, Label::key(desktop)),
         gate(MenuItem::new(
             item::DETAILS,
             Label::key("desk.apps.details"),

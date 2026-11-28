@@ -1,9 +1,10 @@
 //! The desktop background (the system picture "ultar-noir" of `appearance.wallpaper.*`):
 //! the ground of the theme with the company logo of KM Code Craft in the middle of the work
-//! area, quiet, so it never competes with the windows above it (docs/BRAND.md §4).
+//! area, quiet, so it never competes with the windows above it (docs/BRAND.md §4), and the
+//! person's app shortcuts over it (`view::desk`).
 
 use super::{new_ui, Look, View};
-use crate::model::Shape;
+use crate::model::{Desktop, Shape};
 use ultar_i18n::Translator;
 use ultar_ui::geom::Size;
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Sizing};
@@ -22,8 +23,14 @@ pub fn logo_width(screen: Size) -> u16 {
 }
 
 /// Builds the background for the whole screen; the logo stands in the middle of what the
-/// bar (and the dock) leave free.
-pub fn build(look: Look, screen: Size, shape: Shape, tr: &Translator) -> Result<View, UiError> {
+/// bar (and the dock) leave free, the shortcuts in that area from their corner.
+pub fn build(
+    d: &Desktop,
+    look: Look,
+    screen: Size,
+    shape: Shape,
+    tr: &Translator,
+) -> Result<View, UiError> {
     let mut ui = new_ui(look, screen, tr)?;
     ui.set_background(ColorRole::Ground);
     let (top, bottom) = if shape.is_top() {
@@ -33,16 +40,15 @@ pub fn build(look: Look, screen: Size, shape: Shape, tr: &Translator) -> Result<
     };
     ui.set_root_flex(Flex::column().cross(CrossAlign::Stretch));
     let root = ui.root();
-    // Room of the bar and the dock above and below; the logo centred in what is left.
+    // Room of the bar and the dock above and below; the logo centred in what is left, the
+    // shortcuts over it.
     ui.add_sized(root, Flex::column(), Sizing::AUTO.with_height(top))?;
-    let area = ui.add_sized(
-        root,
-        Flex::column()
-            .main(MainAlign::Center)
-            .cross(CrossAlign::Center),
-        Sizing::grow(1),
-    )?;
+    let area = ui.add_sized(root, Flex::stack(), Sizing::grow(1))?;
     ui.add_sized(root, Flex::column(), Sizing::AUTO.with_height(bottom))?;
+    let middle = Flex::column()
+        .main(MainAlign::Center)
+        .cross(CrossAlign::Center);
+    let middle = ui.add_sized(area, middle, Sizing::grow(1))?;
     let logo = Brick::new(
         BrickKind::Logo {
             width: logo_width(screen),
@@ -50,8 +56,11 @@ pub fn build(look: Look, screen: Size, shape: Shape, tr: &Translator) -> Result<
         },
         Label::key("brand.label.logo"),
     );
-    ui.add(area, logo)?;
-    Ok(View::new(ui))
+    ui.add(middle, logo)?;
+    let mut view = View::new(ui);
+    let height = (screen.h - top - bottom).max(0.0);
+    super::desk::shortcuts(&mut view, area, d, (look, height), tr)?;
+    Ok(view)
 }
 
 #[cfg(test)]
@@ -66,10 +75,26 @@ mod tests {
         assert_eq!(logo_width(Size::new(3840.0, 2160.0)), 420);
         let tr = crate::i18n::translator(Lang::En).expect("catalogs");
         let look = Look::new(Lang::En, ThemeKind::Dark);
-        let view = build(look, Size::new(1280.0, 800.0), Shape::default(), &tr).expect("view");
+        let mut d = Desktop::new(Lang::En);
+        let screen = Size::new(1280.0, 800.0);
+        let view = build(&d, look, screen, Shape::default(), &tr).expect("view");
+        assert!(view.targets.is_empty(), "no shortcuts: nothing to operate");
+        d.places.add("org.ultar.files");
+        d.places.add("org.ultar.not.installed");
+        let view = build(&d, look, screen, Shape::default(), &tr).expect("view");
+        assert_eq!(
+            view.targets
+                .iter()
+                .map(|(_, t)| t.clone())
+                .collect::<Vec<_>>(),
+            vec![crate::view::Target::Shortcut(0)],
+            "only installed apps are shown"
+        );
+        d.prefs.desk.shown = false;
+        let view = build(&d, look, screen, Shape::TOP, &tr).expect("view");
         assert!(
             view.targets.is_empty(),
-            "the background has nothing to operate"
+            "desktop.icons.enabled off hides them"
         );
     }
 }
