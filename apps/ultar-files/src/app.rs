@@ -231,10 +231,7 @@ impl App {
             (Some(shown), Some(scroll)) if *shown == here => self.ui.scroll_offset(scroll).ok(),
             _ => None,
         };
-        let sheet = self
-            .built
-            .sheet
-            .and_then(|n| self.ui.scroll_offset(n).ok());
+        let sheet = self.built.sheet.and_then(|n| self.ui.scroll_offset(n).ok());
         self.builds += 1;
         self.built = match self.mode {
             Mode::Window => {

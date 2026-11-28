@@ -72,12 +72,11 @@ impl ForeignService {
         // `.deb` programs live in the area, Windows programs run with its Wine
         let holds_apps = !self.state.apps.is_empty();
         self.busy = bus.later(move |client| {
-            let result = crate::component::update(&ctx, client, job, &caller, holds_apps)
-                .map(|u| match u {
+            let result =
+                crate::component::update(&ctx, client, job, &caller, holds_apps).map(|u| match u {
                     crate::component::Updated::Cancelled => None,
-                    crate::component::Updated::Installed(_) | crate::component::Updated::Unchanged => {
-                        Some(Vec::new())
-                    }
+                    crate::component::Updated::Installed(_)
+                    | crate::component::Updated::Unchanged => Some(Vec::new()),
                 });
             Box::new(move |s: &mut ForeignService, bus| s.finished(job, result, bus))
         });
@@ -321,7 +320,10 @@ impl Service for ForeignService {
         }
         // an area replaced before the last start is emptied now, before any app of it runs
         let root = &self.ctx.layout.root;
-        if ["linux.old", "linux.new"].iter().any(|n| root.join(n).exists()) {
+        if ["linux.old", "linux.new"]
+            .iter()
+            .any(|n| root.join(n).exists())
+        {
             let ctx = self.ctx.clone();
             self.busy = bus.later(move |_client: &Client| {
                 crate::component::tidy(&ctx);

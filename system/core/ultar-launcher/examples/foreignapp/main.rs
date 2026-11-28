@@ -52,17 +52,31 @@ fn check(ok: bool, what: &str) {
 /// as the service installs it, on this kernel, after the app (its lines pass through).
 fn component_test() {
     let words: Vec<String> = std::env::args().collect();
-    let arg = |name: &str| words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned();
+    let arg = |name: &str| {
+        words
+            .iter()
+            .position(|w| w == name)
+            .and_then(|i| words.get(i + 1))
+            .cloned()
+    };
     let (Some(test), Some(bin)) = (arg("--component"), arg("--bin")) else {
         return;
     };
     let out = std::process::Command::new(&test)
         // below the service's root, where the kernel test's data disk takes new directories
-        .args(["--helper", &format!("{bin}/ultar-foreign"), "--work", "/data/foreign/componenttest"])
+        .args([
+            "--helper",
+            &format!("{bin}/ultar-foreign"),
+            "--work",
+            "/data/foreign/componenttest",
+        ])
         .output()
         .unwrap_or_else(|e| fail(&format!("component: {e}")));
     let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines().chain(String::from_utf8_lossy(&out.stderr).lines().take(20)) {
+    for line in text
+        .lines()
+        .chain(String::from_utf8_lossy(&out.stderr).lines().take(20))
+    {
         println!("{line}");
     }
     // the app's own way is checked whatever the component test says (the script needs both)
@@ -97,7 +111,10 @@ fn main() {
             }
         }
     });
-    check(seen, &format!("the service does not see the Linux area: {last}"));
+    check(
+        seen,
+        &format!("the service does not see the Linux area: {last}"),
+    );
     println!("FOREIGN-APP: service ok");
 
     // 1. Files installs the package of the person (the dialog answers "authorized")
@@ -108,10 +125,14 @@ fn main() {
     let InstallOutcome::Started(job) = world.call(&files, &install).outcome else {
         fail("install did not start");
     };
-    let done = world::end_of(&progress, job, APT_WAIT).unwrap_or_else(|| fail("install did not end"));
+    let done =
+        world::end_of(&progress, job, APT_WAIT).unwrap_or_else(|| fail("install did not end"));
     check(done.step == Step::Done, &format!("install: {done:?}"));
     // the package brings the editor and (Ubuntu 26.04) its settings window: two apps
-    check(done.apps.iter().any(|a| a == APP), &format!("apps: {:?}", done.apps));
+    check(
+        done.apps.iter().any(|a| a == APP),
+        &format!("apps: {:?}", done.apps),
+    );
     let apps = done.apps.clone();
     check(world.asked() >= 1, "the administrator was not asked");
     let status = world.app().unwrap_or_else(|| fail("no launcher entry"));
@@ -141,7 +162,10 @@ fn main() {
         world::poll(Duration::from_secs(600), || world.window_drawn()),
         "no window of the app",
     );
-    println!("FOREIGN-APP: running in apps/{APP} ({} processes)", world.cell_pids().len());
+    println!(
+        "FOREIGN-APP: running in apps/{APP} ({} processes)",
+        world.cell_pids().len()
+    );
     println!("FOREIGN-APP: SHOT");
     std::thread::sleep(Duration::from_secs(args.draw));
     let owned = world.data_owned_by(uid);
@@ -164,7 +188,10 @@ fn main() {
                 keep_data: false,
             },
         );
-        check(removed.outcome == Outcome::Done, &format!("remove {id}: {:?}", removed.outcome));
+        check(
+            removed.outcome == Outcome::Done,
+            &format!("remove {id}: {:?}", removed.outcome),
+        );
         check(
             world::poll(APT_WAIT, || !world.call(&settings, &RuntimeState {}).busy),
             "the service stayed busy",
@@ -177,9 +204,15 @@ fn main() {
         "mousepad stayed in the area",
     );
     check(world.app().is_none(), "the launcher entry stayed");
-    check(world.call(&settings, &List {}).apps.is_empty(), "the service lists it");
+    check(
+        world.call(&settings, &List {}).apps.is_empty(),
+        "the service lists it",
+    );
     check(!world.app_data().exists(), "its data stayed");
-    check(!Path::new("/data/foreign/linux/usr/bin/mousepad").exists(), "the program stayed");
+    check(
+        !Path::new("/data/foreign/linux/usr/bin/mousepad").exists(),
+        "the program stayed",
+    );
     println!("FOREIGN-APP: removed");
     world.stop();
     // the component „Linux-Programme“ as the service installs it, on this kernel

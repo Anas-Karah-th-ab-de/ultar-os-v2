@@ -33,25 +33,32 @@ fn main() -> ExitCode {
         Right::SetId,
         Right::CellChown,
     ]));
-    ultar_svckit::main("ultar-foreign", &["root", "sources", "trusted-keys"], rights, |args, _| {
-        let root = args.required_path("root").map_err(|_| Msg::BadArguments)?;
-        let helper = std::env::current_exe().map_err(|_| Msg::BadArguments)?;
-        // where the person's files may come from: their areas and drives (tests name
-        // their own places); every entry must be absolute
-        let sources: Vec<PathBuf> = match args.option("sources") {
-            Some(list) => list.split(':').map(PathBuf::from).collect(),
-            None => SOURCES.iter().map(PathBuf::from).collect(),
-        };
-        if sources.is_empty() || sources.iter().any(|s| !s.is_absolute()) {
-            return Err(Msg::BadArguments);
-        }
-        let service = ForeignService::new(root, helper, sources);
-        // tests name their own keys; a device checks components against its built-in ones
-        Ok(match args.path("trusted-keys").map_err(|_| Msg::BadArguments)? {
-            Some(dir) => service.with_trusted_keys(dir),
-            None => service,
-        })
-    })
+    ultar_svckit::main(
+        "ultar-foreign",
+        &["root", "sources", "trusted-keys"],
+        rights,
+        |args, _| {
+            let root = args.required_path("root").map_err(|_| Msg::BadArguments)?;
+            let helper = std::env::current_exe().map_err(|_| Msg::BadArguments)?;
+            // where the person's files may come from: their areas and drives (tests name
+            // their own places); every entry must be absolute
+            let sources: Vec<PathBuf> = match args.option("sources") {
+                Some(list) => list.split(':').map(PathBuf::from).collect(),
+                None => SOURCES.iter().map(PathBuf::from).collect(),
+            };
+            if sources.is_empty() || sources.iter().any(|s| !s.is_absolute()) {
+                return Err(Msg::BadArguments);
+            }
+            let service = ForeignService::new(root, helper, sources);
+            // tests name their own keys; a device checks components against its built-in ones
+            Ok(
+                match args.path("trusted-keys").map_err(|_| Msg::BadArguments)? {
+                    Some(dir) => service.with_trusted_keys(dir),
+                    None => service,
+                },
+            )
+        },
+    )
 }
 
 fn code(n: i32) -> ExitCode {

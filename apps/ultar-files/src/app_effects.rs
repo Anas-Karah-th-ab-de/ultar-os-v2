@@ -43,7 +43,8 @@ impl App {
                 Effect::ForeignInstall => self.foreign_install(),
                 Effect::StartApp(app) => {
                     if self.ports.launcher.start(&app).is_err() {
-                        self.state.notice = Some(update::notice_of("files.notice.open_failed", &app));
+                        self.state.notice =
+                            Some(update::notice_of("files.notice.open_failed", &app));
                     }
                 }
             }
