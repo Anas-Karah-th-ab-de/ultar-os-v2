@@ -50,6 +50,27 @@ const RO_KNOWN: u64 =
 const RO_SPARSE: u64 = 0x1;
 const RO_METADATA_CSUM: u64 = 0x400;
 
+/// Checks state and features; the incompatible feature bits when the layout is grown.
+fn features(sb: &[u8]) -> Result<u64, &'static str> {
+    if le16(sb, 0x38) != 0xEF53 {
+        return Err("no ext4");
+    }
+    if le16(sb, 0x3A) & 3 != 1 {
+        return Err("not cleanly unmounted or has errors");
+    }
+    let (compat, incompat, ro) = (le32(sb, 0x5C), le32(sb, 0x60), le32(sb, 0x64));
+    if compat & COMPAT_RESIZE_INODE == 0 || compat & COMPAT_SPARSE_SUPER2 != 0 {
+        return Err("no resize inode");
+    }
+    if incompat & !INCOMPAT_KNOWN != 0 {
+        return Err("incompatible feature (meta_bg, journal recovery, mmp ...)");
+    }
+    if ro & !RO_KNOWN != 0 || ro & RO_SPARSE == 0 || ro & RO_METADATA_CSUM == 0 {
+        return Err("needs sparse_super and metadata_csum, no bigalloc");
+    }
+    Ok(incompat)
+}
+
 /// The file system as the growth sees it.
 pub struct Fs {
     pub sb: Vec<u8>,
@@ -70,22 +91,7 @@ pub struct Fs {
 impl Fs {
     /// Checks the superblock; `Err` names why this layout is not grown.
     pub fn parse(sb: Vec<u8>) -> Result<Fs, &'static str> {
-        if le16(&sb, 0x38) != 0xEF53 {
-            return Err("no ext4");
-        }
-        if le16(&sb, 0x3A) & 3 != 1 {
-            return Err("not cleanly unmounted or has errors");
-        }
-        let (compat, incompat, ro) = (le32(&sb, 0x5C), le32(&sb, 0x60), le32(&sb, 0x64));
-        if compat & COMPAT_RESIZE_INODE == 0 || compat & COMPAT_SPARSE_SUPER2 != 0 {
-            return Err("no resize inode");
-        }
-        if incompat & !INCOMPAT_KNOWN != 0 {
-            return Err("incompatible feature (meta_bg, journal recovery, mmp ...)");
-        }
-        if ro & !RO_KNOWN != 0 || ro & RO_SPARSE == 0 || ro & RO_METADATA_CSUM == 0 {
-            return Err("needs sparse_super and metadata_csum, no bigalloc");
-        }
+        let incompat = features(&sb)?;
         let wide = incompat & INCOMPAT_64BIT != 0;
         let bs = 1024u64 << le32(&sb, 0x18);
         let dsize = if wide { le16(&sb, 0xFE) } else { 32 };

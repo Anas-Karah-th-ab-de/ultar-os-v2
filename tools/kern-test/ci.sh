@@ -6,7 +6,8 @@
 #   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs),
 #   5a. vfork release at exec and flock (spawntest); durable ext4 writes of large, fragmented files
 #       through a hard stop, honest ENOSPC/EIO from fsync and close (ext4-durable.sh), the encrypted
-#       data partition: LUKS2 like cryptsetup, decryption like dm-crypt, unlock at start (crypt-data.sh),
+#       data partition: LUKS2 like cryptsetup, decryption like dm-crypt, unlock at start on the console and
+#       on the graphical screen (crypt-data.sh), a grown data file system (ext4-grow.sh),
 #   5b. identities, file modes and owners, Unix socket nodes and peer credentials, fsync (rechtetest),
 #       and modes/owners/data that reach a writable ext4 disk (rechte-ext4.sh; skipped without e2fsprogs),
 #   5c. the device interfaces for ultar-devd (geraetetest: device list, driver register, bind/unbind/rebind of
@@ -150,6 +151,8 @@ fi
 if command -v mke2fs >/dev/null && command -v debugfs >/dev/null && command -v e2fsck >/dev/null; then
   EXT4_BLOCK=1024 bash tools/kern-test/ext4-durable.sh
   EXT4_BLOCK=4096 bash tools/kern-test/ext4-durable.sh
+  # a data file system grown by ultar-ext4grow: inodes and blocks of the new groups
+  bash tools/kern-test/ext4-grow.sh
 else
   echo "skip  EXT4TEST (e2fsprogs missing)"
 fi

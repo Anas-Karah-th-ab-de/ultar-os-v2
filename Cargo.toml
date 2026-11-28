@@ -65,6 +65,7 @@ members = [
     "platform/ultar-lock-core",
     "platform/ultar-dialog-core",
     "platform/ultar-installer-ui",
+    "platform/ultar-unlock",
     "system/core/ultar-apps",
     "system/core/ultar-ctl",
     "system/core/ultar-init",

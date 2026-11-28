@@ -12,6 +12,7 @@
 
 pub mod answers;
 pub mod device;
+mod grow;
 pub mod write;
 
 pub use device::{BlockDevice, FileDevice};
@@ -261,6 +262,21 @@ pub struct Plan {
     pub luks: ultar_luks::Params,
 }
 
+/// Whole disk: the data partition (the last one) takes the rest of the disk, MiB aligned
+/// before the backup partition table; the copied file system grows into it after the copy
+/// (`engine::grow`).
+fn fill_disk(layout: &mut [Target; PARTS], sectors: u64) {
+    let end = sectors.saturating_sub(34) / install::MIB * install::MIB;
+    if let Some(t) = layout
+        .iter_mut()
+        .find(|t| t.name == ultar_slots::layout::DATA_PART)
+    {
+        if end > t.first + t.sectors {
+            t.sectors = end - t.first;
+        }
+    }
+}
+
 /// Sectors the LUKS2 metadata takes in front of the encrypted data.
 pub const LUKS_RESERVE: u64 = ultar_luks::DATA_OFFSET / 512;
 
@@ -306,8 +322,9 @@ impl Plan {
             return Err(EngineError::TargetIsSource);
         }
         let mut src = FileDevice::open_read(source)?;
-        let layout = install::plan(&read_source(&mut src)?);
+        let mut layout = install::plan(&read_source(&mut src)?);
         let need = install::needed(&layout) * 512;
+        fill_disk(&mut layout, target.sectors());
         if target.bytes < need {
             return Err(EngineError::TooSmall(need, target.bytes));
         }
