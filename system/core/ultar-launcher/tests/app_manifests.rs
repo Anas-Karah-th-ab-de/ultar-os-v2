@@ -12,6 +12,7 @@ fn base_app_manifests_parse() {
         "ultar-store",
         "ultar-editor",
         "ultar-sheet",
+        "ultar-doc",
         "ultar-terminal",
         "ultar-remote",
         "ultar-web",

@@ -17,6 +17,7 @@ pub mod doc;
 pub mod docx;
 pub mod numfmt;
 pub mod pdf;
+pub mod pdfout;
 pub mod sheet;
 pub mod sheet_edit;
 pub mod sheet_find;
