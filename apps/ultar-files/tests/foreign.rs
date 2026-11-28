@@ -34,6 +34,9 @@ fn found(source: Source) -> InspectOutcome {
             lan: true,
             folders: vec!["documents".into()],
         },
+        signer: String::new(),
+        refusal: None,
+        not_granted: Vec::new(),
     })
 }
 
@@ -108,7 +111,10 @@ fn a_linux_package_installs_with_nothing_granted_until_the_person_chooses() {
         }
     ));
     step(&mut app, &fake, Step::Done, &["foreign.deb-mousepad"]);
-    assert_eq!(phase(&app), Phase::Done(vec!["foreign.deb-mousepad".into()]));
+    assert_eq!(
+        phase(&app),
+        Phase::Done(vec!["foreign.deb-mousepad".into()])
+    );
     let open = node(&app, &Target::DialogOk);
     click(&mut app, open);
     assert!(app.state.dialog.is_none());
@@ -209,7 +215,10 @@ fn the_context_menu_offers_install_for_one_package_only() {
         ActionKind::MenuChosen(Command::Install.id()),
     );
     assert_eq!(phase(&app), Phase::Reading);
-    assert_eq!(fake.borrow().inspected, ["/data/ultar/areas/downloads/a.deb"]);
+    assert_eq!(
+        fake.borrow().inspected,
+        ["/data/ultar/areas/downloads/a.deb"]
+    );
 }
 
 #[test]
@@ -222,7 +231,10 @@ fn the_sheet_in_arabic_and_english_dark_and_light() {
             let tag = format!("{lang:?}-{}", theme.name()).to_lowercase();
             shot(&mut app, &format!("files-foreign-ready-{tag}"));
             tap(&mut app, &Target::ForeignInternet);
-            assert!(app.built().node(&Target::ForeignLan).is_some(), "internet is on");
+            assert!(
+                app.built().node(&Target::ForeignLan).is_some(),
+                "internet is on"
+            );
             shot(&mut app, &format!("files-foreign-choices-{tag}"));
             let ok = node(&app, &Target::DialogOk);
             click(&mut app, ok);
@@ -253,7 +265,11 @@ fn a_package_on_the_desktop_installs_from_its_menu() {
         ultar_ui::event::PointerButton::Secondary,
     );
     assert_eq!(app.ui.menu_owner(), Some(item));
-    act(&mut app, item, ActionKind::MenuChosen(Command::Install.id()));
+    act(
+        &mut app,
+        item,
+        ActionKind::MenuChosen(Command::Install.id()),
+    );
     assert_eq!(phase(&app), Phase::Reading);
     assert_eq!(
         fake.borrow().inspected,

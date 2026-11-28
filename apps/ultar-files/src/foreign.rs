@@ -10,8 +10,8 @@ use crate::fs::{AreaId, Loc};
 use crate::model::Drive;
 use crate::service::PortError;
 use ultar_bus::messages::foreign::{
-    Choices, Failure, InspectOutcome, Inspected, InstallOutcome, NetworkChoice, Progress, Source,
-    Step,
+    Choices, Failure, InspectOutcome, Inspected, InstallOutcome, NetworkChoice, Progress, Refusal,
+    Source, Step,
 };
 
 /// File name endings Files hands to the service instead of opening them.
@@ -35,7 +35,9 @@ pub const FOLDERS: [(&str, &str); 7] = [
 /// Whether Files offers to install an item of this name.
 pub fn is_installable_name(name: &str) -> bool {
     let lower = name.to_lowercase();
-    ENDINGS.iter().any(|e| lower.ends_with(e) && lower.len() > e.len())
+    ENDINGS
+        .iter()
+        .any(|e| lower.ends_with(e) && lower.len() > e.len())
 }
 
 /// The path of `loc` as the service sees it (the device's areas or a mounted drive);
@@ -45,7 +47,10 @@ pub fn host_path(loc: &Loc, drives: &[Drive]) -> Option<String> {
         AreaId::Trash => return None,
         AreaId::Drive(_) => {
             let d = drives.iter().find(|d| d.area == loc.area)?;
-            d.uri.strip_prefix("file://")?.trim_end_matches('/').to_owned()
+            d.uri
+                .strip_prefix("file://")?
+                .trim_end_matches('/')
+                .to_owned()
         }
         area => format!("{HOST_AREAS}/{}", area.dir_name()),
     };
@@ -107,7 +112,10 @@ impl Sheet {
     pub fn inspected(&mut self, answer: Result<InspectOutcome, PortError>) {
         self.phase = match answer {
             Ok(InspectOutcome::Found(i)) if i.installable => Phase::Ready(i),
-            Ok(InspectOutcome::Found(i)) => Phase::Problem(not_installable(i.source)),
+            Ok(InspectOutcome::Found(i)) => Phase::Problem(match i.refusal {
+                Some(r) => refusal_key(r),
+                None => not_installable(i.source),
+            }),
             Ok(InspectOutcome::Unreadable) => Phase::Problem("files.foreign.unreadable"),
             Ok(InspectOutcome::TooLarge) => Phase::Problem("files.foreign.too_large"),
             Ok(InspectOutcome::Invalid) => Phase::Problem("files.foreign.invalid"),
@@ -231,7 +239,23 @@ pub fn failure_key(f: Failure) -> &'static str {
         Failure::Space => "files.foreign.failed.space",
         Failure::Launcher => "files.foreign.failed.launcher",
         Failure::NoConfirmation => "files.foreign.failed.no_confirmation",
+        Failure::SignerChanged => "files.foreign.failed.signer_changed",
+        Failure::Older => "files.foreign.failed.older",
         Failure::Internal => "files.foreign.failed.internal",
+    }
+}
+
+/// i18n key of why an app from another system is refused although its kind can be installed
+/// (Android apps: processor, signature, start screen, component).
+pub fn refusal_key(r: Refusal) -> &'static str {
+    match r {
+        Refusal::NeedsArm => "files.foreign.refusal.needs_arm",
+        Refusal::NeedsOtherProcessor => "files.foreign.refusal.needs_other_processor",
+        Refusal::Unsigned => "files.foreign.refusal.unsigned",
+        Refusal::OldSignature => "files.foreign.refusal.old_signature",
+        Refusal::BadSignature => "files.foreign.refusal.bad_signature",
+        Refusal::NoStartScreen => "files.foreign.refusal.no_start_screen",
+        Refusal::RuntimeMissing => "files.foreign.refusal.runtime_missing",
     }
 }
 
@@ -267,6 +291,9 @@ mod tests {
                 lan: false,
                 folders: vec!["documents".into()],
             },
+            signer: String::new(),
+            refusal: None,
+            not_granted: Vec::new(),
         })
     }
 
