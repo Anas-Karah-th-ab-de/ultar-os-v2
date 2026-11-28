@@ -119,6 +119,45 @@ fn every_kept_right_is_justified_and_every_right_only_for_admin_shells() {
     }
 }
 
+/// The sound server is the only holder of the kernel's pcm node: every other program plays and
+/// records through its stream socket (docs/integration/ultar-audiod.md).
+#[test]
+fn only_the_sound_server_keeps_the_sound_right() {
+    let bit = RIGHT_NAMES.iter().position(|n| *n == "sound").unwrap();
+    let holders: Vec<String> = shipped()
+        .into_iter()
+        .filter(|(_, _, spec)| spec.confinement.rights & (1 << bit) != 0)
+        .map(|(_, _, spec)| spec.name)
+        .filter(|name| !FULL_RIGHTS_ALLOWED.contains(&name.as_str()))
+        .collect();
+    assert_eq!(holders, ["audiod"], "who keeps the right sound");
+}
+
+#[test]
+fn the_sound_server_knows_its_clients_by_user_id_and_shares_no_group_with_them() {
+    let audiod = shipped()
+        .into_iter()
+        .find(|(_, _, spec)| spec.name == "audiod")
+        .unwrap();
+    let text = audiod.1;
+    for client in ["calld:829", "mediad:824"] {
+        assert!(text.contains(client), "no stream socket for {client}");
+    }
+    // a group of calld or mediad would also open their bus and log sockets (0660): the
+    // sound server must not be a member of any client's group
+    for client_group in [829, 824] {
+        assert!(
+            !audiod.2.confinement.groups.contains(&client_group),
+            "audiod is in group {client_group}"
+        );
+    }
+    assert!(
+        !text.contains("app.browser"),
+        "no user id for the browser yet"
+    );
+    assert!(text.contains("--device") && text.contains("/dev/ultar/pcm"));
+}
+
 #[test]
 fn the_allow_lists_name_only_shipped_services() {
     let names: Vec<String> = shipped()

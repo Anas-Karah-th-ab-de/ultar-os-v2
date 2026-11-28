@@ -1,21 +1,22 @@
 //! `ultar-calld` – the call service daemon.
 //!
 //! `ultar-calld --bus SOCKET [--log FILE] [--modem] [--fake-modem] [--ultar OWN_NUMBER]
-//!              [--account] [--pcm NODE] [--camera NODE] [--lang ar|en|de]
+//!              [--account] [--audio SOCKET] [--camera NODE] [--lang ar|en|de]
 //!              [--mesh-calls] [--mesh-guest] [--mesh-modem-pcm NODE]`
 //! * `--modem`: the mobile network through the modem service (`modem.*`, ultar-ril);
 //! * `--fake-modem`: the test double of the modem in this process (tests on the Ultar kernel);
 //! * `--ultar`: the Ultar-number way over the local mock backend, with this own number (tests);
 //! * `--account`: the Ultar-number way end to end with the person's account (`account.*`):
 //!   signalling at the account server, the device key in the account service, sound through
-//!   `--pcm` (default `/dev/ultar/pcm`), pictures from `--camera` (default `/dev/ultar/kamera`);
+//!   the sound server's stream socket `--audio` (default `/run/ultar/audio/system.calld.sock`; the
+//!   service holds no kernel sound right), pictures from `--camera` (default `/dev/ultar/kamera`);
 //!   the pinned keys of other numbers lie beside `--log`;
 //! * `--mesh-calls`: a ringing call is offered to the person's paired devices that may carry it
 //!   (the first that answers takes it; the voice goes over the end-to-end encrypted mesh);
 //!   Ultar-number calls need `--account`, mobile calls need `--mesh-modem-pcm` (the modem's
 //!   voice stream), else they are not offered;
-//! * `--mesh-guest`: this device answers calls of another device: the sound card (`--pcm`)
-//!   is opened only while such a call runs.
+//! * `--mesh-guest`: this device answers calls of another device: a stream of the sound
+//!   server (`--audio`) is opened only while such a call runs.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
@@ -29,7 +30,7 @@ use ultar_call::fake::FakeAudio;
 use ultar_call::fake_modem::{FakeModem, FakeModemControl};
 use ultar_call::line::SystemClock;
 use ultar_call::mesh_relay::{MeshRelay, Taps};
-use ultar_call::mesh_tap::{Bridge, CardTap, MeshTap};
+use ultar_call::mesh_tap::{Bridge, CardTap, MeshTap, StreamTap};
 use ultar_call::modem_line::{ModemAudio, ModemLine};
 use ultar_call::service::{Service, DEFAULT_TICK};
 use ultar_call::session::Session;
@@ -50,7 +51,7 @@ struct Args {
     fake_modem: bool,
     ultar: Option<String>,
     account: bool,
-    pcm: Option<PathBuf>,
+    audio: Option<PathBuf>,
     camera: Option<PathBuf>,
     mesh_calls: bool,
     mesh_guest: bool,
@@ -72,7 +73,7 @@ fn parse(list: &[String]) -> Option<Args> {
             "--fake-modem" => a.fake_modem = true,
             "--ultar" => a.ultar = Some(it.next()?.clone()),
             "--account" => a.account = true,
-            "--pcm" => a.pcm = Some(PathBuf::from(it.next()?)),
+            "--audio" => a.audio = Some(PathBuf::from(it.next()?)),
             "--camera" => a.camera = Some(PathBuf::from(it.next()?)),
             "--mesh-calls" => a.mesh_calls = true,
             "--mesh-guest" => a.mesh_guest = true,
@@ -83,6 +84,13 @@ fn parse(list: &[String]) -> Option<Args> {
     }
     a.bus.as_ref()?;
     Some(a)
+}
+
+/// The sound server's stream socket of this service.
+fn audio_socket(a: &Args) -> PathBuf {
+    a.audio
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("/run/ultar/audio/system.calld.sock"))
 }
 
 fn connect(path: &std::path::Path, name: &str) -> Option<Client> {
@@ -112,11 +120,7 @@ fn mesh_relay(a: &Args, path: &Path, bridge: &Bridge) -> Result<MeshRelay, Msg> 
             .map(|node| Box::new(CardTap::lazy(node)) as Box<dyn MeshTap>);
     }
     if a.mesh_guest {
-        let node = a
-            .pcm
-            .clone()
-            .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
-        taps.guest = Some(Box::new(CardTap::lazy(node)));
+        taps.guest = Some(Box::new(StreamTap::lazy(audio_socket(a))));
     }
     let mesh = connect(path, "calld").ok_or(Msg::NoBus)?;
     Ok(MeshRelay::new(mesh, taps))
@@ -165,10 +169,7 @@ fn run(a: &Args) -> Result<(), Msg> {
             .as_ref()
             .and_then(|l| l.parent().map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("/data/ultar/calls"));
-        let pcm = a
-            .pcm
-            .clone()
-            .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
+        let pcm = audio_socket(a);
         let account = connect(&path, "calld").ok_or(Msg::NoBus)?;
         let camera = a
             .camera

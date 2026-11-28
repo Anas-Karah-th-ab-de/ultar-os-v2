@@ -8418,10 +8418,15 @@ name = "ultar-audio"
 version = "0.8.2"
 
 [[package]]
+name = "ultar-audio-stream"
+version = "0.1.0"
+
+[[package]]
 name = "ultar-audiod"
 version = "0.8.2"
 dependencies = [
  "serde",
+ "ultar-audio-stream",
  "ultar-bus",
  "ultar-hal",
  "ultar-hal-linux",
@@ -8523,6 +8528,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tungstenite",
+ "ultar-audio-stream",
  "ultar-bus",
  "ultar-hal-system",
  "x25519-dalek 2.0.1",
@@ -8928,6 +8934,7 @@ version = "0.8.2"
 dependencies = [
  "base64 0.22.1",
  "tempfile",
+ "ultar-audio-stream",
  "ultar-bus",
  "ultar-service",
  "ultar-svckit",

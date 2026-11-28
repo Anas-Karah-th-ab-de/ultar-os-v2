@@ -31,6 +31,7 @@ members = [
     "system/services/ultar-notifyd",
     "system/services/ultar-calendard",
     "system/services/ultar-audiod",
+    "system/core/ultar-audio-stream",
     "system/services/ultar-mediad",
     "platform/ultar-captured",
     "system/services/ultar-netd",

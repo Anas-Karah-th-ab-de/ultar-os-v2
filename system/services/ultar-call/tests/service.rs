@@ -37,11 +37,6 @@ impl Drop for Rig {
 }
 
 fn rig(tag: &str) -> Rig {
-    rig_with(tag, None)
-}
-
-/// The rig; `mono`: a file standing in for the kernel's mono switch.
-fn rig_with(tag: &str, mono: Option<std::path::PathBuf>) -> Rig {
     let path = std::env::temp_dir().join(format!("ucall-{}-{tag}.sock", std::process::id()));
     let auth = Arc::new(FixedIdentity::new(Identity::new("test.peer").unwrap()));
     let broker = Broker::builder(Policy::allow_all())
@@ -60,9 +55,6 @@ fn rig_with(tag: &str, mono: Option<std::path::PathBuf>) -> Rig {
     );
     let bus = Client::connect(&path, ClientOptions::named("calld")).unwrap();
     let mut service = Service::new(bus, session, Duration::from_millis(5)).unwrap();
-    if let Some(node) = mono {
-        service = service.with_mono_node(node);
-    }
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let worker = thread::spawn(move || {
@@ -238,43 +230,4 @@ fn emergency_calls_the_configured_number_and_follows_changes() {
         service_error(err),
         Some(CallError::Unavailable(_))
     ));
-}
-
-/// accessibility.mono_audio: read at start, followed at runtime, written to the kernel's
-/// switch (`1` on, `0` off); a value of the wrong type changes nothing.
-#[test]
-fn mono_audio_reaches_the_kernels_switch() {
-    let node = std::env::temp_dir().join(format!("ucall-mono-{}", std::process::id()));
-    std::fs::write(&node, b"").unwrap();
-    let r = rig_with("mono", Some(node.clone()));
-    let value = Arc::new(std::sync::Mutex::new(SettingValue::Flag(true)));
-    let settings = settings_stand_in(&r.path, value.clone());
-    let switch = |want: &[u8]| {
-        let start = std::time::Instant::now();
-        while std::fs::read(&node).unwrap() != want {
-            assert!(
-                start.elapsed() < WAIT,
-                "switch stuck at {:?}",
-                std::fs::read(&node)
-            );
-            thread::sleep(Duration::from_millis(20));
-        }
-    };
-    let tell = |v: SettingValue| {
-        settings
-            .publish(&Changed {
-                key: "accessibility.mono_audio".into(),
-                value: v,
-            })
-            .unwrap();
-    };
-    // The start read brings "on".
-    switch(b"1");
-    tell(SettingValue::Flag(false));
-    switch(b"0");
-    tell(SettingValue::Text("on".into()));
-    tell(SettingValue::Flag(true));
-    switch(b"1");
-    drop(r);
-    std::fs::remove_file(&node).unwrap();
 }

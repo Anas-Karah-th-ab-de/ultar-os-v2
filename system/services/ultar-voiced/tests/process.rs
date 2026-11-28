@@ -35,7 +35,7 @@ fn it_is_off_and_deaf_until_the_person_switches_it_on_and_trains_the_word() {
         "the microphone was asked for: {capture:?}"
     );
     // audio that nobody asked for is never looked at
-    b.speak(&word_then_request(400.0, &word(300.0, 1.0, 1.0)));
+    b.speak_unheard(&word_then_request(400.0, &word(300.0, 1.0, 1.0)));
     assert_eq!(b.asked(), 0);
 }
 
@@ -55,7 +55,11 @@ fn training_listens_only_for_the_takes_and_leaves_it_off() {
 #[test]
 fn the_word_the_request_and_the_answer() {
     let b = listening("voice-flow");
-    assert_eq!(b.seen.capture.lock().unwrap().last(), Some(&true));
+    assert!(
+        wait_until(WAIT, || b.seen.capture.lock().unwrap().last()
+            == Some(&true)),
+        "the microphone-in-use topic never said it is on"
+    );
     b.set_text("open the settings");
     b.speak(&word_then_request(400.0, &word(500.0, 1.05, 2.0)));
     assert!(
@@ -73,7 +77,14 @@ fn the_word_the_request_and_the_answer() {
         "the recording is a WAV"
     );
     // the tone first, then the answer, was played; the answer was spoken
-    assert!(wait_until(WAIT, || b.seen.played.lock().unwrap().len() >= 2));
+    assert!(
+        wait_until(WAIT, || b.tone_level(880.0) > 0.03
+            && b.tone_level(440.0) > 0.03),
+        "the tone ({:.3}) and the answer ({:.3}) did not both reach the card ({} bytes)",
+        b.tone_level(880.0),
+        b.tone_level(440.0),
+        b.played_bytes()
+    );
     assert!(!b.log("said.log").trim().is_empty());
     b.until("listening again", |s| s.phase == Phase::Listening);
     // another word wakes nothing
@@ -150,7 +161,7 @@ fn switching_it_off_stops_the_stream_and_nothing_is_heard() {
     assert!(wait_until(WAIT, || {
         b.seen.capture.lock().unwrap().last() == Some(&false)
     }));
-    b.speak(&word_then_request(400.0, &word(500.0, 1.05, 2.0)));
+    b.speak_unheard(&word_then_request(400.0, &word(500.0, 1.05, 2.0)));
     std::thread::sleep(SETTLE);
     assert_eq!(b.asked(), 0);
 }

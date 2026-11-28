@@ -1,18 +1,19 @@
-//! The test bench of the real `ultar-voiced`: a bus with stand-ins for the audio service and
-//! the helper, and stand-in programs for the speech recogniser (a small HTTP server) and the
-//! speech output. The audio is synthetic (tones shaped like words).
+//! The test bench of the real `ultar-voiced`: a bus with the real sound server (`ultar-audiod`
+//! on a fake card: two files) and a stand-in for the helper, and stand-in programs for the
+//! speech recogniser (a small HTTP server) and the speech output. The audio is synthetic
+//! (tones shaped like words): it is written into the fake card's capture file and comes out
+//! of the sound server as `audio.mic`; what voiced says is read from the card's play file.
 
 use std::f32::consts::PI;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use ultar_bus::messages::agent::{Answer, AskVoice, Brain};
-use ultar_bus::messages::voice::{
-    AudioDone, Capture, Enroll, EnrollKind, MicChunk, Phase, Play, SetEnabled, VoiceOutcome,
-    VoiceState,
-};
+use ultar_bus::messages::audio::MicState;
+use ultar_bus::messages::voice::{Enroll, EnrollKind, Phase, SetEnabled, VoiceOutcome, VoiceState};
 use ultar_bus::{BusError, Call, Client, ErrorCode, Text, TypedSubscription};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 
@@ -25,14 +26,20 @@ subscribe = ["audio.mic"]
 call = ["audio.capture", "audio.play", "agent.ask_voice"]
 
 [[rule]]
+identity = "system.audiod"
+register = ["audio"]
+publish = ["audio.state", "audio.mic", "audio.mic_state"]
+subscribe = ["settings.changed"]
+call = ["settings.get"]
+
+[[rule]]
 identity = "system.stand_in"
-register = ["audio", "agent"]
-publish = ["audio.mic"]
+register = ["agent"]
 
 [[rule]]
 identity = "system.shell"
 call = ["voice.*"]
-subscribe = ["voice.state"]
+subscribe = ["voice.state", "audio.mic_state"]
 "#;
 
 const WHISPER: &str = r#"#!/usr/bin/env python3
@@ -102,20 +109,22 @@ pub fn word_then_request(base: f32, request: &[f32]) -> Vec<f32> {
     s
 }
 
-/// What the stand-ins saw.
+/// What was seen: the microphone state the sound server published (every change after the
+/// start, `true` for in use), and what the helper was asked.
 #[derive(Default)]
 pub struct Seen {
     pub capture: Mutex<Vec<bool>>,
-    pub played: Mutex<Vec<usize>>,
     pub asked: Mutex<Vec<(String, bool)>>,
 }
 
 pub struct Bench {
     _world: World,
     _daemon: Daemon,
+    _audiod: Daemon,
     shell: Client,
-    mic: Client,
     pub seen: Arc<Seen>,
+    play_file: PathBuf,
+    capture_file: PathBuf,
     states: TypedSubscription<VoiceState>,
     last: Mutex<Option<VoiceState>>,
     dir: PathBuf,
@@ -144,18 +153,25 @@ fn call<C: Call>(client: &Client, c: &C) -> Result<C::Reply, BusError> {
     last
 }
 
-/// The audio service and the helper of the bench.
+/// The real `ultar-audiod`, built once (the test binary of another package cannot name it).
+fn audiod_binary() -> PathBuf {
+    static BIN: OnceLock<PathBuf> = OnceLock::new();
+    BIN.get_or_init(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+        let status = std::process::Command::new(cargo)
+            .args(["build", "-q", "-p", "ultar-audiod", "--bin", "ultar-audiod"])
+            .status()
+            .unwrap();
+        assert!(status.success(), "ultar-audiod did not build");
+        let exe = std::env::current_exe().unwrap();
+        // target/debug/deps/<test> -> target/debug/ultar-audiod
+        exe.parent().unwrap().parent().unwrap().join("ultar-audiod")
+    })
+    .clone()
+}
+
+/// The helper of the bench.
 fn stand_ins(world: &World, seen: &Arc<Seen>) {
-    let s = seen.clone();
-    world.serve("system.stand_in", "audio", move |request| {
-        if let Ok(capture) = request.decode::<Capture>() {
-            s.capture.lock().unwrap().push(capture.on);
-            let _ = request.reply(&AudioDone { ok: true });
-        } else if let Ok(play) = request.decode::<Play>() {
-            s.played.lock().unwrap().push(play.samples.len());
-            let _ = request.reply(&AudioDone { ok: true });
-        }
-    });
     let s = seen.clone();
     world.serve("system.stand_in", "agent", move |request| {
         if let Ok(ask) = request.decode::<AskVoice>() {
@@ -183,15 +199,61 @@ fn programs(world: &World, install: bool) -> (PathBuf, PathBuf) {
     (dir, models)
 }
 
+/// The sound server on a fake card (two files): the daemon, the play file, the capture file.
+fn sound_server(world: &World) -> (Daemon, PathBuf, PathBuf) {
+    let card = world.subdir("card");
+    let (play_file, capture_file) = (card.join("play.pcm"), card.join("capture.pcm"));
+    fs::write(&play_file, b"").unwrap();
+    fs::write(&capture_file, b"").unwrap();
+    let audiod = world.spawn(
+        audiod_binary().to_str().unwrap(),
+        "system.audiod",
+        &[
+            "--state",
+            world.subdir("audio-state").to_str().unwrap(),
+            "--root",
+            world.subdir("audio-root").to_str().unwrap(),
+            "--play-file",
+            play_file.to_str().unwrap(),
+            "--capture-file",
+            capture_file.to_str().unwrap(),
+        ],
+    );
+    (audiod, play_file, capture_file)
+}
+
+/// Writes every change of "microphone in use" into `seen.capture`.
+fn watch_microphone(mic_states: TypedSubscription<MicState>, seen: Arc<Seen>) {
+    std::thread::spawn(move || {
+        let mut before = false;
+        loop {
+            match mic_states.recv_timeout(Duration::from_millis(100)) {
+                Ok(s) if s.in_use != before => {
+                    before = s.in_use;
+                    seen.capture.lock().unwrap().push(s.in_use);
+                }
+                Ok(_) | Err(BusError::Timeout) => {}
+                Err(_) => return,
+            }
+        }
+    });
+}
+
 /// The service with a bench around it; `install`: the speech model exists.
 pub fn bench(tag: &str, install: bool) -> Bench {
     let world = World::new(
         tag,
         POLICY,
-        &["system.voiced", "system.stand_in", "system.shell"],
+        &[
+            "system.voiced",
+            "system.audiod",
+            "system.stand_in",
+            "system.shell",
+        ],
     );
     let seen = Arc::new(Seen::default());
     stand_ins(&world, &seen);
+    let (audiod, play_file, capture_file) = sound_server(&world);
     let (dir, models) = programs(&world, install);
     let state = world.subdir("voice-state");
     let port = free_port().to_string();
@@ -214,13 +276,16 @@ pub fn bench(tag: &str, install: bool) -> Bench {
     );
     let shell = world.client("system.shell");
     let states = shell.subscribe::<VoiceState>().unwrap();
-    let mic = world.client("system.stand_in");
+    let mic_states = shell.subscribe::<MicState>().unwrap();
+    watch_microphone(mic_states, seen.clone());
     Bench {
         _world: world,
         _daemon: daemon,
+        _audiod: audiod,
         shell,
-        mic,
         seen,
+        play_file,
+        capture_file,
         states,
         last: Mutex::new(None),
         dir,
@@ -254,19 +319,76 @@ impl Bench {
         call(&self.shell, c).unwrap()
     }
 
-    /// Sends audio the way the audio service does: chunks of 0.1 s.
+    /// Waits until the sound server says the microphone is in use.
+    fn wait_for_microphone(&self) {
+        let on = wait_until(WAIT, || {
+            self.seen.capture.lock().unwrap().last() == Some(&true)
+        });
+        assert!(on, "the sound server never opened the microphone");
+        // the server throws away what was recorded before it began to listen: let it begin
+        std::thread::sleep(Duration::from_millis(150));
+    }
+
+    /// Speaks into the fake microphone: the audio (16 kHz) goes into the card's capture file as
+    /// 48 kHz stereo, and the sound server hands it to voiced as `audio.mic`.
     pub fn speak(&self, samples: &[f32]) {
-        for chunk in samples.chunks(1_600) {
-            let pcm = chunk
-                .iter()
-                .map(|s| (s.clamp(-1.0, 1.0) * 32_767.0) as i16)
-                .collect();
-            let _ = self.mic.publish(&MicChunk {
-                rate: 16_000,
-                samples: pcm,
-            });
+        self.wait_for_microphone();
+        self.write_audio(samples);
+    }
+
+    /// Speaks while the microphone is off: nobody asked for it, so the sound server never
+    /// hands it on (what piled up in the card is thrown away when a listener begins).
+    pub fn speak_unheard(&self, samples: &[f32]) {
+        self.write_audio(samples);
+    }
+
+    fn write_audio(&self, samples: &[f32]) {
+        let mut bytes = Vec::with_capacity(samples.len() * 12);
+        for (i, s) in samples.iter().enumerate() {
+            let next = samples.get(i + 1).copied().unwrap_or(*s);
+            for k in 0..3 {
+                let v = s + (next - s) * (k as f32 / 3.0);
+                let q = (v.clamp(-1.0, 1.0) * 32_767.0) as i16;
+                bytes.extend_from_slice(&q.to_le_bytes());
+                bytes.extend_from_slice(&q.to_le_bytes());
+            }
+        }
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&self.capture_file)
+            .unwrap();
+        for chunk in bytes.chunks(48_000 * 4 / 10) {
+            file.write_all(chunk).unwrap();
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    /// Bytes the sound server has written to the card's play file.
+    pub fn played_bytes(&self) -> usize {
+        fs::metadata(&self.play_file)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0)
+    }
+
+    /// How loud the tone `hz` is in everything the sound server has played so far (the mean
+    /// amplitude over the whole play file, 0..1): the listening tone is 880 Hz, the stand-in
+    /// speech output 440 Hz, so each can be told from the other.
+    pub fn tone_level(&self, hz: f64) -> f64 {
+        let bytes = fs::read(&self.play_file).unwrap_or_default();
+        let left: Vec<f64> = bytes
+            .chunks_exact(4)
+            .map(|f| f64::from(i16::from_le_bytes([f[0], f[1]])) / 32_768.0)
+            .collect();
+        if left.is_empty() {
+            return 0.0;
+        }
+        let (mut re, mut im) = (0.0, 0.0);
+        for (i, s) in left.iter().enumerate() {
+            let a = 2.0 * std::f64::consts::PI * hz * i as f64 / 48_000.0;
+            re += s * a.cos();
+            im += s * a.sin();
+        }
+        2.0 * (re * re + im * im).sqrt() / left.len() as f64
     }
 
     pub fn set_text(&self, text: &str) {

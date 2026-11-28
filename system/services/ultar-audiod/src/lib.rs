@@ -11,8 +11,16 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod aec;
+pub mod capture;
+pub mod conn;
+pub mod device;
+pub mod engine;
+pub mod mix;
 pub mod mixer;
+pub mod resample;
 pub mod service;
+pub mod sound;
 
 pub use mixer::Mixer;
 pub use service::AudioService;
