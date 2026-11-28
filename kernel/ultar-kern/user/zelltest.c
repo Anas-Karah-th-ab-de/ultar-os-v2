@@ -144,7 +144,7 @@ static int host_unshare(void) {
     check("Wirt: unshare(CLONE_NEWPID), eigene Nummer bleibt", unshare(CLONE_NEWPID) == 0 && getpid() == me);
     sub(first_in_new_pid_ns);
     denied("Wirt: zweites unshare(CLONE_NEWPID)", unshare(CLONE_NEWPID), EINVAL);
-    denied("Wirt: Netz-Namensraum gibt es in Stufe 1 nicht", unshare(CLONE_NEWNET), EINVAL);
+    denied("Wirt: UTS-Namensraum gibt es nicht (Netz: zellnetz)", unshare(CLONE_NEWUTS), EINVAL);
     check("Wirt: chroot in den Programm-Ordner", chroot(bin_dir) == 0 && getcwd(b, sizeof b) && !strcmp(b, "/"));
     denied("Ausbruch chroot: /../liesmich.txt", open("/../liesmich.txt", O_RDONLY), ENOENT);
     denied("Ausbruch chroot: Pfad der Datei ausserhalb", open(outside_path, O_RDONLY), ENOENT);
