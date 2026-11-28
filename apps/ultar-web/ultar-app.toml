@@ -27,8 +27,9 @@ multi_window = true
 files       = ["downloads:rw"]
 network     = "allowed"
 background  = false
-# sound and videos of pages play through the sound card (/dev/ultar/pcm)
-kernel      = ["sound"]
+# sound and videos of pages play through the sound server's stream socket
+# (/run/ultar/audio/app.browser.sock): no kernel right, the card belongs to ultar-audiod
+kernel      = []
 
 [limits]
 memory_mb   = 768

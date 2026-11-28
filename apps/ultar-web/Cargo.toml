@@ -45,6 +45,7 @@ encoding_rs = "0.8"
 # built from source and linked statically).
 ultar-tor = { path = "../../platform/ultar-tor", optional = true }
 ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
+ultar-audio-stream = { path = "../../system/core/ultar-audio-stream" }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "mkv"] }
 mp4 = "0.14"
 openh264 = { version = "0.9", default-features = false, features = ["source"] }
