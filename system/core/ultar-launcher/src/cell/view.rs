@@ -54,7 +54,24 @@ fn tmp_options(plan: &CellPlan) -> String {
     format!("size={},mode=0700{owner}", plan.tmp_bytes.max(65536))
 }
 
-fn devices(root: &Path, mode: DevMode) -> Result<(), CellFailure> {
+/// One device node of the kernel at the same name below the cell's `/dev` tmpfs `target`
+/// (skipped where the kernel has no such node).
+fn bind_node(dev: &Path, target: &Path, node: &str) -> Result<(), CellFailure> {
+    let source = dev.join(node);
+    if !source.exists() {
+        return Ok(());
+    }
+    let at = target.join(node);
+    if let Some(dir) = at.parent() {
+        std::fs::create_dir_all(dir).map_err(|_| CellFailure::Mounts)?;
+    }
+    std::fs::File::create(&at).map_err(|_| CellFailure::Mounts)?;
+    sys_cell::bind(&source, &at, BindMode::Device).map_err(|_| CellFailure::Mounts)
+}
+
+/// The device nodes of the cell. `sound`: the cell keeps the kernel right that opens the sound
+/// card's streams, so their node is bound as well (it opens with that right alone).
+fn devices(root: &Path, mode: DevMode, sound: bool) -> Result<(), CellFailure> {
     let dev = Path::new(sys_cell::DEV);
     match mode {
         DevMode::None => Ok(()),
@@ -67,13 +84,10 @@ fn devices(root: &Path, mode: DevMode) -> Result<(), CellFailure> {
             sys_cell::mount_tmpfs(&target, "size=65536,mode=0755")
                 .map_err(|_| CellFailure::Mounts)?;
             for node in sys_cell::DEV_NODES {
-                let source = dev.join(node);
-                if !source.exists() {
-                    continue;
-                }
-                let at = target.join(node);
-                std::fs::File::create(&at).map_err(|_| CellFailure::Mounts)?;
-                sys_cell::bind(&source, &at, BindMode::Device).map_err(|_| CellFailure::Mounts)?;
+                bind_node(dev, &target, node)?;
+            }
+            if sound {
+                bind_node(dev, &target, sys_cell::SOUND_NODE)?;
             }
             Ok(())
         }
@@ -95,7 +109,10 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
         let proc = mount_point(root, Path::new(sys_cell::PROC))?;
         sys_cell::mount_proc(&proc).map_err(|_| CellFailure::Mounts)?;
     }
-    devices(root, plan.dev)?;
+    let sound = plan
+        .drop_rights
+        .is_some_and(|drop| drop & crate::perm::KERNEL_SOUND == 0);
+    devices(root, plan.dev, sound)?;
     bind_dirs(root, &plan.shares)?;
     for (host, name, rw) in &plan.areas {
         if !host.is_dir() || !super::valid_area_name(name) {
@@ -164,6 +181,9 @@ mod tests {
         plan.tmp_bytes = 1;
         assert_eq!(tmp_options(&plan), "size=65536,mode=0700");
         // nothing to do without a /dev
-        assert_eq!(devices(Path::new("/nonexistent"), DevMode::None), Ok(()));
+        assert_eq!(
+            devices(Path::new("/nonexistent"), DevMode::None, true),
+            Ok(())
+        );
     }
 }

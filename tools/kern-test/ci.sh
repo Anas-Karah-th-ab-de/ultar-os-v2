@@ -33,6 +33,8 @@
 #       password auth rejected, sequential and parallel sessions,
 #   5i. network isolation of cells (zell-netz-e2e.sh, ZELL-NETZ: ALLES OK): own loopback per network namespace,
 #       the "internet only" barrier, PR_SET_PDEATHSIG,
+#   5j. single files in a cell's view and chown inside a cell (zell-bind-e2e.sh, ZELL-BIND: ALLES OK): binds
+#       of device nodes, files and socket nodes onto files, mount points stay (EBUSY), the right CELL_CHOWN,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -156,6 +158,18 @@ else
     echo "ok    ZELL-NETZ: ALLES OK ($(grep -c '^ok ' "$ZLOG.out") checks)"
   else
     echo "FAIL  ZELL-NETZ"; tail -40 "$ZLOG.out"; exit 1
+  fi
+fi
+# Single files in a cell's view and chown inside a cell (zell-bind-e2e.sh): device nodes, a file and a socket
+# node bound onto files, mount points cannot be removed, CELL_CHOWN only on the cell's own writable mounts.
+if [ "${ZELL_BIND:-1}" = 0 ]; then
+  echo "skip  ZELL-BIND (ZELL_BIND=0)"
+else
+  BLOG="${ZELL_BIND_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" ZELL_BIND_LOG="$BLOG" bash tools/kern-test/zell-bind-e2e.sh > "$BLOG.out" 2>&1 && grep -q "^ZELL-BIND: ALLES OK" "$BLOG.out"; then
+    echo "ok    ZELL-BIND: ALLES OK ($(grep -c '^ok ' "$BLOG.out") checks)"
+  else
+    echo "FAIL  ZELL-BIND"; tail -40 "$BLOG.out"; exit 1
   fi
 fi
 # USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is

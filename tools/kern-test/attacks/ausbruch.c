@@ -32,7 +32,7 @@
 #define PR_ULTAR_RIGHTS_GET 0x554c5200
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
 #define R_MANAGE_GROUPS 0x80
-#define R_ALL 0xfff
+#define R_ALL 0x7fff
 #define SECRET "/tmp/sec-geheim"
 #define SECRET_TEXT "STRENG-GEHEIM"
 

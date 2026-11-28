@@ -224,7 +224,7 @@ six cells at once (20 rounds each of files, links and forks) see only themselves
   existing init programs and the kernel's own host-path users do not change; see design §2.2).
 * No re-parenting of orphans to a namespace's pid 1 (the kernel has no re-parenting; orphans are reaped by
   the kernel as before).
-* Bind mounts: directories only, not recursive; `MS_MOVE`, shared propagation → `EINVAL`; no device/disk
+* Bind mounts: not recursive; single files onto files since `docs/integration/zell-chown.md`; `MS_MOVE`, shared propagation → `EINVAL`; no device/disk
   file systems inside a namespace (`ENODEV`). A process that keeps `MOUNT` can remount a read-only bind
   read-write – a cell must drop `MOUNT` (the tests do).
 * Symbolic links can only be created on tmpfs; hard links still `EPERM`.

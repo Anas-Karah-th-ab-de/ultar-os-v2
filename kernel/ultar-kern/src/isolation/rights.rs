@@ -43,10 +43,16 @@ impl Rights {
     /// Take pictures from a camera through `/dev/ultar/kamera` (the call service). Neither
     /// `RAW_DEVICE` nor `FILE_ADMIN` opens that node: only this right does.
     pub const CAMERA: Rights = Rights(1 << 13);
+    /// Change owner and group of entries inside the own cell – far narrower than `FILE_ADMIN`
+    /// (`docs/integration/zell-chown.md`): only for a confined view, only on an entry that lies on
+    /// one of the view's writable mounts whose source is not the whole host tree, never in the
+    /// kernel's trees, and the set-id bits are always cleared. The install cell of foreign packages
+    /// needs it (`dpkg`/`apt` hand files to `_apt` and other system users).
+    pub const CELL_CHOWN: Rights = Rights(1 << 14);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0x3fff);
+    pub const ALL: Rights = Rights(0x7fff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {

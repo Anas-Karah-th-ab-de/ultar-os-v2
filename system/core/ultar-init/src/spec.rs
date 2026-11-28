@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 /// Names of the kernel rights a service file may keep, in bit order
 /// (`kernel/ultar-kern/src/isolation/rights.rs`).
-pub const RIGHT_NAMES: [&str; 14] = [
+pub const RIGHT_NAMES: [&str; 15] = [
     "mount",
     "net_admin",
     "load_driver",
@@ -41,9 +41,10 @@ pub const RIGHT_NAMES: [&str; 14] = [
     "input_inject",
     "sound",
     "camera",
+    "cell_chown",
 ];
 /// Mask of every right the kernel knows.
-pub const ALL_RIGHTS: u64 = 0x3fff;
+pub const ALL_RIGHTS: u64 = 0x7fff;
 /// Default deadline for `READY`.
 pub const DEFAULT_START_TIMEOUT_MS: u64 = 10_000;
 /// Longest accepted deadline (start or stop).

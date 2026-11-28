@@ -8,7 +8,9 @@
 //!
 //! * network namespaces have only their own loopback (no device at all);
 //!   no IPC or UTS namespaces: `unshare` answers `EINVAL`;
-//! * bind mounts of directories only (a file answers `ENOTDIR`);
+//! * a bind mount of a single file (device node, socket, file) onto a file
+//!   works as on Linux since the network stage of `docs/FREMD-APPS.md`;
+//!   older kernels answer `ENOTDIR` (the launcher's probe tells);
 //! * one `mount` with `MS_BIND | MS_RDONLY` is already read-only (Linux
 //!   needs the remount, which the Ultar kernel accepts as well);
 //! * every namespace is private (propagation flags are accepted, no effect).
@@ -28,6 +30,9 @@ use std::path::Path;
 pub const DEV: &str = "/dev";
 /// The device nodes a cell may use (all harmless: no hardware behind them).
 pub const DEV_NODES: [&str; 5] = ["null", "zero", "full", "random", "urandom"];
+/// The sound card's running streams below [`DEV`]: opened with the kernel
+/// right `sound` alone, so a cell holding that right gets the node too.
+pub const SOUND_NODE: &str = "ultar/pcm";
 /// Where a cell sees its own processes.
 pub const PROC: &str = "/proc";
 

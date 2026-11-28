@@ -37,11 +37,14 @@ pub enum Right {
     Sound,
     /// Take pictures from a camera through `/dev/ultar/kamera` (call service).
     Camera,
+    /// Change owner and group inside the own cell only: on the cell's own writable mounts, set-id
+    /// bits cleared (the install cell of foreign packages; never `FileAdmin`).
+    CellChown,
 }
 
 impl Right {
     /// Every right the kernel knows.
-    pub const ALL: [Right; 14] = [
+    pub const ALL: [Right; 15] = [
         Right::Mount,
         Right::NetAdmin,
         Right::LoadDriver,
@@ -56,6 +59,7 @@ impl Right {
         Right::InputInject,
         Right::Sound,
         Right::Camera,
+        Right::CellChown,
     ];
 
     /// The kernel's bit for this right.
@@ -75,6 +79,7 @@ impl Right {
             Self::InputInject => 1 << 11,
             Self::Sound => 1 << 12,
             Self::Camera => 1 << 13,
+            Self::CellChown => 1 << 14,
         }
     }
 }
@@ -87,7 +92,7 @@ impl RightSet {
     /// No right at all – what most services need.
     pub const NONE: RightSet = RightSet(0);
     /// Mask of all rights the kernel knows.
-    pub const ALL_BITS: u64 = 0x3fff;
+    pub const ALL_BITS: u64 = 0x7fff;
 
     /// The set of the given rights.
     pub fn of(rights: &[Right]) -> Self {
@@ -126,7 +131,7 @@ mod tests {
         assert_eq!(RightSet::NONE.drop_mask(), u64::MAX);
         let driver = RightSet::of(&[Right::LoadDriver, Right::RawDevice]);
         assert!(driver.has(Right::LoadDriver) && !driver.has(Right::Reboot));
-        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x3fff & !0x24);
+        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x7fff & !0x24);
         // Bits of rights a later kernel may add are dropped too.
         assert_ne!(driver.drop_mask() & (1 << 40), 0);
         assert_eq!(RightSet::default(), RightSet::NONE);

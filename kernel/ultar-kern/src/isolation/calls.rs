@@ -97,7 +97,9 @@ pub fn sys_prctl(option: u64, arg: u64) -> i64 {
         PR_CAPBSET_READ => Rights::from_linux_cap(arg).map(|r| holds(r) as i64).unwrap_or(0),
         PR_CAPBSET_DROP => {
             if let Some(r) = Rights::from_linux_cap(arg) {
-                with(|p| p.g.iso.rights.drop_mask(r.bits()));
+                // giving up CAP_CHOWN gives up the narrow chown of a cell as well
+                let extra = if arg == 0 { Rights::CELL_CHOWN.bits() } else { 0 };
+                with(|p| p.g.iso.rights.drop_mask(r.bits() | extra));
             }
             0
         }
@@ -138,22 +140,39 @@ fn get_parent_death_signal(at: u64) -> i64 {
     }
 }
 
-/// Namespace path of a directory named by the caller, or the error number.
-fn dir_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<String, i64> {
+/// Namespace path of an existing entry named by the caller and whether it is a directory, or the
+/// error number. Any entry will do: a directory, a file, a device node, the node of a Unix socket.
+fn node_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<(String, bool), i64> {
     let p = ustr(path).ok_or(-EFAULT)?;
     let loc = locate(-100, &p, follow)?;
     match fs::stat(&loc.host) {
-        Some((1, _)) => Ok(join(&iso.root, &loc.view)),
-        Some(_) => Err(-ENOTDIR),
+        Some((kind, _)) => Ok((join(&iso.root, &loc.view), kind == 1)),
         None => Err(-ENOENT),
     }
 }
 
-fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64) -> Result<(Source, Opts, &'static str), i64> {
+/// Namespace path of a directory named by the caller, or the error number.
+fn dir_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<String, i64> {
+    match node_in_ns(iso, path, follow)? {
+        (at, true) => Ok(at),
+        (_, false) => Err(-ENOTDIR),
+    }
+}
+
+/// What a mount shows. `onto_dir`: the mount point is a directory – a bind needs a source of the same
+/// kind (a file onto a file, a directory onto a directory, else `ENOTDIR` as on Linux), every other
+/// file system a directory.
+fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64, onto_dir: bool) -> Result<(Source, Opts, &'static str), i64> {
     if flags & MS_BIND != 0 {
-        let from = dir_in_ns(iso, source, true)?;
+        let (from, from_dir) = node_in_ns(iso, source, true)?;
+        if from_dir != onto_dir {
+            return Err(-ENOTDIR);
+        }
         let (src, opts) = iso.mnt.source_of(&from);
         return Ok((src, opts, "none"));
+    }
+    if !onto_dir {
+        return Err(-ENOTDIR);
     }
     let kind = if fstype == 0 { String::new() } else { ustr(fstype).ok_or(-EFAULT)? };
     match kind.as_str() {
@@ -184,7 +203,8 @@ pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -
     if iso.mnt.is_initial() {
         return 0;
     }
-    let at = match dir_in_ns(&iso, target, true) {
+    // a single file may be a mount point too (a bind of a device node, a socket, a file)
+    let (at, at_dir) = match node_in_ns(&iso, target, true) {
         Ok(a) => a,
         Err(e) => return e,
     };
@@ -199,7 +219,7 @@ pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -
     let done = if flags & MS_REMOUNT != 0 {
         iso.mnt.remount(&at, opts)
     } else {
-        match mount_source(&iso, source, fstype, flags, data) {
+        match mount_source(&iso, source, fstype, flags, data, at_dir) {
             // a bind keeps what its source forbids
             Ok((src, src_opts, kind)) => iso.mnt.add(&at, src, opts.union(src_opts), kind),
             Err(e) => return e,
@@ -217,8 +237,8 @@ pub fn sys_umount(target: u64, flags: u64) -> i64 {
     if iso.mnt.is_initial() {
         return 0;
     }
-    let at = match dir_in_ns(&iso, target, flags & UMOUNT_NOFOLLOW == 0) {
-        Ok(a) => a,
+    let at = match node_in_ns(&iso, target, flags & UMOUNT_NOFOLLOW == 0) {
+        Ok((a, _)) => a,
         Err(e) => return e,
     };
     iso.mnt.remove(&at, flags & MNT_DETACH != 0).map(|_| 0).unwrap_or_else(|e| e.errno())

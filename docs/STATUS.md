@@ -24,6 +24,9 @@ Offen: Dateien und Ordner des Schreibtisch-Ordners selbst (Files `--desktop` hat
 | `PR_SET_PDEATHSIG` | wirkt jetzt (Waise endet mit dem Elternprozess) |
 | Launcher | ohne Netz-Recht eigener Namensraum (wie bisher gefordert, jetzt auch auf dem Ultar-Kern); mit Netz-Recht außerhalb des System-Profils eigener Namensraum **mit Schranke** (Fähigkeit `net-guard`, sonst Start verweigert) |
 | Prüfung | `zell-netz-e2e.sh` (`ZELL-NETZ: ALLES OK`, in `ci.sh`) – Doku `docs/integration/zell-netz.md` |
+| **Einzelne Dateien** in der Sicht einer Zelle | Bind von Gerätedatei, Datei oder Socket-Knoten auf eine Datei (Art muss passen, sonst `ENOTDIR`), Neueinhängen/Aushängen; Einhängepunkte lassen sich nicht löschen oder umbenennen (`EBUSY`, schützt den gebundenen Wirtseintrag). Launcher: Zellen bekommen auf dem Ultar-Kern ein kleines `/dev` (null, zero, random, urandom; mit Recht `sound` auch `ultar/pcm`) statt des ganzen Gerätebaums |
+| **Recht `cell_chown`** (Bit 14) | `chown` beliebiger Ids nur in einer Zelle, nur auf ihren beschreibbaren Einhängungen (nie der ganze Wirtsbaum, nie `/dev`/`/proc`/`/sys`), Set-ID-Bits immer gelöscht; kein Profil und kein Dienst hält es (für die Installationszelle fremder Pakete). In Zellen ohne `file_admin` entstehen nie Set-ID-Bits, `fchmod`/`fchown` brauchen eine beschreibbare Einhängung (Lücke über Deskriptoren geschlossen) |
+| Prüfung | `zell-bind-e2e.sh` (`ZELL-BIND: ALLES OK`, in `ci.sh`) – Doku `docs/integration/zell-chown.md` |
 
 ## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
 

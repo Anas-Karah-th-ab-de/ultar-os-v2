@@ -35,6 +35,7 @@ const ENOTTY: i64 = 25;
 const ESPIPE: i64 = 29;
 const ENOSPC: i64 = 28;
 const EROFS: i64 = 30;
+const EBUSY: i64 = 16;
 const EPIPE: i64 = 32;
 const ERANGE: i64 = 34;
 const ENOSYS: i64 = 38;
@@ -1641,6 +1642,10 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
         (Ok(o), Ok(n)) => (o, n),
         (Err(e), _) | (_, Err(e)) => return e,
     };
+    // a mount point is no entry of its own: renaming it (or over it) would move or replace what it shows
+    if ol.mount_point || nl.mount_point {
+        return -EBUSY;
+    }
     if ol.read_only || nl.read_only {
         return -EROFS;
     }
@@ -1738,6 +1743,10 @@ fn sys_unlink(dirfd: i64, path: u64) -> i64 {
         Ok(l) => l,
         Err(e) => return e,
     };
+    // removing a mount point would remove what it shows (the bound file or directory of the host)
+    if loc.mount_point {
+        return -EBUSY;
+    }
     if loc.read_only {
         return -EROFS;
     }
