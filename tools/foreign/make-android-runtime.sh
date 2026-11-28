@@ -60,7 +60,8 @@ bionic_translation $GL/bionic_translation.git 6253dec7f24a57a94039a088cb436d880e
 libopensles-standalone $GL/libopensles-standalone.git c6982620c7dadeb90220b23c575b25eeffda765f Apache-2.0
 wolfssl https://github.com/wolfSSL/wolfssl.git v5.8.2-stable GPL-3.0-or-later
 "
-VERSION=0.$(date -u +%Y%m%d).$(echo "$SOURCES" | sha256sum | cut -c1-8)
+PIN=$(echo "$SOURCES" | sha256sum | cut -c1-8)
+VERSION=0.$(date -u +%Y%m%d).$PIN
 
 fetch() { # name url commit
   dir="$SRC/$1"
@@ -99,7 +100,10 @@ if [ ! -f "$BUILD/.ready" ]; then
     || fail "build tree"
   touch "$BUILD/.ready"
 fi
-rm -rf "$BUILD/src" "$BUILD/stage"
+if [ "$(cat "$BUILD/.built" 2>/dev/null)" = "$PIN" ] && [ -x "$BUILD/stage/usr/bin/android-translation-layer" ]; then
+  echo "make-android-runtime: the same sources were built already ($BUILD/stage)"
+else
+rm -rf "$BUILD/src" "$BUILD/stage" "$BUILD/.built"
 cp -a "$SRC" "$BUILD/src"
 cat >"$BUILD/src/build-inside.sh" <<'INSIDE'
 #!/bin/sh
@@ -166,6 +170,8 @@ set -e
 umount "$BUILD/dev" "$BUILD/proc"
 [ "$built" = 0 ] || { tail -60 "$OUT/build.log"; fail "build failed (log: $OUT/build.log)"; }
 [ -x "$BUILD/stage/usr/bin/android-translation-layer" ] || fail "no android-translation-layer built"
+echo "$PIN" >"$BUILD/.built"
+fi
 
 # --- the package ------------------------------------------------------------------------------
 P="$OUT/pkg"
@@ -250,6 +256,31 @@ missing=$(chroot "$TREE" sh -c 'for f in /usr/bin/android-translation-layer /usr
 [ -z "$missing" ] || fail "libraries missing in the area: $missing"
 [ -x "$TREE/opt/ultar-android/bin/ultar-apk-run" ] || fail "no start program"
 printf 'android=%s\n' "$VERSION" >>"$TREE/etc/ultar-runtime"
+
+# --- self-test: ART runs a program of its own in the area (also used on the Ultar kernel) ----
+H="$BUILD/hello"
+rm -rf "$H"; mkdir -p "$H"
+cat >"$H/Hello.java" <<'JAVA'
+public class Hello {
+  public static void main(String[] args) { System.out.println("ultar-art-ok " + (6 * 7)); }
+}
+JAVA
+mount -t proc proc "$BUILD/proc"
+chroot "$BUILD" sh -c 'cd /hello && javac --release 8 Hello.java 2>/dev/null && dx --dex --output=hello.dex Hello.class' >"$OUT/selftest.log" 2>&1 || true
+umount "$BUILD/proc"
+selftest="not built (see $OUT/selftest.log)"
+if [ -f "$H/hello.dex" ]; then
+  cp "$H/hello.dex" "$OUT/hello.dex"
+  mkdir -p "$TREE/tmp/art/dalvik-cache"
+  cp "$H/hello.dex" "$TREE/tmp/art/hello.dex"
+  mount -t proc proc "$TREE/proc"
+  mount --bind /dev "$TREE/dev"
+  chroot "$TREE" env ANDROID_DATA=/tmp/art /usr/bin/dalvikvm64 -cp /tmp/art/hello.dex Hello >>"$OUT/selftest.log" 2>&1 || true
+  umount "$TREE/dev" "$TREE/proc"
+  rm -rf "$TREE/tmp/art"
+  if grep -q '^ultar-art-ok 42$' "$OUT/selftest.log"; then selftest=ok; else selftest="FAILED (see $OUT/selftest.log)"; fi
+fi
+echo "make-android-runtime: ART self-test: $selftest"
 
 IMAGE="$OUT/linux-android-$VERSION-amd64.ext4"
 size_mb=$(du -sm "$TREE" | cut -f1)
