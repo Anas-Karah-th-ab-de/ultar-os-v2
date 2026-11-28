@@ -37,6 +37,7 @@ fn desktop(h: &mut Harness) -> Image {
     let mut img = blank(h.look.theme);
     // the desktop background (company logo in the middle of the work area) under everything
     let mut background = ultar_desktop::view::wallpaper::build(
+        &h.shell.d,
         h.look,
         SCREEN,
         ultar_desktop::model::Shape::default(),

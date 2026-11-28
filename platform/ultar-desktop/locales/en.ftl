@@ -447,6 +447,29 @@ desk.mesh.list.empty = No paired devices
 desk.mesh.list.here = Connected
 desk.mesh.list.devices = Paired devices
 
+# The desktop background: its menu, the app shortcuts, the rename dialog
+desk.desk.new_shortcut = New shortcut…
+desk.desk.new_folder = New folder
+desk.desk.paste = Paste
+desk.desk.size.large = Large icons
+desk.desk.size.medium = Medium icons
+desk.desk.size.small = Small icons
+desk.desk.show = Show desktop icons
+desk.desk.sort = Sort by name
+desk.desk.wallpaper = Change background
+desk.desk.display = Display settings
+desk.desk.settings = Desktop settings
+desk.desk.terminal = Open in Terminal
+desk.desk.pick = Choose an app to put its shortcut on the desktop
+desk.desk.add_shortcut = Add to desktop
+desk.desk.remove_shortcut = Remove from desktop
+desk.desk.rename = Rename
+desk.desk.properties = Properties
+desk.desk.rename.title = Rename shortcut
+desk.desk.rename.name = Name
+desk.desk.rename.save = Rename
+desk.desk.rename.cancel = Cancel
+
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}
 mesh.clip.body = Paste with Ctrl+V

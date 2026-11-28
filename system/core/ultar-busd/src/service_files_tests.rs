@@ -92,7 +92,7 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the services with own bus sockets (their group ids are the same).
-const IDS: [(&str, i64); 28] = [
+const IDS: [(&str, i64); 29] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
@@ -121,6 +121,7 @@ const IDS: [(&str, i64); 28] = [
     ("llmcloud", 837),
     ("osk", 839),
     ("installer", 840),
+    ("updated", 841),
 ];
 
 /// The system services of docs/integration/system-services.md (own socket, own log socket).
@@ -289,10 +290,9 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         );
     }
     // One per service of IDS but the broker itself, plus the administrator's,
-    // init's, the modem service's (ril: root on the phone, no group) and the
-    // update service's (updated: root, no group) – and one apps' socket, whose
-    // peers are named by the launcher's app map.
-    assert_eq!(sockets.len(), IDS.len() + 3);
+    // init's and the modem service's (ril: root on the phone, no group) – and
+    // one apps' socket, whose peers are named by the launcher's app map.
+    assert_eq!(sockets.len(), IDS.len() + 2);
     let apps = parsed
         .listeners
         .iter()

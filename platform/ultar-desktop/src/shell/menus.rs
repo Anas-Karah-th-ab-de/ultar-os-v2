@@ -1,6 +1,7 @@
 //! Menus of the bar: the input languages (shell.kbd), the power menu (qs.power), the menu
 //! of an app tile (shell.app right click: its windows, new window, pin/unpin, quit) and of
-//! the trash (open, empty – the files service does not exist yet).
+//! the trash (open, empty – the files service does not exist yet); the menus of the desktop
+//! background and its shortcuts are built in `desk`.
 
 use super::bar::{launch, FILES, SETTINGS, STORE, TRASH_URI};
 use super::{Effect, Opening, Outcome, Shell};
@@ -28,6 +29,10 @@ pub enum MenuKind {
     Trash,
     /// The active app (top bar).
     App,
+    /// The desktop background.
+    Desk,
+    /// A shortcut on the desktop.
+    Shortcut(usize),
 }
 
 /// Item ids: layouts are 0..8, windows are `WINDOW_BASE + index`.
@@ -69,6 +74,8 @@ pub fn open_menu(s: &Shell) -> Option<(MenuKind, Menu)> {
         Open::TileMenu(usize::MAX) => MenuKind::Trash,
         Open::TileMenu(i) => MenuKind::Tile(i),
         Open::AppMenu => MenuKind::App,
+        Open::DeskMenu(..) => MenuKind::Desk,
+        Open::ShortcutMenu(i, ..) => MenuKind::Shortcut(i),
         _ => return None,
     };
     Some((kind, build(s, kind)))
@@ -127,6 +134,8 @@ fn build(s: &Shell, kind: MenuKind) -> Menu {
             MenuItem::new(EJECT, Label::key("desk.menu.eject")).separated(),
         ]),
         MenuKind::App => app_menu(s),
+        MenuKind::Desk => super::desk::desk_menu(s),
+        MenuKind::Shortcut(i) => super::desk::shortcut_menu(s, i),
     }
 }
 
@@ -268,6 +277,8 @@ pub(super) fn chosen(s: &mut Shell, id: u32) -> Outcome {
             }
             None => Outcome::none(),
         },
+        (Open::DeskMenu(..), id) => super::desk::desk_chosen(s, id),
+        (Open::ShortcutMenu(i, ..), id) => super::desk::shortcut_chosen(s, i, id),
         (Open::TileMenu(usize::MAX), OPEN) => launch(s, FILES, Opening::uri(TRASH_URI)),
         (Open::TileMenu(i), id) => tile_chosen(s, i, id),
         (Open::AppMenu, id) => {
@@ -306,9 +317,9 @@ fn tile_chosen(s: &mut Shell, index: usize, id: u32) -> Outcome {
         PIN => {
             let app = tile.app.id.clone();
             if tile.pinned {
-                s.d.pinned.retain(|p| *p != app);
-            } else if !s.d.pinned.contains(&app) {
-                s.d.pinned.push(app);
+                s.d.places.pinned.retain(|p| *p != app);
+            } else if !s.d.places.pinned.contains(&app) {
+                s.d.places.pinned.push(app);
             }
             Outcome::surfaces()
         }

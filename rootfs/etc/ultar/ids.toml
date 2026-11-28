@@ -70,6 +70,9 @@ userfiles = 836
 # The relay token of the Ultar account (/data/ultar/account-relay, 0750/0640 accountd:accountrelay):
 # written by the account service after sign-in, read by the mesh service for the Verbund relay.
 accountrelay = 838
+# The update service runs as root (raw A/B partitions), but root without file_admin passes no
+# permission check on the Ultar kernel: its bus and log sockets are open to this group.
+updated = 841
 
 [members]
 busd = ["logd"]
@@ -108,6 +111,7 @@ agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
 osk = ["busd"]
+updated = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

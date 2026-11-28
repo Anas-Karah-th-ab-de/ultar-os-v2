@@ -118,6 +118,7 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
         Open::Overview | Open::Apps(_) | Open::Helper => Some(Target::SearchField),
         Open::Projection(mode) => Some(Target::Mode(mode)),
         Open::MeshSend => Some(Target::MeshSendCancel),
+        Open::Rename(_) => Some(Target::RenameField),
         _ => None,
     };
     if !matches!(
@@ -128,6 +129,8 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
             | Open::DriveMenu(_)
             | Open::TileMenu(_)
             | Open::AppMenu
+            | Open::DeskMenu(..)
+            | Open::ShortcutMenu(..)
     ) {
         first_operable(&mut popup.view, preferred);
     }
@@ -197,6 +200,26 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
             let anchor = super::shapes::menu_anchor(s, look, screen);
             return menu_popup(s, look, screen, anchor);
         }
+        Open::DeskMenu(..) | Open::ShortcutMenu(..) | Open::Rename(_) => {
+            return desk_popup(s, look, screen)
+        }
     };
     Ok(Some(popup))
+}
+
+/// The popups of the desktop background: its menu or a shortcut's at the pointer, the
+/// rename dialog in the middle.
+fn desk_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, UiError> {
+    let (v, p) = match s.d.open {
+        Open::DeskMenu(x, y) | Open::ShortcutMenu(_, x, y) => {
+            let Some((_, menu)) = super::open_menu(s) else {
+                return Ok(None);
+            };
+            let at = ultar_ui::geom::Point::new(x as f32, y as f32);
+            view::menu::build_at(menu, look, screen, at, &s.tr)?
+        }
+        Open::Rename(_) => view::desk::rename(&s.d, look, screen, &s.tr)?,
+        _ => return Ok(None),
+    };
+    Ok(Some(sheet(v, p)))
 }

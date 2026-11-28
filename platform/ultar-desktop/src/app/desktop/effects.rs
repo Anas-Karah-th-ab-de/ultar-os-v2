@@ -96,6 +96,7 @@ impl DesktopApp {
                     .send(&Request::SetKeyboardLayout { index: *index })?;
             }
             Effect::History => self.keep_history(),
+            Effect::Shortcuts => self.keep_shortcuts(),
         }
         Ok(())
     }
@@ -110,6 +111,12 @@ impl DesktopApp {
         } else {
             crate::model::history::delete(dir, user);
         }
+    }
+
+    /// Writes the desktop's shortcuts down beside the shell (read again at the next start).
+    fn keep_shortcuts(&mut self) {
+        let dir = self.history_dir.as_deref();
+        crate::model::places::save(&self.shell.d.places.shortcuts, dir, &self.shell.user);
     }
 
     /// A call to a system service; its answer goes into the state (outputs, a day's events)

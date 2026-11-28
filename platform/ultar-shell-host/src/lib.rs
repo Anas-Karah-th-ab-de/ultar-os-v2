@@ -49,8 +49,9 @@ pub enum HostEvent {
     Action(SurfaceId, Action),
     /// A key the tree did not use (Esc of a sheet, Enter of a panel).
     Key(SurfaceId, Key, Modifiers),
-    /// The secondary button or the menu key on a node.
-    Menu(SurfaceId, NodeId),
+    /// The secondary button or the menu key on a node, and where (the pointer, or the middle
+    /// of the focused node for the menu key; logical points of the surface).
+    Menu(SurfaceId, NodeId, ultar_ui::geom::Point),
     /// A primary press on nothing operable that was released elsewhere: the distance
     /// (swipe up on the phone's home screen or lock screen).
     Swipe(SurfaceId, ultar_ui::geom::Point),
@@ -376,7 +377,14 @@ fn unconsumed<T: Tree>(
         UiEvent::Key { key, modifiers } if !consumed => {
             if key == Key::Menu {
                 if let Some(node) = s.view.ui().focused() {
-                    out.push(HostEvent::Menu(id, node));
+                    let at = s
+                        .view
+                        .ui()
+                        .rect(node)
+                        .map_or(ultar_ui::geom::Point::new(0.0, 0.0), |r| {
+                            ultar_ui::geom::Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
+                        });
+                    out.push(HostEvent::Menu(id, node, at));
                 }
             }
             out.push(HostEvent::Key(id, key, modifiers));
@@ -386,7 +394,7 @@ fn unconsumed<T: Tree>(
             button: PointerButton::Secondary,
         } => {
             if let Some(node) = s.view.ui().node_at(pos) {
-                out.push(HostEvent::Menu(id, node));
+                out.push(HostEvent::Menu(id, node, pos));
             }
         }
         _ => {}

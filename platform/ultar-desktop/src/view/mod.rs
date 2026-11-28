@@ -8,6 +8,7 @@ pub mod banners;
 pub mod bar;
 pub mod bluetooth;
 pub mod calendar;
+pub mod desk;
 pub mod dock;
 pub mod geometry;
 pub mod helper;
@@ -205,6 +206,14 @@ pub enum Target {
     MeshSendCancel,
     /// The mesh's toasts (the toolkit's toast reports its button and closing here).
     MeshToasts,
+    /// Desktop background: a shortcut (index into `Places::shortcuts`).
+    Shortcut(usize),
+    /// Rename dialog of a shortcut: the name field.
+    RenameField,
+    /// Rename dialog: rename.
+    RenameSave,
+    /// Rename dialog: cancel.
+    RenameCancel,
 }
 
 /// A built tree and what its nodes mean.

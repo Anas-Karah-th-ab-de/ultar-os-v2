@@ -143,6 +143,9 @@ fn calendar_and_more(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outco
 
 fn overview_and_apps(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outcome {
     match (target, kind) {
+        (Target::AppItem(app), ActionKind::Activated) if s.d.places.picking => {
+            super::desk::picked(s, &app.clone())
+        }
         (Target::AppItem(app), ActionKind::Activated) => open_app(s, &app.clone()),
         (Target::Result(hit), ActionKind::Activated) => result(s, &hit.clone()),
         (Target::Window(id), ActionKind::Activated) => {

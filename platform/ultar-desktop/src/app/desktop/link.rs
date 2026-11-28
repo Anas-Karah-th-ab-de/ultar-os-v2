@@ -20,7 +20,7 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 32] = [
+pub const FOLLOWED: [&str; 35] = [
     "region.language",
     "appearance.theme",
     "appearance.accent_color",
@@ -53,6 +53,9 @@ pub const FOLLOWED: [&str; 32] = [
     "display.night_light.enabled",
     "power.mode",
     "apps.removable_media",
+    "desktop.icons.enabled",
+    "desktop.icons.size",
+    "desktop.icons.start_corner",
 ];
 
 /// Ports and subscriptions.
@@ -221,6 +224,7 @@ fn apply_pref(d: &mut Desktop, key: &str, value: &SettingValue) -> bool {
         ("bar.show_trash", SettingValue::Flag(on)) => p.show_trash = *on,
         ("bar.show_volumes", SettingValue::Flag(on)) => p.show_volumes = *on,
         ("power.show_battery_percent", SettingValue::Flag(on)) => p.battery_percent = *on,
+        (k, v) if k.starts_with("desktop.icons.") => return p.desk.apply(k, v),
         _ => return false,
     }
     true
@@ -372,6 +376,23 @@ mod tests {
             &SettingValue::Text("nonsense".into()),
         );
         assert_eq!(d.values.removable_media, RemovableMedia::Ask);
+    }
+
+    #[test]
+    fn the_desktop_icon_settings_reach_the_state() {
+        use crate::model::prefs::{DeskPrefs, IconSize};
+        let mut d = Desktop::new(Lang::En);
+        for key in DeskPrefs::KEYS {
+            assert!(FOLLOWED.contains(&key), "{key} is not read at start");
+        }
+        apply_setting(
+            &mut d,
+            "desktop.icons.size",
+            &SettingValue::Text("small".into()),
+        );
+        apply_setting(&mut d, "desktop.icons.enabled", &SettingValue::Flag(false));
+        assert_eq!(d.prefs.desk.size, IconSize::Small);
+        assert!(!d.prefs.desk.shown);
     }
 
     #[test]

@@ -447,6 +447,29 @@ desk.mesh.list.empty = Keine gekoppelten Geräte
 desk.mesh.list.here = Verbunden
 desk.mesh.list.devices = Gekoppelte Geräte
 
+# The desktop background: its menu, the app shortcuts, the rename dialog
+desk.desk.new_shortcut = Neue Verknüpfung…
+desk.desk.new_folder = Neuer Ordner
+desk.desk.paste = Einfügen
+desk.desk.size.large = Große Symbole
+desk.desk.size.medium = Mittelgroße Symbole
+desk.desk.size.small = Kleine Symbole
+desk.desk.show = Schreibtischsymbole anzeigen
+desk.desk.sort = Nach Name sortieren
+desk.desk.wallpaper = Hintergrund ändern
+desk.desk.display = Anzeigeeinstellungen
+desk.desk.settings = Schreibtisch anpassen
+desk.desk.terminal = Im Terminal öffnen
+desk.desk.pick = App wählen, deren Verknüpfung auf den Schreibtisch kommt
+desk.desk.add_shortcut = Zum Schreibtisch hinzufügen
+desk.desk.remove_shortcut = Vom Schreibtisch entfernen
+desk.desk.rename = Umbenennen
+desk.desk.properties = Eigenschaften
+desk.desk.rename.title = Verknüpfung umbenennen
+desk.desk.rename.name = Name
+desk.desk.rename.save = Umbenennen
+desk.desk.rename.cancel = Abbrechen
+
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert
 mesh.clip.body = Mit Strg+V einfügen
