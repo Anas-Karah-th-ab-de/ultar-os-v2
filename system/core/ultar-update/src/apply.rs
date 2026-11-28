@@ -13,11 +13,11 @@ use crate::fsutil::write_atomic;
 use crate::history::HistoryKind;
 use crate::journal::Journal;
 use crate::manifest::{Payload, Role};
+use crate::segfile::SegFile;
 use crate::stage::{StagedInfo, CHUNK};
 use crate::verify::VerifiedManifest;
 use crate::version::Version;
 use sha2::{Digest, Sha256};
-use std::fs::File;
 use std::io::Read;
 
 /// Which part of an installation is running.
@@ -118,7 +118,7 @@ impl<B: BootControl> Engine<B> {
     /// again from scratch. A staged bundle that is refused now (expired meanwhile, key rotated
     /// out, floor raised, channel changed, damaged) is removed: it can never be installed and
     /// must not stand in the way of the next download.
-    fn open_verified_stage(&mut self) -> Result<(File, VerifiedManifest), UpdateError> {
+    fn open_verified_stage(&mut self) -> Result<(SegFile, VerifiedManifest), UpdateError> {
         let (mut file, info) = self.staging.open_staged()?.ok_or(UpdateError::NotStaged)?;
         let checked = self.verify_stage(&mut file, &info);
         let keep = matches!(
@@ -133,7 +133,7 @@ impl<B: BootControl> Engine<B> {
 
     fn verify_stage(
         &mut self,
-        file: &mut File,
+        file: &mut SegFile,
         info: &StagedInfo,
     ) -> Result<VerifiedManifest, UpdateError> {
         let header = Header::read(file)?;
@@ -153,7 +153,7 @@ impl<B: BootControl> Engine<B> {
 
     fn write_payload(
         &mut self,
-        file: &mut File,
+        file: &mut SegFile,
         target: Slot,
         payload: &Payload,
         done: &mut u64,

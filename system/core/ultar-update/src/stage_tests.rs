@@ -1,5 +1,13 @@
 use super::*;
 use crate::manifest::tests::sample;
+use std::fs;
+
+/// The first segment of a segmented stream (all test bundles fit into one).
+fn first(base: &Path) -> PathBuf {
+    let mut name = base.as_os_str().to_owned();
+    name.push(".000");
+    PathBuf::from(name)
+}
 
 fn manifest_for(parts: &[&[u8]]) -> Manifest {
     let mut manifest = sample();
@@ -92,9 +100,9 @@ fn marker_without_matching_file_is_not_a_staged_bundle() {
     };
     fs::write(staging.marker(), marker_text(&info)).unwrap();
     assert_eq!(staging.staged().unwrap(), None, "marker alone");
-    fs::write(staging.done(), b"123456789").unwrap();
+    fs::write(first(&staging.done()), b"123456789").unwrap();
     assert_eq!(staging.staged().unwrap(), None, "size differs");
-    fs::write(staging.done(), b"1234567890").unwrap();
+    fs::write(first(&staging.done()), b"1234567890").unwrap();
     assert_eq!(staging.staged().unwrap(), Some(info.clone()));
     assert!(staging.open_staged().unwrap().is_some());
     staging.purge().unwrap();
@@ -107,7 +115,7 @@ fn marker_without_matching_file_is_not_a_staged_bundle() {
 fn recorded_length_never_exceeds_what_is_there() {
     let dir = tempfile::tempdir().unwrap();
     let staging = Staging::new(dir.path());
-    fs::write(staging.part(), b"12345").unwrap();
+    fs::write(first(&staging.part()), b"12345").unwrap();
     assert_eq!(staging.partial_bytes(), 0, "nothing recorded as flushed");
     fs::write(staging.pos(), b"3").unwrap();
     assert_eq!(staging.partial_bytes(), 3);
@@ -115,4 +123,17 @@ fn recorded_length_never_exceeds_what_is_there() {
     assert_eq!(staging.partial_bytes(), 5);
     fs::write(staging.pos(), b"garbage").unwrap();
     assert_eq!(staging.partial_bytes(), 0);
+}
+
+#[test]
+fn purge_also_removes_a_single_file_bundle_of_an_older_updater() {
+    let dir = tempfile::tempdir().unwrap();
+    let staging = Staging::new(dir.path());
+    fs::write(staging.part(), b"old part").unwrap();
+    fs::write(staging.done(), b"old bundle").unwrap();
+    fs::write(first(&staging.part()), b"new part").unwrap();
+    staging.purge().unwrap();
+    for path in [staging.part(), staging.done(), first(&staging.part())] {
+        assert!(!path.exists(), "{path:?}");
+    }
 }

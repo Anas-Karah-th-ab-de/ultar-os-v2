@@ -71,6 +71,7 @@ pub mod notify;
 pub mod partctl;
 pub mod policy;
 pub mod reject;
+pub mod segfile;
 pub mod service;
 pub mod settings;
 pub mod sign;

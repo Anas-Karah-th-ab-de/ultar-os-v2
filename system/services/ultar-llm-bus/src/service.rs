@@ -8,7 +8,7 @@ use crate::choice::{self, MODEL_KEY};
 use crate::place::{self, PLACE_KEY};
 use std::path::PathBuf;
 use std::time::Duration;
-use ultar_bus::messages::init::Switch;
+use ultar_bus::messages::init::{Switch, ERROR_UNKNOWN_SERVICE};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass, MAX_PROMPT, SERVICE};
 use ultar_bus::messages::settings::{Changed, Get, SettingValue};
 use ultar_bus::Topic;
@@ -118,7 +118,7 @@ impl LlmBus {
             on,
         };
         let _ = bus.later(move |client| {
-            let done = client.call(&switch, CALL_TIME).is_ok();
+            let done = settled(&client.call(&switch, CALL_TIME));
             Box::new(move |service: &mut Self, bus: &Bus<'_, Self>| {
                 // not done: asked again with the next look
                 service.switched = done.then_some(on);
@@ -268,5 +268,39 @@ impl Service for LlmBus {
         self.read_choice(bus);
         self.read_place(bus);
         self.look(bus);
+    }
+}
+
+/// Whether a switch call needs no repeat: it was done, or the image has no model service
+/// (init names it unknown – asking again every few seconds changes nothing and only fills
+/// the log).
+fn settled<T>(answer: &Result<T, ultar_bus::BusError>) -> bool {
+    match answer {
+        Ok(_) => true,
+        Err(ultar_bus::BusError::Remote(ErrorCode::Service(code))) => {
+            *code == ERROR_UNKNOWN_SERVICE
+        }
+        Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ultar_bus::BusError;
+
+    #[test]
+    fn a_switch_is_asked_again_only_when_it_may_still_succeed() {
+        assert!(settled(&Ok::<(), BusError>(())));
+        let unknown = BusError::Remote(ErrorCode::Service(ERROR_UNKNOWN_SERVICE));
+        assert!(
+            settled(&Err::<(), _>(unknown)),
+            "no model service in this image"
+        );
+        assert!(!settled(&Err::<(), _>(BusError::Timeout)));
+        let too_soon = BusError::Remote(ErrorCode::Service(
+            ultar_bus::messages::init::ERROR_TOO_SOON,
+        ));
+        assert!(!settled(&Err::<(), _>(too_soon)));
     }
 }

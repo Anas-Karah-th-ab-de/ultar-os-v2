@@ -142,7 +142,7 @@ def agent(vm, *groups, timeout=900):
 def run():
     # a fresh, empty target disk (a disk with a system on it would make the medium start that system)
     with open(TARGET, "wb") as f:
-        f.truncate(512 << 20)
+        f.truncate(1 << 30)
     # --- installation (graphical installer driven over the serial console)
     vm = Vm([(MEDIUM, "virtio-blk-pci"), (TARGET, "nvme")], install=True)
     check("installer started", vm.read_until(b"[installation] gestartet", 180) is True)

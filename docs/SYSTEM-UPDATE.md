@@ -137,6 +137,13 @@ The slot that is started is recorded as "started last".
 | `lock` | exclusive lock of the running daemon | – |
 | `policy`, `history` | policy; bounded history (200 entries) | atomically |
 
+Both bundle files are segmented streams (`bundle.part.000`, `.001`, …; 16 MiB each, a shorter one ends the
+stream – `src/segfile.rs`): the Ultar kernel keeps a written file in memory and refuses one above 64 MiB, a
+release bundle is several hundred MiB. Every segment is stored before the next is begun; `bundle.uup` is
+renamed segment by segment, the last one first. Updaters up to 0.8.2 staged one file and cannot take a bundle
+above 64 MiB (Settings showed "could not read from or write to the storage medium"): such devices need one
+reinstallation from 0.8.3 on.
+
 A slot's stored manifest was verified when the slot was written. It is not verified again against
 today's keys when the updater only needs to know what its own slots hold – otherwise retiring a key
 would make the device forget its running version.
