@@ -22,8 +22,12 @@ built() {
   done
   return 1
 }
+# the area carries the app wrapper as built: a changed wrapper needs a new area
+wrapper_same() {
+  tr -d '\r' <"$HERE/wine/ultar-wine-app" | cmp -s - "$OUT/linux/usr/lib/ultar/wine/ultar-wine-app"
+}
 if ! grep -q '^components=.*windows' "$OUT/linux/etc/ultar-runtime" 2>/dev/null \
-   || [ ! -x "$OUT/linux/usr/bin/Xvfb" ] || ! built; then
+   || [ ! -x "$OUT/linux/usr/bin/Xvfb" ] || ! built || ! wrapper_same; then
   COMPONENTS=windows TEST_EXTRA="xvfb x11-apps" "$HERE/make-linux-runtime.sh" "$OUT"
 fi
 # the installers (official downloads, pinned by their SHA-256)

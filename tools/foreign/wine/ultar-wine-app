@@ -51,21 +51,27 @@ prefix() {
   drives
 }
 
+# The installer runs from a drive letter of its own: NSIS installers read themselves through
+# their own path and give up (code 2) on Wine's \\?\unix\ form. S: is the read-only
+# /.setup of this cell only and is gone again after the installation (drives).
+SETUP_DRIVE=s:
+
 setup() {
   src="/.setup/$file"
   [ -f "$src" ] || { say "no installer in /.setup"; return 1; }
+  ln -sfn /.setup "$WINEPREFIX/dosdevices/$SETUP_DRIVE" || return 1
+  win="S:\\$file"
   case "$kind" in
     msi)
-      win=$(winepath -w "$src" 2>/dev/null) || return 1
       if [ "$quiet" = 1 ]; then ui=/qn; else ui=/qb; fi
       wine msiexec /i "$win" "$ui" ;;
     nsis)
-      wine "$src" /S ;;
+      wine "$win" /S ;;
     inno)
       if [ "$quiet" = 1 ]; then s=/VERYSILENT; else s=/SILENT; fi
-      wine "$src" "$s" /SUPPRESSMSGBOXES /NORESTART /SP- ;;
+      wine "$win" "$s" /SUPPRESSMSGBOXES /NORESTART /SP- ;;
     setup)
-      wine "$src" ;;
+      wine "$win" ;;
     portable)
       dir="$WINEPREFIX/drive_c/Program Files/$(printf %s "${name:-$file}" | tr -cd 'A-Za-z0-9 ._+-' | cut -c1-48)"
       mkdir -p "$dir" && cp "$src" "$dir/" || return 1
@@ -76,6 +82,7 @@ setup() {
   esac
   code=$?
   "$WINESERVER" -w
+  drives
   return $code
 }
 

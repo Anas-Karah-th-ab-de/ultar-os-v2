@@ -128,7 +128,10 @@ program after a silent install (NSIS).
 Wine as Ubuntu ships it, learned in the cells: its server is not in `PATH`
 (`/usr/lib/x86_64-linux-gnu/wine/wineserver`, the wrapper finds it), it **breaks with `TMPDIR` set**
 (`free(): invalid pointer` at its start – the cells set `TMPDIR=/tmp`, the wrapper unsets it), it finds
-its libraries through `/proc/self/exe` (the cells bring their own `/proc`), and a new prefix is about
+its libraries through `/proc/self/exe` (the cells bring their own `/proc`), NSIS installers give up
+(code 2) when started through Wine's `\\?\unix\` path – they read themselves through their own path –
+so the wrapper runs every installer from a drive of its own, `S:` = the read-only `/.setup`, removed again
+after the installation; and a new prefix is about
 **1.2 GB** (Wine copies its Windows libraries, 64 and 32 bit, into every prefix) – per Windows app, in
 its own data.
 
