@@ -83,7 +83,12 @@ fn shell_screens(lang: Lang, theme: ThemeKind, problems: &mut Vec<String>) {
             // Board CalendarSheet lists notifications (their banners are not drawn here).
             board_notes(&mut h.shell.d, lang);
         }
-        open(&mut h, o);
+        // The bar's menus as a click opens them: at their button.
+        match o {
+            Open::KeyboardMenu => h.click_bar(Target::Keyboard),
+            Open::TileMenu(i) => h.right_bar(Target::App(i)),
+            _ => open(&mut h, o),
+        }
         let img = desktop(&mut h);
         check(name, lang, theme, &img, problems);
     }

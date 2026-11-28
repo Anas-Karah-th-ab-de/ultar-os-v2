@@ -277,11 +277,19 @@ impl Harness {
         a
     }
 
+    /// The middle of a node of `view` lying at `origin` (screen points from the left), as
+    /// the host gives it to the shell for a menu the click opens.
+    fn middle(view: &View, origin: f32, node: ultar_ui::ui::NodeId) -> Option<f32> {
+        view.ui.rect(node).map(|r| origin + r.x + r.w / 2.0)
+    }
+
     fn dispatch_bar(&mut self, actions: Vec<Action>) {
         for a in actions {
             let t = self.bar.target(a.node).cloned();
             if let Some(t) = t {
+                let (before, x) = (self.shell.d.open, Harness::middle(&self.bar, 0.0, a.node));
                 let out = self.shell.on_bar(&t, &a.kind);
+                self.shell.opened_at(before, x);
                 self.apply(out);
             }
         }
@@ -291,6 +299,8 @@ impl Harness {
         for a in actions {
             let Some(p) = &self.popup else { return };
             let t = p.view.target(a.node).cloned();
+            let before = self.shell.d.open;
+            let x = Harness::middle(&p.view, p.offset.0 as f32, a.node);
             let out = match (t, &a.kind) {
                 (Some(t @ Target::AppItem(_)), k @ ActionKind::MenuChosen(_)) => {
                     self.shell.on_popup(&t, k)
@@ -308,6 +318,7 @@ impl Harness {
                 (Some(t), k) => self.shell.on_popup(&t, k),
                 (None, _) => continue,
             };
+            self.shell.opened_at(before, x);
             self.apply(out);
         }
     }
@@ -349,10 +360,31 @@ impl Harness {
             .filter(|v| v.node(&target).is_some())
             .unwrap_or_else(|| panic!("no side panel shows {target:?}"));
         let actions = Harness::press(view, &target, PointerButton::Primary);
+        let x = view
+            .node(&target)
+            .and_then(|n| Harness::middle(view, 0.0, n));
         for a in actions {
+            let before = self.shell.d.open;
             let out = self.shell.on_surface(&target, &a.kind);
+            self.shell.opened_at(before, x);
             self.apply(out);
         }
+    }
+
+    /// A right click on the second panel (the dock): the host sends it as the bar's menu.
+    pub fn right_side(&mut self, target: Target) {
+        let view = self
+            .second
+            .as_ref()
+            .filter(|v| v.node(&target).is_some())
+            .unwrap_or_else(|| panic!("no side panel shows {target:?}"));
+        let x = view
+            .node(&target)
+            .and_then(|n| Harness::middle(view, 0.0, n));
+        let before = self.shell.d.open;
+        let out = self.shell.on_bar_menu(&target);
+        self.shell.opened_at(before, x);
+        self.apply(out);
     }
 
     /// An action of a node given directly (drags, menu items).
@@ -367,7 +399,11 @@ impl Harness {
     }
 
     pub fn right_bar(&mut self, target: Target) {
+        let node = self.bar.node(&target);
+        let x = node.and_then(|n| Harness::middle(&self.bar, 0.0, n));
+        let before = self.shell.d.open;
         let out = self.shell.on_bar_menu(&target);
+        self.shell.opened_at(before, x);
         self.apply(out);
     }
 

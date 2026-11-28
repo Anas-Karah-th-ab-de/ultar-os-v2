@@ -7,6 +7,7 @@ use super::{new_ui, Look, Target, View};
 use ultar_i18n::Translator;
 use ultar_ui::geom::{Point, Rect, Size};
 use ultar_ui::layout::{Flex, Sizing};
+use ultar_ui::tokens::Space;
 use ultar_ui::ui::UiError;
 use ultar_ui::widgets::Menu;
 
@@ -21,7 +22,7 @@ fn card_size(menu: &Menu, look: Look, screen: Size, tr: &Translator) -> Result<S
 }
 
 /// Builds a menu surface above the bar: `anchor_x` is where the button is (screen points
-/// from the left); the menu opens above it.
+/// from the left); the menu opens centred above it and keeps a gap to the screen's edges.
 pub fn build(
     menu: Menu,
     look: Look,
@@ -30,7 +31,8 @@ pub fn build(
     tr: &Translator,
 ) -> Result<(View, Placement), UiError> {
     let card = card_size(&menu, look, screen, tr)?;
-    let x = (anchor_x - card.w / 2.0).clamp(0.0, (screen.w - card.w).max(0.0));
+    let edge = Space::S8.points().min(((screen.w - card.w) / 2.0).max(0.0));
+    let x = (anchor_x - card.w / 2.0).clamp(edge, (screen.w - card.w - edge).max(edge));
     let y = screen.h - geometry::SHEET_BOTTOM - card.h;
     surface(menu, look, screen, Rect::new(x, y, card.w, card.h), tr)
 }

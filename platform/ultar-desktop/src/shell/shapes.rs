@@ -44,9 +44,13 @@ pub(super) fn overview_area(shape: Shape, screen: Size) -> (Size, (i32, i32)) {
     }
 }
 
-/// Where a menu of the bar opens (screen points from the left): the active app's menu at
-/// the start of the top bar, the others in the middle.
+/// Where a menu of the bar opens (screen points from the left): at the control that was
+/// clicked; opened by a key, the active app's menu at the start of the top bar, the others
+/// in the middle.
 pub(super) fn menu_anchor(s: &Shell, look: Look, screen: Size) -> f32 {
+    if let Some((_, x)) = s.anchor.filter(|(open, _)| *open == s.d.open) {
+        return x;
+    }
     let start = 30.0 * Space::S4.points();
     match (s.d.open, look.lang.direction().is_rtl()) {
         (Open::AppMenu, true) => screen.w - start,

@@ -179,6 +179,9 @@ pub struct Shell {
     /// The drive ids last seen in `volumes.state` (`None` until the first report): a new id
     /// is a drive plugged in, which `apps.removable_media` reacts to.
     pub media_seen: Option<Vec<String>>,
+    /// Where the control that opened the open surface is (screen points from the left):
+    /// a menu of the bar opens at it, not in the middle.
+    pub anchor: Option<(Open, f32)>,
 }
 
 impl std::fmt::Debug for Shell {
@@ -201,6 +204,16 @@ impl Shell {
             shape: Shape::default(),
             projection: 0,
             media_seen: None,
+            anchor: None,
+        }
+    }
+
+    /// After a click (or a right click) on a control whose middle is `x` points from the
+    /// screen's left (`None`: no control, such as a key): when it opened something, a menu
+    /// among it opens at the control.
+    pub fn opened_at(&mut self, before: Open, x: Option<f32>) {
+        if self.d.open != before {
+            self.anchor = x.map(|x| (self.d.open, x));
         }
     }
 
