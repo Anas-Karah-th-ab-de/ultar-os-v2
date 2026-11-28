@@ -152,8 +152,8 @@ fn the_sound_server_knows_its_clients_by_user_id_and_shares_no_group_with_them()
         );
     }
     assert!(
-        !text.contains("app.browser"),
-        "no user id for the browser yet"
+        text.contains("app.browser:launcher"),
+        "the browser's user id comes from the launcher"
     );
     assert!(text.contains("--device") && text.contains("/dev/ultar/pcm"));
 }

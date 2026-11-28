@@ -21,11 +21,19 @@ pub const MAX_BINDS: usize = 8;
 pub const DEFAULT_MEMORY_MB: u32 = 2048;
 /// File name of the browser's Tor socket in the engine's folder.
 pub const PROXY_SOCKET: &str = "tor.sock";
+/// File name of the browser's sound socket in the engine's folder (`media::relay`).
+pub const AUDIO_SOCKET: &str = "audio.sock";
 
 /// Where the browser makes its Tor socket for the engine in `engine` (the engine's folder,
 /// which the cell sees read-write).
 pub fn proxy_socket(engine: &Path) -> PathBuf {
     engine.join(PROXY_SOCKET)
+}
+
+/// Where the browser makes the sound socket of the engine in `engine` (the engine's folder):
+/// the way of the cell's sound to the sound server.
+pub fn audio_socket(engine: &Path) -> PathBuf {
+    engine.join(AUDIO_SOCKET)
 }
 
 /// Why a cell description is refused.

@@ -9,7 +9,8 @@
 # peer credentials (SO_PEERCRED): the number after the identity is the user id the identity
 # runs as (rootfs/etc/ultar/ids.toml); any other user id is closed. What a program may do
 # (audio.play, audio.ring, audio.call, audio.capture) comes from the bus policy.
-# The browser app has no entry yet (its user id is given by the launcher at installation).
+# The browser app's user id is given by the launcher at installation: `app.browser:launcher`
+# asks it (launcher.list) at run time; until it is known nobody is let in as the browser.
 editions = ["phone", "desktop"]
 exec = "/usr/bin/ultar-audiod"
 args = [
@@ -20,7 +21,7 @@ args = [
     "--policy", "/etc/ultar/bus-policy.toml",
     "--stream-dir", "/run/ultar/audio",
     # system.calld (call and mesh guest) and system.mediad (play there), by user id.
-    "--streams", "system.calld:829,system.mediad:824",
+    "--streams", "system.calld:829,system.mediad:824,app.browser:launcher",
 ]
 # Its own user; the control devices are root:audio 0660 (group 830, rootfs/etc/ultar/ids.toml),
 # it is that group's member and no other: a group of calld or mediad would also open their

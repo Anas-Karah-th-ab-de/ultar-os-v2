@@ -13,6 +13,8 @@ use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ultar_audio_stream::{Class, Status, CARD_RATE};
 use ultar_service::peercred::peer_credentials;
@@ -47,16 +49,31 @@ pub struct ListenerSpec {
     /// The one user id that is this identity: the kernel's peer credentials of every
     /// connection must say it, otherwise the connection is closed. The socket itself may be
     /// open to everybody; being allowed to connect is not being the identity.
-    pub uid: u32,
+    pub uid: Uid,
+    /// The id of the app whose user id the launcher gives at run time (the identity is
+    /// `app.<id>`), if it is not known at start; the service fills `uid` when it knows it.
+    pub app: Option<String>,
     /// File mode of the socket.
     pub mode: Option<u32>,
+}
+
+/// A user id that may become known later (`NO_UID` until then: nobody is let in).
+pub type Uid = Arc<AtomicU32>;
+
+/// The user id nobody has.
+pub const NO_UID: u32 = u32::MAX;
+
+/// A user id that is known now.
+pub fn known_uid(uid: u32) -> Uid {
+    Arc::new(AtomicU32::new(uid))
 }
 
 struct Lis {
     listener: UnixListener,
     identity: String,
     rights: Rights,
-    uid: u32,
+    uid: Uid,
+    app: Option<String>,
 }
 
 /// What the engine tells the service around it.
@@ -158,6 +175,7 @@ impl Engine {
                     identity: s.identity,
                     rights: s.rights,
                     uid: s.uid,
+                    app: s.app,
                 }),
                 Err(_) => failed.push(s.identity),
             }
@@ -191,6 +209,14 @@ impl Engine {
             events: Vec::new(),
             stats: Stats::default(),
         })
+    }
+
+    /// The apps whose user id the launcher has to tell: `(app id, slot)`.
+    pub fn app_slots(&self) -> Vec<(String, Uid)> {
+        self.listeners
+            .iter()
+            .filter_map(|l| Some((l.app.clone()?, l.uid.clone())))
+            .collect()
     }
 
     /// Identities whose socket could not be made.
@@ -346,7 +372,8 @@ impl Engine {
             while let Ok((sock, _)) = l.listener.accept() {
                 // who is on the other end is what the kernel recorded at connect; a
                 // kernel that does not say refuses everybody (fail closed)
-                if !peer_credentials(&sock).is_ok_and(|c| c.uid == l.uid) {
+                let want = l.uid.load(Ordering::Relaxed);
+                if want == NO_UID || !peer_credentials(&sock).is_ok_and(|c| c.uid == want) {
                     self.stats.wrong_peer += 1;
                     continue;
                 }

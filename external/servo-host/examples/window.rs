@@ -43,6 +43,7 @@ fn main() -> Result<(), Failure> {
             filter: None,
             proxy: Some(proxy.clone()),
             proxy_socket: None,
+            audio_socket: None,
         };
         std::fs::create_dir_all(&config.profile)?;
         let mut browser = Browser::new(
