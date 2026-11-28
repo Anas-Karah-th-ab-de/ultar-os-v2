@@ -39,11 +39,14 @@ pub struct Caps {
     pub abs: u64,
     /// Minimum and maximum per absolute axis.
     pub ranges: [(i32, i32); 64],
+    /// Effective user id of the process that created the device (set by the kernel at
+    /// `UI_DEV_CREATE`, never by the service): the seat admits a service's devices by it.
+    pub creator: u32,
 }
 
 impl Default for Caps {
     fn default() -> Self {
-        Caps { name: String::new(), id: [6, 0, 0, 1], ev: 0, keys: [0; 96], rel: 0, abs: 0, ranges: [(0, 0); 64] }
+        Caps { name: String::new(), id: [6, 0, 0, 1], ev: 0, keys: [0; 96], rel: 0, abs: 0, ranges: [(0, 0); 64], creator: 0 }
     }
 }
 

@@ -353,6 +353,16 @@ pub fn name(index: u8) -> Option<String> {
     }
 }
 
+/// The user id that created the virtual device of node `index` (`None` for hardware).
+fn creator(index: u8) -> Option<u32> {
+    NODES.lock().iter().find(|n| n.index == index).and_then(|n| n.caps.first().map(|c| c.creator))
+}
+
+/// Whether node `index` is a virtual device.
+pub fn is_virtual(index: u8) -> bool {
+    creator(index).is_some()
+}
+
 /// `struct input_id` of node `index`: bus, vendor, product, version.
 fn id(index: u8) -> Option<[u16; 4]> {
     match index {
@@ -518,6 +528,8 @@ pub fn sys_file(index: u8, rest: &[&str]) -> Option<String> {
         ["dev"] => Some(format!("13:{}\n", 64 + index as u32)),
         ["uevent"] => Some(format!("MAJOR=13\nMINOR={}\nDEVNAME=input/event{index}\n", 64 + index as u32)),
         ["device", "name"] => name(index).map(|n| n + "\n"),
+        // the user id that made a virtual device (Ultar only; none for hardware)
+        ["device", "ultar_creator"] => creator(index).map(|uid| format!("{uid}\n")),
         // as Linux: `device/id/{bustype,vendor,product,version}`, four hex digits
         ["device", "id", field] => {
             let i = id(index)?;
