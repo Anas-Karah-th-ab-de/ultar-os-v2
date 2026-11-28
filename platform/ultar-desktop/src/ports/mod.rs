@@ -55,6 +55,9 @@ pub trait LauncherPort: Send + Sync {
     fn start(&self, app: &str, open: &Opening, token: Option<u64>) -> Result<(), PortError>;
     /// The installed apps' ids (`launcher.list`).
     fn installed(&self) -> Result<Vec<String>, PortError>;
+    /// The app that opens `uri` by default (`launcher.resolve`: `apps.default.*`, only an
+    /// installed app that declares it); `None` when there is none.
+    fn resolve(&self, uri: &str) -> Result<Option<String>, PortError>;
 }
 
 /// The lock screen (`lock.lock`).

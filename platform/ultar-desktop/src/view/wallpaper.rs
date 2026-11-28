@@ -77,17 +77,20 @@ mod tests {
         let look = Look::new(Lang::En, ThemeKind::Dark);
         let mut d = Desktop::new(Lang::En);
         let screen = Size::new(1280.0, 800.0);
+        use crate::model::places::DeskItem;
+        use crate::view::Target;
+        let targets = |v: &View| v.targets.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>();
         let view = build(&d, look, screen, Shape::default(), &tr).expect("view");
-        assert!(view.targets.is_empty(), "no shortcuts: nothing to operate");
+        assert_eq!(targets(&view), vec![Target::Desk(DeskItem::Home)]);
         d.places.add("org.ultar.files");
         d.places.add("org.ultar.not.installed");
         let view = build(&d, look, screen, Shape::default(), &tr).expect("view");
         assert_eq!(
-            view.targets
-                .iter()
-                .map(|(_, t)| t.clone())
-                .collect::<Vec<_>>(),
-            vec![crate::view::Target::Shortcut(0)],
+            targets(&view),
+            vec![
+                Target::Desk(DeskItem::Home),
+                Target::Desk(DeskItem::Shortcut(0))
+            ],
             "only installed apps are shown"
         );
         d.prefs.desk.shown = false;

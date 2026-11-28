@@ -79,6 +79,47 @@ fn erlaubte_schluessel() -> Vec<PublicKey> {
     v
 }
 
+/// Offen ist der Zugang nur eingeschaltet **und** mit mindestens einem erlaubten Schlüssel.
+fn aktiv() -> bool {
+    eingeschaltet() && !erlaubte_schluessel().is_empty()
+}
+
+/// Schreibt ins Protokoll, warum der Zugang gerade zu ist.
+fn melde_zu() {
+    if !eingeschaltet() {
+        log("aus (einschalten: ultar-sshd an, /etc/ultar/entwickler oder Startparameter ultar.entwickler=1)");
+        return;
+    }
+    log(&format!(
+        "kein erlaubter Schlüssel ({}): Zugang bleibt zu",
+        schluessel_dateien()
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+}
+
+/// So oft sieht der Dienst nach, ob der Zugang auf- oder zugehen soll (nur Dateien, kein Netz).
+const PRUEFTAKT: Duration = Duration::from_secs(2);
+/// Ende, wenn der Zugang zugeschaltet wurde: ultar-init startet den Dienst neu (`restart =
+/// "on-failure"`), der neue wartet wieder – alle offenen Sitzungen enden mit dem alten Prozess.
+const EXIT_ZU: i32 = 75;
+
+/// Wartet ohne offenen Port, bis der Zugang eingeschaltet ist und ein Schlüssel erlaubt ist –
+/// etwa nach dem ersten Start, der den Schlüssel aus dem Installer erst einträgt, oder nach
+/// `ultar-sshd an` / einem Schlüssel aus der Web-Verwaltung. Kein Neustart nötig.
+fn warten_bis_aktiv() {
+    let mut gemeldet = false;
+    while !aktiv() {
+        if !gemeldet {
+            melde_zu();
+            gemeldet = true;
+        }
+        std::thread::sleep(PRUEFTAKT);
+    }
+}
+
 fn schluessel_erlaubt(k: &PublicKey) -> bool {
     erlaubte_schluessel()
         .iter()
@@ -913,7 +954,7 @@ fn main() -> anyhow::Result<()> {
             let _ = std::fs::remove_file(dir().join("aus"));
             std::fs::write(dir().join("an"), b"")?;
             println!(
-                "Entwickler-Zugang an (Port {}). Wirksam nach Neustart des Dienstes.",
+                "Entwickler-Zugang an (Port {}); wirksam nach wenigen Sekunden (Stand: ultar-sshd status).",
                 port()
             );
             return Ok(());
@@ -922,7 +963,7 @@ fn main() -> anyhow::Result<()> {
             let _ = std::fs::remove_file(dir().join("an"));
             std::fs::create_dir_all(dir())?;
             std::fs::write(dir().join("aus"), b"")?;
-            println!("Entwickler-Zugang aus.");
+            println!("Entwickler-Zugang aus; offene Sitzungen enden in wenigen Sekunden.");
             return Ok(());
         }
         Some("schluessel") => {
@@ -979,20 +1020,13 @@ fn main() -> anyhow::Result<()> {
         .and_then(|i| a.get(i + 1))
         .and_then(|p| p.parse().ok())
         .unwrap_or_else(port);
-    if !immer && !eingeschaltet() {
-        log("aus (einschalten: ultar-sshd an, /etc/ultar/entwickler oder Startparameter ultar.entwickler=1)");
-        return Ok(());
-    }
-    if erlaubte_schluessel().is_empty() {
-        log(&format!(
-            "kein erlaubter Schlüssel ({}): Zugang bleibt zu",
-            schluessel_dateien()
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        return Ok(());
+    if immer {
+        if erlaubte_schluessel().is_empty() {
+            melde_zu();
+            return Ok(());
+        }
+    } else {
+        warten_bis_aktiv();
     }
     let key = wirtsschluessel()?;
     let _ = WERKZEUG_DIR.set(werkzeuge_anlegen());
@@ -1016,7 +1050,24 @@ fn main() -> anyhow::Result<()> {
             ..Default::default()
         };
         let mut s = Server;
-        s.run_on_address(Arc::new(cfg), ("0.0.0.0", port)).await
+        let dienst = s.run_on_address(Arc::new(cfg), ("0.0.0.0", port));
+        if immer {
+            return dienst.await;
+        }
+        // zugeschaltet (`aus`, Schlüssel entfernt): Port und alle Sitzungen schließen
+        let waechter = async {
+            loop {
+                tokio::time::sleep(PRUEFTAKT).await;
+                if !aktiv() {
+                    melde_zu();
+                    std::process::exit(EXIT_ZU);
+                }
+            }
+        };
+        tokio::select! {
+            r = dienst => r,
+            _ = waechter => Ok(()),
+        }
     })?;
     Ok(())
 }
@@ -1056,11 +1107,18 @@ mod tests {
             w2.public_key().key_data(),
             "Wirtsschlüssel bleibt gleich"
         );
-        // an/aus: „aus“ gewinnt auch gegen /etc/ultar/entwickler
+        // an/aus: „aus“ gewinnt auch gegen /etc/ultar/entwickler; offen nur mit Schlüssel
         std::fs::write(t.join("an"), b"").unwrap();
         assert!(eingeschaltet());
+        assert!(aktiv(), "an und ein Schlüssel: offen");
+        std::fs::write(t.join("authorized_keys"), b"").unwrap();
+        if !std::path::Path::new("/etc/ultar/entwickler.keys").exists() {
+            assert!(!aktiv(), "an, aber kein Schlüssel: zu");
+        }
         std::fs::write(t.join("aus"), b"").unwrap();
         assert!(!eingeschaltet());
+        assert!(!aktiv());
+
         let _ = std::fs::remove_dir_all(&t);
     }
 }

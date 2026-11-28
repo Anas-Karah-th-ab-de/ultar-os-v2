@@ -465,6 +465,11 @@ desk.desk.rename.title = إعادة تسمية الاختصار
 desk.desk.rename.name = الاسم
 desk.desk.rename.save = إعادة التسمية
 desk.desk.rename.cancel = إلغاء
+desk.desk.home = المجلد الرئيسي
+desk.desk.show_in_files = إظهار في الملفات
+desk.desk.trash = نقل إلى سلة المهملات
+desk.desk.no_app = لا يوجد تطبيق لفتح هذا الملف
+desk.desk.no_app.body = ثبّت من المتجر تطبيقًا يفتح هذا النوع من الملفات.
 
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = تم النسخ على {arg0}

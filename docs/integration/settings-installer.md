@@ -30,7 +30,9 @@
    in the `UIAN` record), never the password. Limits come from the account contract
    (`MAX_PASSWORD`); the contract itself is unchanged. Signing in to an Ultar account stays in
    Settings › Accounts (no network during installation; nothing is sent before confirmation).
-   A first-start reader of `UIAN` still does not exist.
+   The first start reads `UIAN` (`ultar-firstboot`). Optional on the same step: the PC's public
+   SSH key (`ssh_key`, Ed25519/ECDSA P-256, checked in `src/ssh_key.rs`); the first start adds it
+   to `/data/ultar/entwickler/authorized_keys` (`src/firstboot_ssh.rs`, `docs/integration/ssh.md`).
 5. **Toolkit changes made here (platform/ultar-ui, additive except geometry):** `Select::fit`,
    wide `Checkbox` rows (`sublabel`, `icon`, trailing child), `Card::rule(edge)`, cards and info
    bars lay out inside their edge (CSS border-box, +1/+2 points), exact line heights in `Row`,

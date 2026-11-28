@@ -90,8 +90,8 @@ pub enum Open {
     AppMenu,
     /// The menu of the desktop background, at this screen point (logical).
     DeskMenu(i32, i32),
-    /// The menu of a desktop shortcut (index into `Places::shortcuts`) at this screen point.
-    ShortcutMenu(usize, i32, i32),
+    /// The menu of an icon on the desktop at this screen point.
+    ItemMenu(super::places::DeskItem, i32, i32),
     /// The rename dialog of a desktop shortcut.
     Rename(usize),
 }

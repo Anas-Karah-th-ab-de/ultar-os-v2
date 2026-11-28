@@ -465,6 +465,11 @@ desk.desk.rename.title = Rename shortcut
 desk.desk.rename.name = Name
 desk.desk.rename.save = Rename
 desk.desk.rename.cancel = Cancel
+desk.desk.home = Home folder
+desk.desk.show_in_files = Show in Files
+desk.desk.trash = Move to trash
+desk.desk.no_app = No app opens this file
+desk.desk.no_app.body = Install an app for this kind of file from the Store.
 
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}
