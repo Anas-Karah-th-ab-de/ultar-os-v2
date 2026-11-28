@@ -6,6 +6,7 @@
 //! | File | Read | Write |
 //! |---|---|---|
 //! | `cgroup.procs` | process ids in the group (as the reader's pid namespace numbers them) | a pid (`0` = the writer) moves that process here |
+//! | `cgroup.kill` | – | `1` ends every process of the group and of the groups below it at once (not the root or the fixed branches) |
 //! | `cgroup.controllers`, `cgroup.events` | `memory pids`, `populated 0/1` | – |
 //! | `memory.current`, `memory.peak` | bytes charged now / highest value | – |
 //! | `memory.max` | explicit limit or `max` | bytes (suffix `K`/`M`/`G`) or `max` |
@@ -34,9 +35,10 @@ use alloc::vec::Vec;
 
 /// Where the tree is found in the host's file tree.
 pub const ROOT_PATH: &str = "/sys/fs/cgroup";
-const FILES: [&str; 14] = [
+const FILES: [&str; 15] = [
     "cgroup.controllers",
     "cgroup.events",
+    "cgroup.kill",
     "cgroup.procs",
     "memory.current",
     "memory.events",
@@ -115,6 +117,8 @@ fn file_text(g: u16, file: &str) -> Option<String> {
     Some(match file {
         "cgroup.controllers" => String::from("memory pids\n"),
         "cgroup.events" => format!("populated {}\n", (u.pids.0 > 0) as u8),
+        // write-only, as Linux (reading it gives nothing)
+        "cgroup.kill" => String::new(),
         "cgroup.procs" => {
             let mut s = String::new();
             for pid in crate::proc::group_members(g) {
@@ -235,6 +239,19 @@ pub fn write(path: &str, text: &str, pid_of: &dyn Fn(u64) -> Option<u64>) -> Res
     match file {
         "memory.max" => done(super::set_memory_max(g, parse_limit(text, true).ok_or(-EINVAL)?)),
         "pids.max" => done(super::set_pids_max(g, parse_limit(text, false).ok_or(-EINVAL)?)),
+        "cgroup.kill" => {
+            // the whole machine or a whole branch is never ended through a file
+            if g < super::FIXED {
+                return Err(-EINVAL);
+            }
+            match text {
+                "1" => {
+                    crate::proc::kill_resource_group(g);
+                    Ok(())
+                }
+                _ => Err(-EINVAL),
+            }
+        }
         "cgroup.procs" => {
             // the units of the dynamic rules are the groups below `apps` and `cells`: no process
             // lives in those two or in the root itself

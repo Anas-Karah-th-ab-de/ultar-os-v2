@@ -82,10 +82,11 @@ impl Launcher {
         let stopping = core.stopping;
         let grace = core.config.stop_grace;
         let mut next: Option<Instant> = None;
+        let mut hard_ends = Vec::new();
         for (key, i) in core.instances.iter_mut() {
             match (i.state, i.deadline) {
                 (InstanceState::Stopping | InstanceState::Starting, Some(at)) if at <= now => {
-                    i.escalate(grace, now);
+                    hard_ends.extend(i.escalate(grace, now));
                 }
                 (InstanceState::Backoff, Some(_)) if stopping => {
                     i.state = InstanceState::Stopped;
@@ -102,7 +103,13 @@ impl Launcher {
                 next = Some(next.map_or(at, |n| n.min(at)));
             }
         }
-        (next, stopping && core.active() == 0)
+        let done = stopping && core.active() == 0;
+        // emptying a group waits for the kernel: never while holding the core lock
+        drop(core);
+        for group in hard_ends {
+            crate::cleanup::end_group(&group);
+        }
+        (next, done)
     }
 
     /// The timer loop: runs until [`Launcher::shutdown`] was called and

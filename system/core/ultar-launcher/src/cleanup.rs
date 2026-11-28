@@ -1,7 +1,8 @@
 //! Cells the launcher no longer has a stage 1 for (review L-3): a stop
 //! whose cell did not end, and cells left from a previous run of the
 //! launcher (it was ended or crashed). They are found by their **memory
-//! group** `apps/<app>`, never by a remembered process id.
+//! group** `apps/<app>` (one group per role below it), never by a
+//! remembered process id.
 
 use crate::appid::AppId;
 use std::path::Path;
@@ -14,11 +15,42 @@ const EMPTY_WAIT: Duration = Duration::from_secs(5);
 /// Pause between two looks at a group's members.
 const LOOK: Duration = Duration::from_millis(20);
 
-/// Ends every process of the group at `dir`: `cgroup.kill` where the
-/// kernel has it (Linux), else `SIGKILL` to each member as the group lists
-/// it at that moment (the Ultar kernel: the list is read right before, its
-/// numbers belong to members of the group). Returns whether the group is
-/// empty afterwards (within [`EMPTY_WAIT`]).
+/// The members of the group at `dir` and of the groups right below it (the
+/// roles of an app).
+fn members_below(dir: &Path) -> Vec<u32> {
+    let mut all = ultar_init::groups::members(dir);
+    for sub in subgroups(dir) {
+        all.extend(ultar_init::groups::members(&sub));
+    }
+    all
+}
+
+fn subgroups(dir: &Path) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Removes the group at `dir` with the role groups below it (empty ones;
+/// a group with processes stays).
+pub fn remove_group(dir: &Path) {
+    for sub in subgroups(dir) {
+        ultar_init::groups::remove(&sub);
+    }
+    ultar_init::groups::remove(dir);
+}
+
+/// Ends every process of the group at `dir` and of the groups below it:
+/// `cgroup.kill` (Linux and the Ultar kernel end the whole subtree at once,
+/// with no process number in between), else `SIGKILL` to each member as the
+/// groups list them at that moment. Returns whether they are empty
+/// afterwards (within [`EMPTY_WAIT`]).
 pub fn end_group(dir: &Path) -> bool {
     let deadline = Instant::now() + EMPTY_WAIT;
     // only the kernel's file: never create one
@@ -28,7 +60,7 @@ pub fn end_group(dir: &Path) -> bool {
         .and_then(|mut file| std::io::Write::write_all(&mut file, b"1"))
         .is_ok();
     loop {
-        let members = ultar_init::groups::members(dir);
+        let members = members_below(dir);
         if members.is_empty() {
             return true;
         }
@@ -50,7 +82,7 @@ pub fn end_group(dir: &Path) -> bool {
 pub fn end_leftovers<'a>(root: &Path, apps: impl Iterator<Item = &'a AppId>) -> Vec<AppId> {
     apps.filter(|id| {
         let dir = root.join(Slice::Apps.dir()).join(id.as_str());
-        dir.is_dir() && !ultar_init::groups::members(&dir).is_empty() && !end_group(&dir)
+        dir.is_dir() && !members_below(&dir).is_empty() && !end_group(&dir)
     })
     .cloned()
     .collect()
