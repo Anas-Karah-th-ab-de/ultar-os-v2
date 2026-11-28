@@ -40,6 +40,7 @@ pub(crate) struct Prepared {
 fn group(
     core: &Core,
     id: &AppId,
+    role: Role,
     memory: u64,
     pids: u32,
 ) -> Result<Option<std::path::PathBuf>, LaunchError> {
@@ -58,8 +59,18 @@ fn group(
     ]);
     // a tree without the limit files (Linux without the controllers) is
     // refused by `prepare`: the app does not start unlimited
+    // the limits hold for the app as a whole; each role gets a group of its
+    // own below, so the hard end of one role never ends the other (R2-3)
     match GroupTree::detect(root).prepare(Slice::Apps, id.as_str(), &limits) {
-        Ok(Some(prepared)) => Ok(Some(prepared.dir)),
+        Ok(Some(prepared)) => {
+            let dir = prepared.dir.join(role.word());
+            match std::fs::create_dir(&dir) {
+                Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+                    Err(LaunchError::Platform(Feature::Groups))
+                }
+                _ => Ok(Some(dir)),
+            }
+        }
         _ => Err(LaunchError::Platform(Feature::Groups)),
     }
 }
@@ -183,7 +194,7 @@ pub(crate) fn prepare(
         .cell_root
         .join(format!("{id}-{}", role.word()));
     datadir::ensure_private_dir(&root).map_err(|_| LaunchError::StartFailed)?;
-    let group_dir = group(core, id, limits.memory_bytes, limits.pids)?;
+    let group_dir = group(core, id, role, limits.memory_bytes, limits.pids)?;
     let dev = dev_mode(cell, platform);
     let keep = manifest.kernel_rights & profile.kernel_rights;
     // the apps' bus socket only for an app whose signed manifest declares bus access (the broker

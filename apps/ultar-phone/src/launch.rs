@@ -1,24 +1,26 @@
-//! Opening the phone's page in Settings through the app launcher: `launcher.start` version 2
+//! Opening Settings through the app launcher: `launcher.start` version 2
 //! (`{app, role, activation_token, uri, new_window}` → `{state, pid, already, opened}`), the
 //! launcher's own contract `ultar_bus::messages::launcher`.
+//!
+//! Review R2-4: the app id is the launcher's (`settings`, APP-RULES), not a reverse-DNS name,
+//! and no URI goes along – Settings declares no URI scheme yet, and the launcher refuses a URI
+//! of an undeclared scheme. Once Settings opens `settings://apps/<id>`, the URI comes back.
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use std::time::Duration;
 use ultar_bus::messages::launcher::{Role, Start, StartReply};
 use ultar_bus::{BusError, Client};
 
-/// App id of Settings (as the shell starts it).
-pub const SETTINGS_APP: &str = "org.ultar.settings";
-/// The phone's page in Settings (`settings://apps/<id>`, the shell's convention).
-pub const PHONE_SETTINGS_URI: &str = "settings://apps/org.ultar.phone";
+/// App id of Settings (its manifest, `apps/ultar-settings/ultar-app.toml`).
+pub const SETTINGS_APP: &str = "settings";
 
-/// The request that opens the phone's settings page.
+/// The request that opens Settings.
 pub fn phone_settings(activation_token: Option<u64>) -> Start {
     Start {
         app: SETTINGS_APP.into(),
         role: Role::Ui,
         activation_token,
-        uri: Some(PHONE_SETTINGS_URI.into()),
+        uri: None,
         new_window: false,
     }
 }
@@ -35,7 +37,6 @@ pub fn open_phone_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ultar_bus::messages::launcher::MAX_URI;
     use ultar_bus::{decode, encode, Call, Message};
 
     #[test]
@@ -46,10 +47,11 @@ mod tests {
             ("launcher", "start", 2)
         );
         assert_eq!(decode::<Start>(&encode(&s).unwrap()).unwrap(), s);
-        assert!(s
-            .uri
-            .as_deref()
-            .is_some_and(|u| u.starts_with("settings://") && u.len() <= MAX_URI));
+        assert_eq!(s.uri, None, "Settings declares no URI scheme yet");
+        assert!(
+            !SETTINGS_APP.contains('.'),
+            "a system app id of the launcher has no dot"
+        );
         // Positional wire: app, role (variant 0 = Ui), token, uri, new_window.
         let bytes = encode(&s).unwrap();
         assert_eq!(bytes[0] as usize, SETTINGS_APP.len());

@@ -360,7 +360,7 @@ impl Launcher {
         core.store.save()?;
         core.write_rights_or_withdraw()?;
         if let Some(root) = &core.config.paths.group_root {
-            ultar_init::groups::remove(&root.join(Slice::Apps.dir()).join(id.as_str()));
+            crate::cleanup::remove_group(&root.join(Slice::Apps.dir()).join(id.as_str()));
         }
         self.note("launcher.uninstalled", id);
         Ok(())
