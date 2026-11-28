@@ -15,6 +15,9 @@ args = [
 # root: writes the inactive A/B slot and the boot control (the kernel opens these raw nodes for root only)
 # right raw_device: the partitions ULTAR-BOOTCTL, ultar-kernel-a/b, ultar-system-a/b
 rights = ["raw_device"]
+# Its group (841): the bus and log sockets are open to it (root without file_admin passes no
+# permission check on the Ultar kernel).
+groups = [841]
 dirs = ["/data/ultar/update"]
 notify = true
 after = ["bus", "settingsd", "devd"]
