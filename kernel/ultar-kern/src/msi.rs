@@ -22,6 +22,7 @@ const POOL_LEN: usize = (POOL_LAST - POOL_FIRST + 1) as usize;
 /// Lokale-APIC-Nachrichtenadresse (Intel SDM Bd. 3 §11.11.1): physisches Ziel in Bit 19:12.
 const MSI_ADDRESS_BASE: u32 = 0xfee0_0000;
 
+#[allow(dead_code)] // Einzel-MSI-Pfad (program_msi), bis NVMe/xHCI ihn nutzen – siehe docs/OFFEN-WARNUNGEN.md
 const PCI_CAP_MSI: u8 = 0x05;
 const PCI_CAP_MSIX: u8 = 0x11;
 
@@ -89,6 +90,7 @@ fn cap_offset(dev: &PciDev, want: u8) -> Option<u8> {
 
 /// Richtet den **MSI** eines Geräts auf einen Kern und einen Vektor ein (ein einzelner Vektor).
 /// Rückgabe: Ok, wenn das Gerät MSI hat und es eingeschaltet wurde.
+#[allow(dead_code)] // Einzel-MSI-Pfad für Geräte ohne MSI-X (NVMe/xHCI folgen) – siehe docs/OFFEN-WARNUNGEN.md
 pub fn program_msi(dev: &PciDev, vector: u8, dest_apic: u32) -> Result<(), &'static str> {
     let cap = cap_offset(dev, PCI_CAP_MSI).ok_or("keine MSI-Fähigkeit")?;
     let head = dev.r32(cap);
@@ -168,6 +170,7 @@ pub fn has_msix(dev: &PciDev) -> bool {
 }
 
 /// Ob ein Gerät MSI anbietet.
+#[allow(dead_code)] // zusammen mit program_msi (NVMe/xHCI folgen) – siehe docs/OFFEN-WARNUNGEN.md
 pub fn has_msi(dev: &PciDev) -> bool {
     cap_offset(dev, PCI_CAP_MSI).is_some()
 }
