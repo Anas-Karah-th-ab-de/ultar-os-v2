@@ -365,6 +365,11 @@ impl MemObj {
     }
 
     /// A mapping was made (`writable`: with write access) or removed.
+    /// Number of mappings of the object (in all address spaces).
+    pub fn map_count(&self) -> u64 {
+        self.maps.load(Ordering::SeqCst)
+    }
+
     pub fn mapped(&self, writable: bool, add: bool) {
         let step = |c: &AtomicU64| {
             if add {
@@ -449,6 +454,8 @@ impl Drop for Backing {
     fn drop(&mut self) {
         if let Backing::Obj(o, writable, _) = self {
             o.mapped(*writable, false);
+            // the last mapping of a mapped file stores it (filemap.rs)
+            crate::filemap::unmapped(o);
         }
     }
 }

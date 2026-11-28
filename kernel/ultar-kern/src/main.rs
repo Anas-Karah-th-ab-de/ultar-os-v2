@@ -43,6 +43,7 @@ mod efi;
 mod eingabe;
 mod ext4;
 mod fdcalls;
+mod filemap;
 mod klog;
 mod mem;
 mod msi;
@@ -69,6 +70,8 @@ mod trap;
 mod trybuf;
 mod uds;
 mod verbund;
+mod vmplace;
+mod waitid;
 mod werkstatt;
 
 #[panic_handler]

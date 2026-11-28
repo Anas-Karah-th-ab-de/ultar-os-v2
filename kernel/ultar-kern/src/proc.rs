@@ -242,6 +242,14 @@ impl<T> core::ops::DerefMut for Shared<T> {
     }
 }
 
+/// Alternate signal stack of a thread (`sigaltstack`): start, size, flags (`SS_AUTODISARM`); size 0 = none.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct AltStack {
+    pub sp: u64,
+    pub size: u64,
+    pub flags: u32,
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct SigAct {
     pub handler: u64,
@@ -301,6 +309,12 @@ pub struct Proc {
     pub frame: Box<TrapFrame>,
     pub kstack: Vec<u8>,
     pub fs_base: u64,
+    /// GS base of the thread (`arch_prctl(ARCH_SET_GS)`; Wine keeps its thread block there)
+    pub gs_base: u64,
+    /// alternate signal stack (`sigaltstack`)
+    pub altstack: AltStack,
+    /// the processor exception the next fault signal reports: address (`si_addr`, `cr2`) and `si_code`
+    pub fault: Option<(u64, i32)>,
     pub clear_tid: u64,
     pub sigmask: u64,
     pub pending: u64,
@@ -534,7 +548,7 @@ fn load_segments(sp: &mut AddrSpace, data: &[u8], base: u64) -> Result<(u64, u64
         let va = base.wrapping_add(u64le(p, 16));
         let filesz = u64le(p, 32) as usize;
         let memsz = u64le(p, 40);
-        if base == 0 && (va < USER_LOW || va + memsz > USER_LOW_END) {
+        if base == 0 && crate::paging::low_window(va, va.saturating_add(memsz)).is_none() {
             return Err("Programmadresse außerhalb des Benutzerfensters");
         }
         // addresses and sizes come from the file: a relocatable program must stay in the upper user
@@ -611,7 +625,8 @@ pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read:
         None => (prog_entry, 0),
     };
     let brk = (top + 4095) & !4095;
-    let brk_limit = if base == 0 { USER_LOW_END } else { brk + (1 << 30) };
+    // a fixed-address program's break grows only inside the window its segments lie in
+    let brk_limit = if base == 0 { crate::paging::low_window(brk, brk).map_or(USER_LOW_END, |w| w.1) } else { brk + (1 << 30) };
 
     // Stapel: 256 KB sofort, Rest wächst bei Bedarf
     let mut a = STACK_TOP - 256 * 1024;
@@ -828,6 +843,9 @@ fn spawn_in(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>,
         frame: Box::new(fresh_frame(img.entry, img.sp)),
         kstack,
         fs_base: 0,
+        gs_base: 0,
+        altstack: AltStack::default(),
+        fault: None,
         clear_tid: 0,
         sigmask: 0,
         pending: 0,
@@ -923,6 +941,8 @@ fn run_one() -> Option<bool> {
             crate::percpu::me().kstack_top = top;
             crate::arch::set_kernel_stack(top);
             crate::paging::wrmsr(0xC000_0100, p.fs_base);
+            // the user's GS base waits in KERNEL_GS_BASE until `swapgs` on the way out
+            crate::paging::wrmsr(0xC000_0102, p.gs_base);
         }
         p.space().activate();
         crate::percpu::me().current = p.pid;
@@ -1111,6 +1131,7 @@ pub fn switch_out(f: &TrapFrame, state: Option<State>) -> ! {
         if let Some(p) = ps.iter_mut().find(|p| p.pid == me) {
             *p.frame = f.clone();
             p.fs_base = unsafe { crate::paging::rdmsr(0xC000_0100) };
+            p.gs_base = unsafe { crate::paging::rdmsr(0xC000_0102) };
             p.state = state.unwrap_or(State::Ready);
         }
     }
@@ -1336,6 +1357,7 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
         if let Some(p) = ps.iter_mut().find(|p| p.pid == me) {
             if p.g.sigact[sig as usize].handler > 1 && p.sigmask & (1 << (sig - 1)) == 0 {
                 p.pending |= 1 << (sig - 1);
+                p.fault = Some(crate::signal::fault_info(v, f, cr2));
                 if let Ok(true) = crate::signal::deliver(p, f) {
                     return;
                 }

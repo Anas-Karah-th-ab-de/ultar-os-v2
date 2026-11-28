@@ -37,6 +37,8 @@
 #       of device nodes, files and socket nodes onto files, mount points stay (EBUSY), the right CELL_CHOWN,
 #   5k. what programs of other systems need (fremd-kern.sh, FREMD-KERN: ALLES OK): execve resets caught
 #       signals, rmdir/unlink each only their own kind, close_range, sync_file_range, msync, fchdir, /dev/ptmx,
+#   5l. what Wine needs (wine-kern.sh, WINE-KERN: ALLES OK): mmap address wishes, waitid, GS base,
+#       sigaltstack, fault siginfo, MAP_SHARED on files,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -183,6 +185,18 @@ else
     echo "ok    FREMD-KERN: ALLES OK ($(grep -c '^ok ' "$FLOG.out") checks)"
   else
     echo "FAIL  FREMD-KERN"; tail -40 "$FLOG.out"; exit 1
+  fi
+fi
+# What Wine and other Linux programs need (wine-kern.sh): mmap address wishes and the second low window,
+# fault siginfo, waitid, the GS base, sigaltstack, MAP_SHARED on files.
+if [ "${WINE_KERN:-1}" = 0 ]; then
+  echo "skip  WINE-KERN (WINE_KERN=0)"
+else
+  WLOG="${WINE_KERN_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" WINE_KERN_LOG="$WLOG" bash tools/kern-test/wine-kern.sh > "$WLOG.out" 2>&1 && grep -q "^WINE-KERN: ALLES OK" "$WLOG.out"; then
+    echo "ok    WINE-KERN: ALLES OK ($(grep -c '^ok ' "$WLOG.out") checks)"
+  else
+    echo "FAIL  WINE-KERN"; tail -40 "$WLOG.out"; exit 1
   fi
 fi
 # USB network (usb-net-e2e.sh): bind, MAC, DHCP, ping, TCP, unplug and replug on RNDIS; CDC-ECM is

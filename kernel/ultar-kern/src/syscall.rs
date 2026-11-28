@@ -324,7 +324,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         3 => Res::Val(sys_close(a[0])),
         436 => Res::Val(crate::fdcalls::close_range(a[0], a[1], a[2])),
         277 => Res::Val(crate::fdcalls::sync_file_range(a[0], a[3])),
-        26 => Res::Val(crate::fdcalls::msync(a[0], a[2])),
+        26 => Res::Val(crate::fdcalls::msync(a[0], a[1], a[2])),
         81 => Res::Val(crate::fdcalls::fchdir(a[0])),
         4 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
         6 => Res::Val(sys_stat_path(-100, a[0], a[1], 0x100)),
@@ -344,7 +344,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         268 | 452 => Res::Val(crate::perm::sys_chmod(a[0] as i32 as i64, a[1], a[2], if nr == 452 { a[3] } else { 0 })),
         74 | 75 => Res::Val(sys_fsync(a[0])),
         10 => Res::Val(sys_mprotect(a[0], a[1], a[2])),
-        149 | 150 | 151 | 152 | 28 | 131 | 273 | 109 => Res::Val(0),
+        149 | 150 | 151 | 152 | 28 | 273 | 109 => Res::Val(0),
+        131 => Res::Val(with(|p| crate::signal::sigaltstack(p, f.rsp, a[0], a[1])).unwrap_or(-EINVAL)),
         11 => Res::Val(sys_munmap(a[0], a[1])),
         12 => Res::Val(sys_brk(a[0])),
         13 => Res::Val(sys_sigaction(a[0], a[1], a[2])),
@@ -395,6 +396,10 @@ pub fn dispatch(f: &mut TrapFrame) {
         60 => proc::exit_thread(((a[0] & 0xff) << 8) as i32, false),
         231 => proc::exit_thread(((a[0] & 0xff) << 8) as i32, true),
         61 => sys_wait4(a[0] as i32 as i64, a[1], a[2]),
+        247 => match crate::waitid::waitid(a[0], a[1], a[2], a[3]) {
+            crate::waitid::Outcome::Val(v) => Res::Val(v),
+            crate::waitid::Outcome::Block(pid) => Res::Block(Wait::Child(pid)),
+        },
         62 => Res::Val(sys_kill(a[0] as i32 as i64, a[1])),
         63 => Res::Val(sys_uname(a[0])),
         72 => Res::Val(sys_fcntl(a[0], a[1], a[2])),
@@ -645,12 +650,15 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         enum Direct {
             Fill(bool),
             File(Arc<Vec<u8>>, u64),
+            Shared(Arc<crate::memfd::MemObj>, u64),
             Mem(Arc<crate::memfd::MemObj>, u64),
             No,
         }
         let direct = match p.fd(fd).map(|d| &d.kind) {
             Some(FdKind::Zero) => Direct::Fill(false),
             Some(FdKind::Random) => Direct::Fill(true),
+            // a file mapped shared somewhere: its object holds the current bytes (filemap.rs)
+            Some(FdKind::File { path, pos, .. }) if crate::filemap::live(path).is_some() => Direct::Shared(crate::filemap::live(path).unwrap(), *pos),
             Some(FdKind::File { data, pos, .. }) => Direct::File(data.clone(), *pos),
             Some(FdKind::Mem(m, pos)) => Direct::Mem(m.clone(), *pos),
             _ => Direct::No,
@@ -686,6 +694,18 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                     }
                 }
                 return Src::Done((end - start) as i64);
+            }
+            Direct::Shared(m, pos) => {
+                let bytes = m.read(at.unwrap_or(pos), n);
+                if !bytes.is_empty() && !proc::write_user(p.space(), buf, &bytes) {
+                    return Src::Done(-EFAULT);
+                }
+                if at.is_none() {
+                    if let Some(FdKind::File { pos, .. }) = p.fd(fd).map(|d| &mut d.kind) {
+                        *pos += bytes.len() as u64;
+                    }
+                }
+                return Src::Done(bytes.len() as i64);
             }
             Direct::Mem(m, pos) => {
                 let bytes = m.read(at.unwrap_or(pos), n);
@@ -988,9 +1008,11 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 if *append {
                     *pos = fd_data.len() as u64;
                 }
+                let at = *pos;
                 match file_write(fd_data, pos, path, &data) {
                     Ok(()) => {
                         *dirty = true;
+                        crate::filemap::wrote(path, at, &data);
                         Out::Done(data.len())
                     }
                     Err(e) => Out::Res(Res::Val(e)),
@@ -1863,6 +1885,7 @@ fn sys_ftruncate(fd: u64, len: u64) -> i64 {
                 Some(v) => {
                     v.resize(len as usize, 0);
                     *dirty = true;
+                    crate::filemap::truncated(path, len);
                     0
                 }
                 None => -ENOMEM,
@@ -3183,32 +3206,9 @@ fn sys_brk(addr: u64) -> i64 {
     .unwrap_or(-ENOMEM)
 }
 
-/// Where a new mapping of `len` bytes goes: the fixed address `addr` (whatever was there is removed)
-/// or the next free one.
+/// Where a new mapping of `len` bytes goes (vmplace.rs).
 pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64, i64> {
-    if flags & 0x10 == 0 {
-        let v = p.g.mmap_next;
-        if v + len + 4096 > proc::STACK_TOP - (1 << 30) {
-            return Err(-ENOMEM);
-        }
-        p.g.mmap_next += len + 4096;
-        return Ok(v);
-    }
-    // above the user half the page-table index wraps (non-canonical addresses) or names the
-    // kernel half: a mapping there would replace the kernel's own mappings in this address space
-    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
-        return Err(-EINVAL);
-    }
-    if !p.space().unreserve(addr, len) {
-        return Err(-ENOMEM);
-    }
-    p.space().unmap_shared(addr, len);
-    let mut a = addr;
-    while a < addr + len {
-        p.space().unmap(a);
-        a += 4096;
-    }
-    Ok(addr)
+    crate::vmplace::place(p, addr, len, flags)
 }
 
 /// Largest mapping (a language model file is mapped as a whole: tens of gigabytes).
@@ -3230,6 +3230,27 @@ fn mmap_file(fd: i64, prot: u64) -> Result<(Arc<Vec<u8>>, bool), i64> {
     }
 }
 
+/// `MAP_SHARED` of a file (filemap.rs): `None` when `fd` is no file.
+fn mmap_file_shared(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Option<i64> {
+    let (data, path, writable, no_exec) = with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
+        Some(FdKind::File { data, path, write, no_exec, .. }) => Some((data.clone(), path.clone(), *write, *no_exec)),
+        _ => None,
+    })
+    .flatten()?;
+    let want_write = prot & 2 != 0;
+    if off & 0xfff != 0 {
+        return Some(-EINVAL);
+    }
+    if want_write && !writable {
+        return Some(-EACCES);
+    }
+    if no_exec && prot & PROT_EXEC != 0 {
+        return Some(-EPERM);
+    }
+    let Some(obj) = crate::filemap::object(&path, &data, want_write) else { return Some(-ENOMEM) };
+    Some(crate::shm::map(addr, len, flags, crate::memfd::Backing::of(obj, want_write, off)))
+}
+
 fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i64 {
     if len == 0 || len > MMAP_MAX {
         return -EINVAL;
@@ -3238,6 +3259,11 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
     if flags & 0x20 == 0 {
         // a memory object or the framebuffer: shared pages or a copy
         if let Some(r) = crate::shm::mmap(addr, len, prot, flags, fd, off) {
+            return r;
+        }
+    }
+    if flags & 0x20 == 0 && matches!(flags & 0xf, 1 | 3) {
+        if let Some(r) = mmap_file_shared(addr, len, prot, flags, fd, off) {
             return r;
         }
     }
@@ -3336,6 +3362,7 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
         if !p.space().unreserve(addr, (len + 4095) & !4095) {
             return -ENOMEM;
         }
+        crate::filemap::sync_range(p, addr, (len + 4095) & !4095);
         p.space().unmap_shared(addr, (len + 4095) & !4095);
         let mut a = addr;
         while a < addr + ((len + 4095) & !4095) {
@@ -3484,6 +3511,10 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             frame: alloc::boxed::Box::new(fr),
             kstack,
             fs_base: if flags & SETTLS != 0 { tls } else { fs_now },
+            gs_base: unsafe { crate::paging::rdmsr(0xC000_0102) },
+            // a new thread starts without an alternate signal stack; a forked child keeps it (as Linux)
+            altstack: if thread { proc::AltStack::default() } else { p.altstack },
+            fault: None,
             clear_tid: if flags & CHILD_CLEARTID != 0 { ctid } else { 0 },
             sigmask: p.sigmask,
             pending: 0,
@@ -3636,6 +3667,8 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
         p.g.brk_limit = img.brk_limit;
         p.g.mmap_next = proc::MMAP_BASE;
         p.fs_base = 0;
+        p.gs_base = 0;
+        p.altstack = proc::AltStack::default();
         p.name = argv.first().cloned().unwrap_or_default();
         p.g.exe = String::from(path);
         p.g.exe_host = loc.host.clone();
@@ -3648,7 +3681,10 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
         reset_at_exec(p);
         p.space().activate();
     });
-    unsafe { crate::paging::wrmsr(0xC000_0100, 0) };
+    unsafe {
+        crate::paging::wrmsr(0xC000_0100, 0);
+        crate::paging::wrmsr(0xC000_0102, 0);
+    }
     *f = proc::fresh_frame(img.entry, img.sp);
     // a parent waiting in vfork goes on now (the child no longer uses its memory)
     proc::vfork_exec(proc::current());
@@ -3820,21 +3856,30 @@ fn sys_uname(buf: u64) -> i64 {
 }
 
 fn sys_arch_prctl(code: u64, addr: u64) -> i64 {
-    match code {
-        0x1002 => {
-            unsafe { crate::paging::wrmsr(0xC000_0100, addr) };
-            with(|p| p.fs_base = addr);
-            0
+    const SET_GS: u64 = 0x1001;
+    const SET_FS: u64 = 0x1002;
+    const GET_FS: u64 = 0x1003;
+    const GET_GS: u64 = 0x1004;
+    // FS base: the live MSR; GS base: KERNEL_GS_BASE holds the user's value while the kernel runs
+    let msr = match code {
+        SET_FS | GET_FS => 0xC000_0100,
+        SET_GS | GET_GS => 0xC000_0102,
+        _ => return -EINVAL,
+    };
+    if code == SET_FS || code == SET_GS {
+        // a base outside the user half would let the program address the kernel
+        if addr >= USER_TOP {
+            return -EPERM;
         }
-        0x1003 => {
-            let v = unsafe { crate::paging::rdmsr(0xC000_0100) };
-            if put(addr, &v.to_le_bytes()) {
-                0
-            } else {
-                -EFAULT
-            }
-        }
-        _ => -EINVAL,
+        unsafe { crate::paging::wrmsr(msr, addr) };
+        with(|p| if code == SET_FS { p.fs_base = addr } else { p.gs_base = addr });
+        return 0;
+    }
+    let v = unsafe { crate::paging::rdmsr(msr) };
+    if put(addr, &v.to_le_bytes()) {
+        0
+    } else {
+        -EFAULT
     }
 }
 

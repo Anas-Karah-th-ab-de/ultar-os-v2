@@ -72,7 +72,7 @@ pub fn mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Op
 }
 
 /// Map `what` (shared) at a new or fixed address.
-fn map(addr: u64, len: u64, flags: u64, what: Backing) -> i64 {
+pub(crate) fn map(addr: u64, len: u64, flags: u64, what: Backing) -> i64 {
     let Some(frames) = what.frames(len) else { return -ENOMEM };
     let w = what.writable();
     crate::syscall::with(|p| {
@@ -125,7 +125,7 @@ pub fn mremap(old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -
     .unwrap_or(-EINVAL)
 }
 
-/// Where a mapping that grows goes: in place is not tried (the space behind it may be taken).
+/// Where a mapping that grows goes when it cannot grow in place.
 fn target(p: &mut Proc, old: u64, new_len: u64, flags: u64, new_addr: u64) -> Result<u64, i64> {
     if flags & MREMAP_FIXED != 0 {
         if new_addr < old + new_len && new_addr + new_len > old {
@@ -174,6 +174,10 @@ fn remap_own(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new
         return old as i64;
     }
     let rights = p.space().reserved_at(old).unwrap_or((true, false));
+    // the space behind is free: the mapping grows where it is (glibc's realloc of large blocks)
+    if flags & MREMAP_FIXED == 0 && crate::vmplace::usable(p, old + old_len, new_len - old_len) {
+        return if p.space().reserve(old + old_len, new_len - old_len, rights.0, rights.1) { old as i64 } else { -ENOMEM };
+    }
     let va = match target(p, old, new_len, flags, new_addr) {
         Ok(v) => v,
         Err(e) => return e,

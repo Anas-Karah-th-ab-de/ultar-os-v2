@@ -27,6 +27,50 @@ const ADDR: u64 = 0x000f_ffff_ffff_f000;
 /// Fenster für fest gebundene Benutzerprogramme
 pub const USER_LOW: u64 = 0x40_0000;
 pub const USER_LOW_END: u64 = 0x1000_0000;
+/// Second low window, for Windows programs (docs/integration/kern-wine.md): Wine's preloader is linked at
+/// 0x7d40_0000 and every Windows program expects the shared user data page at 0x7ffe_0000. The kernel
+/// takes no memory from this range (mem.rs); it is open only when the firmware map holds nothing but free
+/// memory or nothing at all there (see `set_win_window`).
+pub const WIN_LOW: u64 = 0x7c00_0000;
+pub const WIN_END: u64 = 0x8000_0000;
+/// Lowest address of the upper user area (below it lies the kernel's identity map).
+pub const USER_HIGH: u64 = 0x1000_0000_0000;
+/// End of the user half.
+pub const USER_TOP: u64 = 0x8000_0000_0000;
+static WIN_OK: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static FB_IN_WIN: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Whether the firmware framebuffer lies in the second low window (it then stays closed).
+pub fn fb_in_win_window() -> bool {
+    FB_IN_WIN.load(Ordering::Relaxed)
+}
+
+/// Open or close the second low window (decided once at start-up from the firmware map).
+pub fn set_win_window(open: bool) {
+    WIN_OK.store(open, Ordering::Relaxed);
+}
+
+/// Whether the second low window is open.
+pub fn win_window() -> bool {
+    WIN_OK.load(Ordering::Relaxed)
+}
+
+/// The low window (start, end) that holds all of `[va, end)`, if any.
+pub fn low_window(va: u64, end: u64) -> Option<(u64, u64)> {
+    if va >= USER_LOW && end <= USER_LOW_END && va <= end {
+        return Some((USER_LOW, USER_LOW_END));
+    }
+    if win_window() && va >= WIN_LOW && end <= WIN_END && va <= end {
+        return Some((WIN_LOW, WIN_END));
+    }
+    None
+}
+
+/// Whether user pages may lie in `[va, va + len)`: one of the low windows or the upper user area.
+pub fn user_range(va: u64, len: u64) -> bool {
+    let Some(end) = va.checked_add(len) else { return false };
+    low_window(va, end).is_some() || (va >= USER_HIGH && end <= USER_TOP)
+}
 
 #[repr(C, align(4096))]
 struct Page([u64; 512]);
@@ -96,6 +140,7 @@ pub unsafe fn init(top: u64, fb: Option<(u64, u64)>) {
     map_identity(0, top.max(1 << 32), false);
     if let Some((b, s)) = fb {
         map_identity(b, b + s, false);
+        FB_IN_WIN.store(b < WIN_END && b + s > WIN_LOW, Ordering::Relaxed);
     }
     core::arch::asm!("mov cr3, {}", in(reg) pml4);
 }
@@ -372,6 +417,38 @@ impl AddrSpace {
             }
         });
         true
+    }
+
+    /// Whether nothing of this address space lies in `[va, va + len)`: no reserved range, no shared
+    /// mapping, no own user page (`mmap` with an address wish or `MAP_FIXED_NOREPLACE`).
+    pub fn range_free(&self, va: u64, len: u64) -> bool {
+        let end = va + len;
+        if self.lazy.lock().iter().any(|r| r.0 < end && r.1 > va) || self.has_shared(va, len) {
+            return false;
+        }
+        !self.any_page(va, end)
+    }
+
+    /// Whether an own user page lies in `[va, end)`; tables that are absent or the kernel's are skipped
+    /// a whole level at a time (a reservation of gigabytes costs a few steps).
+    fn any_page(&self, va: u64, end: u64) -> bool {
+        let mut a = va;
+        'outer: while a < end {
+            let mut t = self.pml4;
+            for sh in [39u64, 30, 21] {
+                let e = tab(t)[((a >> sh) & 511) as usize];
+                if e & P == 0 || e & OWN == 0 || e & HUGE != 0 {
+                    a = ((a >> sh) + 1) << sh;
+                    continue 'outer;
+                }
+                t = e & ADDR;
+            }
+            if tab(t)[((a >> 12) & 511) as usize] & P != 0 {
+                return true;
+            }
+            a += 4096;
+        }
+        false
     }
 
     /// Seitenfehler in einem reservierten Bereich: genullte Seite einsetzen

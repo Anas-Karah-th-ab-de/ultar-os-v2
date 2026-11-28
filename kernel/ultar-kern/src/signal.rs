@@ -13,6 +13,7 @@ pub const SIGPIPE: u64 = 13;
 #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub const SIGTERM: u64 = 15;
 pub const SIGCHLD: u64 = 17;
+const SA_ONSTACK: u64 = 0x0800_0000;
 const SA_RESTART: u64 = 0x1000_0000;
 const SA_NODEFER: u64 = 0x4000_0000;
 const SA_RESETHAND: u64 = 0x8000_0000;
@@ -125,7 +126,11 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
         return Err(sig as i32);
     }
     let old_mask = p.sus_mask.take().unwrap_or(p.sigmask);
-    let mut sp = f.rsp.wrapping_sub(128);
+    let alt = p.altstack;
+    let fault = p.fault.take().filter(|_| is_fault_signal(sig));
+    // SA_ONSTACK: the handler runs on the alternate stack unless it already does (no red zone there)
+    let use_alt = act.flags & SA_ONSTACK != 0 && alt.size != 0 && !on_stack(&alt, f.rsp);
+    let mut sp = if use_alt { alt.sp + alt.size } else { f.rsp.wrapping_sub(128) };
     // Gleitkomma-/Vektorzustand wie im Rahmen (FXSAVE oder XSAVE-Standardformat), auf 64 Byte
     sp = (sp - crate::trap::FX_SIZE as u64) & !63;
     let fx_addr = sp;
@@ -133,15 +138,21 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     let frame = (sp & !15) - 8;
     let mut b = alloc::vec![0u8; FRAME];
     w64(&mut b, 0, act.restorer);
+    let cr2 = fault.map_or(0, |x| x.0);
     let regs = [
-        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx, f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, 0,
+        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx, f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, cr2,
     ];
     for (i, r) in regs.iter().enumerate() {
         w64(&mut b, UC + 40 + i * 8, *r);
     }
     w64(&mut b, UC + 224, fx_addr);
     w64(&mut b, UC + 296, old_mask);
+    write_uc_stack(&mut b, &alt, f.rsp);
     b[INFO..INFO + 4].copy_from_slice(&(sig as i32).to_le_bytes());
+    if let Some((addr, code)) = fault {
+        b[INFO + 8..INFO + 12].copy_from_slice(&code.to_le_bytes());
+        w64(&mut b, INFO + 16, addr);
+    }
     let sp_ok = {
         let space = p.space();
         proc::write_user(space, fx_addr, &f.fx) && proc::write_user(space, frame, &b)
@@ -156,6 +167,9 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     p.sigmask &= !(bit(SIGKILL) | bit(19));
     if act.flags & SA_RESETHAND != 0 {
         p.g.sigact[sig as usize] = Default::default();
+    }
+    if use_alt && alt.flags & SS_AUTODISARM != 0 {
+        p.altstack = proc::AltStack::default();
     }
     f.rip = act.handler;
     f.rsp = frame;
@@ -213,5 +227,98 @@ pub fn sigreturn(p: &mut Proc, f: &mut TrapFrame) -> bool {
         }
     }
     p.sigmask = r64(&b, 296) & !(bit(SIGKILL) | bit(19));
+    restore_altstack(p, &b, f.rsp);
     true
+}
+
+// ------------------------------------------------------------------ alternate signal stack
+
+const SS_ONSTACK: u32 = 1;
+const SS_DISABLE: u32 = 2;
+const SS_AUTODISARM: u32 = 1 << 31;
+/// Smallest alternate stack (`MINSIGSTKSZ`).
+const MIN_ALT: u64 = 2048;
+
+/// Whether `sp` lies on the alternate stack `alt`.
+fn on_stack(alt: &proc::AltStack, sp: u64) -> bool {
+    alt.size != 0 && sp > alt.sp && sp - alt.sp <= alt.size
+}
+
+/// The `ss_flags` the program reads back for `alt` while its stack pointer is `sp`.
+fn ss_flags(alt: &proc::AltStack, sp: u64) -> u32 {
+    if alt.size == 0 {
+        SS_DISABLE
+    } else if on_stack(alt, sp) {
+        SS_ONSTACK
+    } else {
+        alt.flags & SS_AUTODISARM
+    }
+}
+
+/// `uc_stack` of the ucontext (stack_t: sp, flags, size) at offset 16.
+fn write_uc_stack(b: &mut [u8], alt: &proc::AltStack, sp: u64) {
+    w64(b, UC + 16, alt.sp);
+    b[UC + 24..UC + 28].copy_from_slice(&ss_flags(alt, sp).to_le_bytes());
+    w64(b, UC + 32, alt.size);
+}
+
+/// rt_sigreturn puts back the alternate stack saved in `uc_stack` (as Linux' `restore_altstack`).
+fn restore_altstack(p: &mut Proc, uc: &[u8], sp: u64) {
+    let flags = u32::from_le_bytes(uc[24..28].try_into().unwrap());
+    let (ss_sp, size) = (r64(uc, 16), r64(uc, 32));
+    let _ = set_altstack(p, sp, ss_sp, flags, size);
+}
+
+/// Set the alternate stack; `Err(errno)` as Linux' `do_sigaltstack`.
+fn set_altstack(p: &mut Proc, sp: u64, ss_sp: u64, flags: u32, size: u64) -> Result<(), i64> {
+    if on_stack(&p.altstack, sp) {
+        return Err(-1); // EPERM: the program runs on it
+    }
+    match flags & !SS_AUTODISARM {
+        SS_DISABLE => p.altstack = proc::AltStack::default(),
+        0 | SS_ONSTACK if size < MIN_ALT => return Err(-12), // ENOMEM
+        0 | SS_ONSTACK => p.altstack = proc::AltStack { sp: ss_sp, size, flags: flags & SS_AUTODISARM },
+        _ => return Err(-22), // EINVAL
+    }
+    Ok(())
+}
+
+/// `sigaltstack(ss, old_ss)`: `sp` is the caller's stack pointer.
+pub fn sigaltstack(p: &mut Proc, sp: u64, ss: u64, old: u64) -> i64 {
+    let before = p.altstack;
+    if ss != 0 {
+        let Some(b) = proc::read_user(p.space(), ss, 24) else { return -14 };
+        let flags = u32::from_le_bytes(b[8..12].try_into().unwrap());
+        if let Err(e) = set_altstack(p, sp, r64(&b, 0), flags, r64(&b, 16)) {
+            return e;
+        }
+    }
+    if old != 0 {
+        let mut o = [0u8; 24];
+        o[0..8].copy_from_slice(&before.sp.to_le_bytes());
+        o[8..12].copy_from_slice(&ss_flags(&before, sp).to_le_bytes());
+        o[16..24].copy_from_slice(&before.size.to_le_bytes());
+        if !proc::write_user(p.space(), old, &o) {
+            return -14;
+        }
+    }
+    0
+}
+
+// ------------------------------------------------------------------ processor exceptions
+
+fn is_fault_signal(sig: u64) -> bool {
+    matches!(sig, 4 | 7 | 8 | 11)
+}
+
+/// What a processor exception reports (`si_addr`, `si_code`): the page-fault address with
+/// SEGV_MAPERR/SEGV_ACCERR, else the instruction (ILL_ILLOPN, FPE_INTDIV, SEGV/BUS: SI_KERNEL).
+pub fn fault_info(vector: u64, f: &TrapFrame, cr2: u64) -> (u64, i32) {
+    match vector {
+        14 => (cr2, if f.err & 1 == 0 { 1 } else { 2 }),
+        6 => (f.rip, 2),
+        0 => (f.rip, 1),
+        16 | 19 => (f.rip, 0),
+        _ => (0, 0x80),
+    }
 }

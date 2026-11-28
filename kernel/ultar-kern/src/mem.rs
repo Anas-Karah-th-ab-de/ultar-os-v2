@@ -37,6 +37,14 @@ pub fn top(boot: &Boot) -> u64 {
 
 const MAXR: usize = 256;
 
+/// Whether the firmware map holds only free memory (or nothing) in the second low window: then no
+/// firmware data, no table the kernel reads later and not the kernel itself lie there.
+fn window_free(boot: &Boot) -> bool {
+    let (w0, w1) = (crate::paging::WIN_LOW, crate::paging::WIN_END);
+    let fb_in = crate::paging::fb_in_win_window();
+    !fb_in && boot.regions().all(|d| d.phys + d.pages * PAGE <= w0 || d.phys >= w1 || crate::efi::usable(d.typ))
+}
+
 /// Usable regions of the firmware map as `(start, end)`, without the firmware stack we still run on
 /// and without the window for fixed-address programs (see paging.rs); nothing below 1 MiB.
 // SAFETY: (contract) only reads the stack pointer and the firmware map; called once from `init`.
@@ -46,13 +54,19 @@ unsafe fn usable_regions(boot: &Boot, out: &mut [(u64, u64); MAXR]) -> usize {
     let (s0, s1) = ((rsp & !0x1f_ffff).saturating_sub(0x20_0000), (rsp | 0x1f_ffff) + 1);
     let low = crate::paging::USER_LOW_END;
     let mut n = 0;
+    let (w0, w1) = (crate::paging::WIN_LOW, crate::paging::WIN_END);
     let mut add = |start: u64, end: u64| {
         let (start, end) = ((start + PAGE - 1) & !(PAGE - 1), end & !(PAGE - 1));
-        if end > start + PAGE && n < MAXR {
-            out[n] = (start, end);
-            n += 1;
+        // the second low window (paging.rs) holds no kernel memory: the region is split around it
+        for (a, b) in [(start, end.min(w0)), (start.max(w1), end)] {
+            if b > a + PAGE && n < MAXR {
+                out[n] = (a, b);
+                n += 1;
+            }
         }
     };
+    let stack_in_window = s0 < w1 && s1 > w0;
+    crate::paging::set_win_window(!stack_in_window && window_free(boot));
     for d in boot.regions() {
         if !crate::efi::usable(d.typ) {
             continue;

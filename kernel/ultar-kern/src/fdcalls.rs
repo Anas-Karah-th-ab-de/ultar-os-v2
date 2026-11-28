@@ -56,17 +56,19 @@ pub fn sync_file_range(fd: u64, flags: u64) -> i64 {
     .unwrap_or(-EBADF)
 }
 
-/// `msync(addr, len, flags)`: mappings of files are private copies on this kernel (sys_mmap) and shared
-/// memory objects are the same pages for everyone, so there is nothing to write back. Checked like Linux:
+/// `msync(addr, len, flags)`: shared file mappings in the range are written to their files
+/// (filemap.rs); shared memory objects are the same pages for everyone. Checked like Linux:
 /// page-aligned start, exactly one of `MS_ASYNC`/`MS_SYNC`, no unknown flag.
-pub fn msync(addr: u64, flags: u64) -> i64 {
+pub fn msync(addr: u64, len: u64, flags: u64) -> i64 {
     const MS_ASYNC: u64 = 1;
     const MS_INVALIDATE: u64 = 2;
     const MS_SYNC: u64 = 4;
     let both = flags & MS_ASYNC != 0 && flags & MS_SYNC != 0;
-    if addr & 0xfff != 0 || flags & !(MS_ASYNC | MS_INVALIDATE | MS_SYNC) != 0 || both {
+    if addr & 0xfff != 0 || flags & !(MS_ASYNC | MS_INVALIDATE | MS_SYNC) != 0 || both || len > 1 << 36 {
         return -EINVAL;
     }
+    // shared file mappings in the range are written to their files (filemap.rs)
+    with(|p| crate::filemap::sync_range(p, addr, (len + 4095) & !4095));
     0
 }
 
