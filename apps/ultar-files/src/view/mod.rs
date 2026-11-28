@@ -3,9 +3,11 @@
 
 pub mod desk;
 mod dialogs;
+mod foreign;
 mod items;
 mod window;
 
+pub use items::item_menu;
 pub use window::build;
 
 use crate::action::Target;

@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 use ultar_bus::{Client as Bus, ClientOptions};
 use ultar_files::fs::Fs;
-use ultar_files::service::bus::{BusLauncher, BusVolumes};
+use ultar_files::service::bus::{BusForeign, BusLauncher, BusVolumes};
 use ultar_files::{App, Mode, Ports};
 use ultar_i18n::Lang;
 use ultar_surface::client::{Client, WindowConfig};
@@ -136,6 +136,7 @@ fn run(o: Options) -> Result<(), String> {
     let mesh = bus.clone();
     let ports = Ports {
         launcher: Box::new(BusLauncher(bus.clone())),
+        foreign: Box::new(BusForeign::new(bus.clone())),
         volumes: Box::new(BusVolumes::new(bus)),
     };
     let mode = if o.desktop { Mode::Desk } else { Mode::Window };

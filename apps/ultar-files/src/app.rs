@@ -7,7 +7,7 @@ use crate::fs::copy::Cancel;
 use crate::fs::{trash, AreaId, Fs, FsError, Loc};
 use crate::jobs::{self, JobMsg, ThumbMsg};
 use crate::model::{Dialog, Drive, Item, Running, State};
-use crate::service::{LauncherPort, Mounted, VolumesPort};
+use crate::service::{ForeignPort, LauncherPort, Mounted, VolumesPort};
 use crate::update;
 use crate::view::{self, Built};
 use std::sync::mpsc::Receiver;
@@ -34,6 +34,8 @@ pub struct Ports {
     pub launcher: Box<dyn LauncherPort>,
     /// The drive service.
     pub volumes: Box<dyn VolumesPort>,
+    /// The service for apps from other systems.
+    pub foreign: Box<dyn ForeignPort>,
 }
 
 /// One Files surface.

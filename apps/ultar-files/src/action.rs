@@ -45,6 +45,12 @@ pub enum Target {
     Sort,
     /// Compact layout: the button that opens the places menu.
     PlacesMenu,
+    /// Install sheet: the internet switch.
+    ForeignInternet,
+    /// Install sheet: the local network.
+    ForeignLan,
+    /// Install sheet: one of the person's folders (contract word).
+    ForeignFolder(String),
 }
 
 /// Commands of the context menus and shortcuts.
@@ -78,11 +84,13 @@ pub enum Command {
     Undo,
     /// Eject the drive shown.
     Eject,
+    /// Install an app from another system (`.deb`, `.exe`, `.msi`, `.apk`).
+    Install,
 }
 
 impl Command {
     /// Every command in menu id order.
-    pub const ALL: [Command; 14] = [
+    pub const ALL: [Command; 15] = [
         Command::Open,
         Command::Copy,
         Command::Cut,
@@ -97,6 +105,7 @@ impl Command {
         Command::SelectAll,
         Command::Undo,
         Command::Eject,
+        Command::Install,
     ];
 
     /// Menu item id.
@@ -126,6 +135,7 @@ impl Command {
             Command::SelectAll => "files.cmd.select_all",
             Command::Undo => "files.cmd.undo",
             Command::Eject => "files.cmd.eject",
+            Command::Install => "files.cmd.install",
         }
     }
 }
@@ -161,4 +171,10 @@ pub enum Effect {
     Rename(Loc, String),
     /// Focus the search field / the items after a rebuild.
     FocusItems,
+    /// Ask the service what the file at `path` (as the device sees it) is.
+    ForeignInspect(String),
+    /// Install the file of the open sheet with its choices.
+    ForeignInstall,
+    /// Start an app (just installed).
+    StartApp(String),
 }

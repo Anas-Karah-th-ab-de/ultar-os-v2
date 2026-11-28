@@ -125,6 +125,9 @@ fn item_or_dialog(
     kind: &ActionKind,
     key_input: bool,
 ) -> Vec<Effect> {
+    if let Some(effects) = foreign_action(s, target, kind) {
+        return effects;
+    }
     match (target, kind) {
         (Target::Item(name), ActionKind::DoubleActivated) => open_item(s, name),
         (Target::Item(name), ActionKind::Activated) if key_input => {
@@ -187,6 +190,8 @@ pub fn open_item(s: &mut State, name: &str) -> Vec<Effect> {
             s.dialog = Some(Dialog::Failed(FsError::Link, 1));
             Vec::new()
         }
+        // A package of another system goes to the install sheet (the service reads it).
+        _ if crate::foreign::is_installable_name(name) => install_sheet(s, name, &loc),
         // A file opens with its default app: the launcher resolves the URI through
         // apps.default.* (Effect::Open); "no app" is said when none is installed for it.
         _ => vec![Effect::Open {
@@ -194,6 +199,91 @@ pub fn open_item(s: &mut State, name: &str) -> Vec<Effect> {
             name: name.to_owned(),
         }],
     }
+}
+
+/// Opens the install sheet for the package `name` at `loc` and asks the service about it.
+fn install_sheet(s: &mut State, name: &str, loc: &Loc) -> Vec<Effect> {
+    let Some(path) = crate::foreign::host_path(loc, &s.drives) else {
+        s.notice = Some(notice_of("files.notice.open_failed", name));
+        return Vec::new();
+    };
+    let sheet = crate::foreign::Sheet::new(name, path.clone());
+    s.dialog = Some(Dialog::Foreign(Box::new(sheet)));
+    vec![Effect::ForeignInspect(path)]
+}
+
+/// Clicks inside the install sheet; `None` when the action is not about it.
+fn foreign_action(s: &mut State, target: &Target, kind: &ActionKind) -> Option<Vec<Effect>> {
+    let Some(Dialog::Foreign(sheet)) = &mut s.dialog else {
+        return None;
+    };
+    match (target, kind) {
+        (Target::ForeignInternet, ActionKind::Toggled(on)) => sheet.set_internet(*on),
+        (Target::ForeignLan, ActionKind::Toggled(on)) => sheet.set_lan(*on),
+        (Target::ForeignFolder(word), ActionKind::Toggled(on)) => sheet.set_folder(word, *on),
+        (Target::DialogOk, ActionKind::Activated) => return Some(foreign_ok(s)),
+        (Target::DialogCancel, ActionKind::Activated | ActionKind::Closed) => {
+            // closing a running installation hides the sheet; the job goes on and its end
+            // is said in a notice
+            if let Some(job) = sheet.job() {
+                s.foreign_job = Some((job, sheet.file.clone()));
+            }
+            s.dialog = None;
+        }
+        _ => return None,
+    }
+    Some(Vec::new())
+}
+
+fn foreign_ok(s: &mut State) -> Vec<Effect> {
+    let Some(Dialog::Foreign(sheet)) = &mut s.dialog else {
+        return Vec::new();
+    };
+    if let crate::foreign::Phase::Done(apps) = &sheet.phase {
+        let app = apps.first().cloned();
+        s.dialog = None;
+        return app.map(Effect::StartApp).into_iter().collect();
+    }
+    if sheet.start() {
+        return vec![Effect::ForeignInstall];
+    }
+    Vec::new()
+}
+
+/// What the service for apps from other systems answered; `true` when the window changes.
+pub fn foreign_event(s: &mut State, event: crate::service::ForeignEvent) -> bool {
+    use crate::foreign::Phase;
+    use crate::service::ForeignEvent as E;
+    let sheet = match &mut s.dialog {
+        Some(Dialog::Foreign(sheet)) => Some(sheet),
+        _ => None,
+    };
+    match (event, sheet) {
+        (E::Inspected(a), Some(sh)) if sh.phase == Phase::Reading => sh.inspected(a),
+        (E::Started(a), Some(sh)) if sh.phase == Phase::Starting => sh.started(a),
+        (E::Progress(p), Some(sh)) if sh.progress(&p) => {}
+        (E::Progress(p), _) => return background_job(s, &p),
+        _ => return false,
+    }
+    true
+}
+
+/// A step of an installation whose sheet was closed: its end is said in a notice.
+fn background_job(s: &mut State, p: &ultar_bus::messages::foreign::Progress) -> bool {
+    use ultar_bus::messages::foreign::Step;
+    let Some((job, name)) = s.foreign_job.clone() else {
+        return false;
+    };
+    let key = match p.step {
+        _ if job != p.job => return false,
+        Step::Done => "files.notice.installed",
+        Step::Cancelled => "files.notice.install_cancelled",
+        Step::Failed(_) => "files.notice.install_failed",
+        _ => return false,
+    };
+    s.foreign_job = None;
+    s.notice = Some(notice_of(key, &name));
+    true
 }
 
 /// A notice about one item (no undo).
@@ -220,6 +310,13 @@ pub fn command(s: &mut State, cmd: Command) -> Vec<Effect> {
             .and_then(|l| l.name().map(str::to_owned))
             .map(|n| open_item(s, &n))
             .unwrap_or_default(),
+        Command::Install if !s.in_trash() => match sel.first() {
+            Some(l) if l.name().is_some_and(crate::foreign::is_installable_name) => {
+                let name = l.name().unwrap_or_default().to_owned();
+                install_sheet(s, &name, l)
+            }
+            _ => Vec::new(),
+        },
         Command::Copy | Command::Cut if !sel.is_empty() && !s.in_trash() => {
             s.edit.clipboard = Some((sel, cmd == Command::Cut));
             Vec::new()

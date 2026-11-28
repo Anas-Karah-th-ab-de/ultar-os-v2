@@ -188,6 +188,11 @@ pub fn item_menu(s: &State) -> Menu {
     } else {
         items.insert(3, entry(Command::Paste));
     }
+    let one_package = s.selected.len() == 1
+        && s.selected.iter().all(|n| crate::foreign::is_installable_name(n));
+    if one_package {
+        items.insert(1, entry(Command::Install));
+    }
     Menu::new(items)
 }
 

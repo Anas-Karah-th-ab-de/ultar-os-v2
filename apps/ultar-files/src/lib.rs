@@ -8,7 +8,8 @@
 //! reached through them.
 //!
 //! Layers: [`fs`] (file operations, trash, undo, search, thumbnails – no UI), [`model`]
-//! (state), [`update`] (clicks and keys → state + effects, no I/O), [`view`] (widget trees,
+//! (state), [`foreign`] (the sheet that installs apps from other systems, no I/O),
+//! [`update`] (clicks and keys → state + effects, no I/O), [`view`] (widget trees,
 //! `ultar-ui` only), [`service`] (launcher and drive service as ports), [`jobs`]
 //! (background threads), [`app`] (the glue).
 #![forbid(unsafe_code)]
@@ -18,6 +19,7 @@
 pub mod action;
 pub mod app;
 mod app_effects;
+pub mod foreign;
 pub mod fs;
 pub mod i18n;
 pub mod jobs;
