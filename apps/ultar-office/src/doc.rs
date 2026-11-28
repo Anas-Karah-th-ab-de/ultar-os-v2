@@ -64,12 +64,34 @@ pub enum Align {
     Justify,
 }
 
+/// Written direction of a paragraph: by the text, or forced by the person (like Word's
+/// RTL/LTR button). The letter of each run still follows the first strong character
+/// ([`is_rtl`]); this controls the paragraph as a whole.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Dir {
+    /// The first strong character decides.
+    #[default]
+    Auto,
+    /// Force left-to-right.
+    Ltr,
+    /// Force right-to-left.
+    Rtl,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Run {
     pub text: String,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    /// Through the middle of the letters.
+    pub strike: bool,
+    /// Size in point; `None` = the size of the style.
+    pub size_pt: Option<f32>,
+    /// Text colour as six hex digits (`RRGGBB`, without `#`); `None` = the theme colour.
+    pub color: Option<String>,
+    /// Background of the letters (a highlighter) as six hex digits; `None` = none.
+    pub highlight: Option<String>,
 }
 
 impl Run {
@@ -85,6 +107,12 @@ impl Run {
 pub struct Para {
     pub style: Style,
     pub align: Align,
+    /// Written direction ([`Dir`]).
+    pub dir: Dir,
+    /// Height of one line as a multiple of single (1.0, 1.5, 2.0 …); `None` = single.
+    pub line_spacing: Option<f32>,
+    /// First-line indentation of the start side, in point; `None` = none.
+    pub indent_pt: Option<f32>,
     pub runs: Vec<Run>,
 }
 
@@ -93,6 +121,9 @@ impl Para {
         Para {
             style,
             align: Align::Start,
+            dir: Dir::Auto,
+            line_spacing: None,
+            indent_pt: None,
             runs: vec![Run::plain(text)],
         }
     }
@@ -105,9 +136,13 @@ impl Para {
         r.text = t.into();
         self.runs = vec![r];
     }
-    /// Arabische/hebräische Schrift → rechts nach links
+    /// Arabische/hebräische Schrift → rechts nach links; an explicit direction wins.
     pub fn rtl(&self) -> bool {
-        is_rtl(&self.text())
+        match self.dir {
+            Dir::Auto => is_rtl(&self.text()),
+            Dir::Ltr => false,
+            Dir::Rtl => true,
+        }
     }
     pub fn all_bold(&self) -> bool {
         self.runs
@@ -134,9 +169,22 @@ pub fn is_rtl(s: &str) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Picture {
+    /// The image bytes (PNG or JPEG, kept verbatim for the round trip).
+    pub bytes: Vec<u8>,
+    /// File name inside the package (kept, so saving writes the same name).
+    pub name: String,
+    /// Displayed width in point (`None` = natural size of the image).
+    pub width_pt: Option<f32>,
+    /// Displayed height in point (`None` = natural size).
+    pub height_pt: Option<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Block {
     Para(Para),
     Table(Vec<Vec<String>>),
+    Picture(Picture),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -186,6 +234,7 @@ impl Document {
                         out.push('\n');
                     }
                 }
+                Block::Picture(_) => {}
             }
         }
         out
@@ -243,6 +292,7 @@ impl Document {
                     }
                     out.push('\n');
                 }
+                Block::Picture(_) => {}
             }
         }
         out.trim_end().to_string() + "\n"
@@ -258,6 +308,9 @@ impl Document {
                 d.blocks.push(Block::Para(Para {
                     style: Style::Normal,
                     align: Align::Start,
+                    dir: Dir::Auto,
+                    line_spacing: None,
+                    indent_pt: None,
                     runs: inline(para.trim()),
                 }));
             }
@@ -331,6 +384,9 @@ impl Document {
                     d.blocks.push(Block::Para(Para {
                         style: s,
                         align: Align::Start,
+                        dir: Dir::Auto,
+                        line_spacing: None,
+                        indent_pt: None,
                         runs,
                     }));
                 }
@@ -394,6 +450,7 @@ impl Document {
                         }
                     }
                 }
+                Block::Picture(_) => {}
             }
         }
         n
@@ -423,6 +480,10 @@ fn inline(s: &str) -> Vec<Run> {
                         bold: b,
                         italic: i,
                         underline: false,
+                        strike: false,
+                        size_pt: None,
+                        color: None,
+                        highlight: None,
                     });
                     rest = &rest[mark.len() * 2 + end..];
                     continue;
@@ -478,5 +539,40 @@ mod tests {
         assert!(!d.paras().nth(1).unwrap().rtl());
         assert_eq!(d.replace("Welt", "Ultar"), 1);
         assert!(d.to_text().contains("Hallo Ultar"));
+    }
+
+    #[test]
+    fn direction_button_wins_over_the_text() {
+        let ltr = Para {
+            dir: Dir::Ltr,
+            ..Para::new(Style::Normal, "مرحبا")
+        };
+        assert!(!ltr.rtl(), "forced LTR overrides Arabic text");
+        let rtl = Para {
+            dir: Dir::Rtl,
+            ..Para::new(Style::Normal, "hello")
+        };
+        assert!(rtl.rtl(), "forced RTL overrides Latin text");
+        assert!(Para::new(Style::Normal, "hello").rtl() == false);
+    }
+
+    #[test]
+    fn runs_carry_the_formatting() {
+        let mut r = Run::plain("x");
+        r.strike = true;
+        r.size_pt = Some(14.0);
+        r.color = Some("FF0000".into());
+        r.highlight = Some("FFFF00".into());
+        let p = Para {
+            style: Style::Normal,
+            align: Align::Center,
+            dir: Dir::Auto,
+            line_spacing: Some(2.0),
+            indent_pt: Some(24.0),
+            runs: vec![r],
+        };
+        assert_eq!(p.runs[0].size_pt, Some(14.0));
+        assert_eq!(p.runs[0].color.as_deref(), Some("FF0000"));
+        assert_eq!(p.line_spacing, Some(2.0));
     }
 }

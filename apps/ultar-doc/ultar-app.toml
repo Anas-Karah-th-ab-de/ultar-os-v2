@@ -1,0 +1,36 @@
+# Ultar word processor – app manifest (docs/APP-RULES.md §3).
+id          = "doc"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.doc.name"
+description = "app.doc.desc"
+icon        = "doc"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+# files://<area>/<path> – a .docx (or .txt) document of the user.
+schemes      = ["files"]
+multi_window = true
+
+[permissions]
+files       = ["home:rw", "documents:rw", "downloads:rw", "desktop:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[agent]
+actions     = ["open", "read_text"]
+confirm     = ["insert_text", "replace"]
+
+[limits]
+memory_mb   = 160
+cpu         = "foreground"

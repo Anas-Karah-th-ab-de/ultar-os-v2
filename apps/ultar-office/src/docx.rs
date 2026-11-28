@@ -3,7 +3,7 @@
 //! fett/kursiv/unterstrichen und Tabellen. Geschrieben wird eine schlanke, Word-/LibreOffice-taugliche Datei
 //! mit Formatvorlagen, Aufzählung/Nummerierung und Rechts-nach-links-Absätzen für Arabisch.
 
-use crate::doc::{is_rtl, Align, Block, Document, Para, Run, Style};
+use crate::doc::{is_rtl, Align, Block, Dir, Document, Para, Picture, Run, Style};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::{Cursor, Read, Write};
@@ -27,6 +27,15 @@ fn on(e: &quick_xml::events::BytesStart) -> bool {
         attr(e, b"val").as_deref(),
         Some("0") | Some("false") | Some("none")
     )
+}
+
+/// A colour value as six upper-case hex digits; `auto`/`none` and empty mean "theme colour".
+fn color_val(v: &str) -> Option<String> {
+    let v = v.trim();
+    if v.is_empty() || v.eq_ignore_ascii_case("auto") || v.eq_ignore_ascii_case("none") {
+        return None;
+    }
+    Some(v.to_ascii_uppercase())
 }
 
 pub fn read_zip_entry(bytes: &[u8], name: &str) -> Result<Vec<u8>, String> {
@@ -58,6 +67,29 @@ fn style_names(bytes: &[u8]) -> std::collections::HashMap<String, String> {
                 }
                 _ => {}
             },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    m
+}
+
+/// `word/_rels/document.xml.rels`: relationship id → target part (relative, no leading slash).
+fn document_rels(bytes: &[u8]) -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    let Ok(x) = read_zip_entry(bytes, "word/_rels/document.xml.rels") else {
+        return m;
+    };
+    let mut r = Reader::from_reader(&x[..]);
+    let mut buf = Vec::new();
+    loop {
+        match r.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local(e.name().as_ref()) == b"Relationship" => {
+                if let (Some(id), Some(t)) = (attr(&e, b"Id"), attr(&e, b"Target")) {
+                    m.insert(id, t.trim_start_matches('/').to_owned());
+                }
+            }
             Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
@@ -140,6 +172,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let x = read_zip_entry(bytes, "word/document.xml")?;
     let names = style_names(bytes);
     let nums = numbering_decimal(bytes);
+    let rels = document_rels(bytes);
     let mut r = Reader::from_reader(&x[..]);
     let mut buf = Vec::new();
     let mut doc = Document::default();
@@ -150,6 +183,11 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let mut in_ppr = false;
     let mut in_t = false;
     let mut num_id: Option<String> = None;
+    // Bilder (w:drawing): rId + Größe eines Bildes im laufenden Absatz
+    let mut in_drawing = false;
+    let mut draw_extent: Option<(i64, i64)> = None;
+    let mut draw_embed: Option<String> = None;
+    let mut para_pics: Vec<(String, (i64, i64))> = Vec::new();
     // Tabellen (verschachtelt: nur äußerste zählt, innere als Text)
     let mut tbl_depth = 0usize;
     let mut table: Vec<Vec<String>> = Vec::new();
@@ -172,6 +210,10 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     b"p" => {
                         para = Some(Para::default());
                         num_id = None;
+                        para_pics.clear();
+                        draw_extent = None;
+                        draw_embed = None;
+                        in_drawing = false;
                         if empty {
                             if tbl_depth == 0 {
                                 doc.blocks.push(Block::Para(Para::default()));
@@ -212,6 +254,64 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                         if let Some(rr) = run.as_mut() {
                             rr.underline = on(e);
                         }
+                    }
+                    b"strike" | b"dstrike" if in_rpr => {
+                        if let Some(rr) = run.as_mut() {
+                            rr.strike = on(e);
+                        }
+                    }
+                    b"sz" | b"szCs" if in_rpr => {
+                        if let Some(v) = attr(e, b"val").and_then(|s| s.parse::<f32>().ok()) {
+                            if let Some(rr) = run.as_mut() {
+                                rr.size_pt = Some(v / 2.0);
+                            }
+                        }
+                    }
+                    b"color" if in_rpr => {
+                        if let Some(rr) = run.as_mut() {
+                            rr.color = color_val(&attr(e, b"val").unwrap_or_default());
+                        }
+                    }
+                    b"shd" if in_rpr => {
+                        if let Some(fill) = attr(e, b"fill") {
+                            if fill != "auto" && !fill.is_empty() {
+                                if let Some(rr) = run.as_mut() {
+                                    rr.highlight = Some(fill.to_ascii_uppercase());
+                                }
+                            }
+                        }
+                    }
+                    b"bidi" if in_ppr => {
+                        if let Some(p) = para.as_mut() {
+                            p.dir = Dir::Rtl;
+                        }
+                    }
+                    b"spacing" if in_ppr => {
+                        if let Some(v) = attr(e, b"line").and_then(|s| s.parse::<f32>().ok()) {
+                            if let Some(p) = para.as_mut() {
+                                p.line_spacing = Some(v / 240.0);
+                            }
+                        }
+                    }
+                    b"ind" if in_ppr => {
+                        let dxa = attr(e, b"start")
+                            .or_else(|| attr(e, b"left"))
+                            .and_then(|s| s.parse::<f32>().ok());
+                        if let Some(v) = dxa {
+                            if let Some(p) = para.as_mut() {
+                                p.indent_pt = Some(v / 20.0);
+                            }
+                        }
+                    }
+                    b"drawing" if !empty => in_drawing = true,
+                    b"extent" if in_drawing => {
+                        let v = attr(e, b"cx")
+                            .and_then(|s| s.parse::<i64>().ok())
+                            .zip(attr(e, b"cy").and_then(|s| s.parse::<i64>().ok()));
+                        draw_extent = draw_extent.or(v);
+                    }
+                    b"blip" if in_drawing => {
+                        draw_embed = attr(e, b"embed");
                     }
                     b"t" if !empty => in_t = true,
                     b"tab" if !in_ppr => {
@@ -270,15 +370,52 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     }
                 }
                 b"p" => {
+                    in_drawing = false;
+                    let has_pics = !para_pics.is_empty();
                     if let Some(p) = para.take() {
                         if tbl_depth > 0 {
                             if !cell.is_empty() {
                                 cell.push('\n');
                             }
                             cell.push_str(&p.text());
-                        } else {
+                        } else if !(has_pics && p.text().is_empty()) {
                             doc.blocks.push(Block::Para(p));
                         }
+                    }
+                    if tbl_depth == 0 {
+                        for (rid, (cx, cy)) in para_pics.drain(..) {
+                            let Some(target) = rels.get(&rid) else {
+                                continue;
+                            };
+                            let part = if target.starts_with("word/") {
+                                target.clone()
+                            } else {
+                                format!("word/{target}")
+                            };
+                            let Ok(media) = read_zip_entry(bytes, &part) else {
+                                continue;
+                            };
+                            let name = target
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("image.png")
+                                .to_owned();
+                            doc.blocks.push(Block::Picture(Picture {
+                                bytes: media,
+                                name,
+                                width_pt: Some(cx as f32 / 12700.0),
+                                height_pt: Some(cy as f32 / 12700.0),
+                            }));
+                        }
+                    }
+                }
+                b"drawing" => {
+                    in_drawing = false;
+                    if let (Some(rid), Some(extent)) = (draw_embed.take(), draw_extent.take()) {
+                        para_pics.push((rid, extent));
+                    } else {
+                        draw_extent = None;
+                        draw_embed = None;
                     }
                 }
                 b"tc" if tbl_depth == 1 => row.push(std::mem::take(&mut cell)),
@@ -332,6 +469,25 @@ fn run_xml(r: &Run, rtl: bool, mono: bool) -> String {
     if r.underline {
         rpr.push_str(r#"<w:u w:val="single"/>"#);
     }
+    if r.strike {
+        rpr.push_str("<w:strike/>");
+    }
+    if let Some(pt) = r.size_pt {
+        let half = (pt * 2.0).round().max(2.0) as u32;
+        rpr.push_str(&format!(r#"<w:sz w:val="{half}"/><w:szCs w:val="{half}"/>"#));
+    }
+    if let Some(c) = &r.color {
+        if !c.is_empty() {
+            rpr.push_str(&format!(r#"<w:color w:val="{c}"/>"#));
+        }
+    }
+    if let Some(h) = &r.highlight {
+        if !h.is_empty() {
+            rpr.push_str(&format!(
+                r#"<w:shd w:val="clear" w:color="auto" w:fill="{h}"/>"#
+            ));
+        }
+    }
     if rtl {
         rpr.push_str("<w:rtl/>");
     }
@@ -383,6 +539,14 @@ fn para_xml(p: &Para) -> String {
     }
     if rtl {
         ppr.push_str("<w:bidi/>");
+    }
+    if let Some(ind) = p.indent_pt {
+        let dxa = (ind * 20.0).round().max(0.0) as u32;
+        ppr.push_str(&format!(r#"<w:ind w:start="{dxa}"/>"#));
+    }
+    if let Some(ls) = p.line_spacing {
+        let line = (ls * 240.0).round().max(1.0) as u32;
+        ppr.push_str(&format!(r#"<w:spacing w:line="{line}" w:lineRule="auto"/>"#));
     }
     let jc = match (p.align, rtl) {
         (Align::Center, _) => Some("center"),
@@ -458,14 +622,72 @@ const NUMBERING: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"
 <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
 </w:numbering>"#;
 
-const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>"#;
+const CONTENT_TYPES_BASE: &str = r#"<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#;
+
+const DOC_RELS_BASE: &str = r#"<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>"#;
+
+/// The content type of an image part by its file name.
+fn image_mime(name: &str) -> &'static str {
+    if name
+        .to_ascii_lowercase()
+        .ends_with(".jpeg")
+        | name.to_ascii_lowercase().ends_with(".jpg")
+    {
+        "image/jpeg"
+    } else {
+        "image/png"
+    }
+}
+
+fn content_types_xml(images: &[(String, Vec<u8>)]) -> String {
+    let mut s = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">"#,
+    );
+    s.push_str(CONTENT_TYPES_BASE);
+    for (name, _) in images {
+        s.push_str(&format!(
+            r#"<Override PartName="/word/media/{name}" ContentType="{}"/>"#,
+            image_mime(name)
+        ));
+    }
+    s.push_str("</Types>");
+    s
+}
+
+fn doc_rels_xml(images: &[(String, Vec<u8>)]) -> String {
+    let mut s = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
+    );
+    s.push_str(DOC_RELS_BASE);
+    for (i, (name, _)) in images.iter().enumerate() {
+        s.push_str(&format!(
+            r#"<Relationship Id="rIdImg{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/{name}"/>"#,
+            i + 1
+        ));
+    }
+    s.push_str("</Relationships>");
+    s
+}
+
+/// Displayed size of a picture in EMU (914 400 per inch, 12 700 per point).
+fn picture_extent_emu(pic: &Picture) -> (i64, i64) {
+    let cx = pic.width_pt.unwrap_or(200.0).max(1.0) * 12700.0;
+    let cy = pic.height_pt.unwrap_or(150.0).max(1.0) * 12700.0;
+    (cx.round() as i64, cy.round() as i64)
+}
+
+/// A paragraph that shows one picture (`w:drawing`).
+fn picture_xml(idx: u32, cx: i64, cy: i64) -> String {
+    let rid = format!("rIdImg{idx}");
+    format!(
+        r#"<w:p><w:r><w:drawing><wp:inline><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="{idx}" name="Picture {idx}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="{idx}" name="Picture {idx}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"#
+    )
+}
 
 const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#;
-
-const DOC_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>"#;
 
 pub(crate) fn app_xml(app_kind: &str) -> String {
     format!(
@@ -496,12 +718,21 @@ pub(crate) fn zip_write(files: &[(&str, &[u8])]) -> Result<Vec<u8>, String> {
 /// .docx schreiben
 pub fn write(d: &Document) -> Result<Vec<u8>, String> {
     let mut body = String::new();
+    let mut images: Vec<(String, Vec<u8>)> = Vec::new();
     for b in &d.blocks {
         match b {
             Block::Para(p) => body.push_str(&para_xml(p)),
-            Block::Table(t) => {
-                body.push_str(&table_xml(t));
-                // Word verlangt nach einer Tabelle am Ende einen Absatz
+            Block::Table(t) => body.push_str(&table_xml(t)),
+            Block::Picture(pic) => {
+                let idx = images.len() + 1;
+                let name = if pic.name.trim().is_empty() {
+                    format!("image{idx}.png")
+                } else {
+                    pic.name.trim().to_owned()
+                };
+                let (cx, cy) = picture_extent_emu(pic);
+                body.push_str(&picture_xml(idx as u32, cx, cy));
+                images.push((name.to_owned(), pic.bytes.clone()));
             }
         }
     }
@@ -512,7 +743,7 @@ pub fn write(d: &Document) -> Result<Vec<u8>, String> {
     );
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>{body}<w:p/>{sect}</w:body></w:document>"#
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>{body}<w:p/>{sect}</w:body></w:document>"#
     );
     let title = d
         .paras()
@@ -521,21 +752,54 @@ pub fn write(d: &Document) -> Result<Vec<u8>, String> {
         .unwrap_or_default();
     let core = core_xml(&title.chars().take(80).collect::<String>());
     let app = app_xml("Writer");
-    zip_write(&[
-        ("[Content_Types].xml", CONTENT_TYPES.as_bytes()),
+    let rels = doc_rels_xml(&images);
+    let types = content_types_xml(&images);
+    let mut parts: Vec<String> = Vec::new();
+    for (name, _) in &images {
+        parts.push(if name.starts_with("word/") {
+            name.clone()
+        } else {
+            format!("word/media/{name}")
+        });
+    }
+    let mut files: Vec<(&str, &[u8])> = vec![
+        ("[Content_Types].xml", types.as_bytes()),
         ("_rels/.rels", RELS.as_bytes()),
         ("word/document.xml", xml.as_bytes()),
-        ("word/_rels/document.xml.rels", DOC_RELS.as_bytes()),
+        ("word/_rels/document.xml.rels", rels.as_bytes()),
         ("word/styles.xml", STYLES.as_bytes()),
         ("word/numbering.xml", NUMBERING.as_bytes()),
         ("docProps/core.xml", core.as_bytes()),
         ("docProps/app.xml", app.as_bytes()),
-    ])
+    ];
+    for (i, (_, data)) in images.iter().enumerate() {
+        files.push((parts[i].as_str(), data.as_slice()));
+    }
+    zip_write(&files)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The writer ends the body with an empty paragraph (Word wants one after a table).
+    fn strip_trailing_empty(mut d: Document) -> Document {
+        while matches!(d.blocks.last(), Some(Block::Para(p)) if p.text().is_empty()) {
+            d.blocks.pop();
+        }
+        d
+    }
+
+    /// `Auto` direction resolves at write time (a right-to-left paragraph is stored as
+    /// `<w:bidi/>`), so the round trip cannot tell `Auto` from the resolved direction.
+    fn resolved(mut d: Document) -> Document {
+        for b in &mut d.blocks {
+            if let Block::Para(p) = b {
+                p.dir = if p.rtl() { Dir::Rtl } else { Dir::Ltr };
+            }
+        }
+        d
+    }
 
     #[test]
     fn docx_hin_und_zurueck() {
@@ -543,15 +807,68 @@ mod tests {
         let d = Document::from_markdown(md);
         let bytes = write(&d).unwrap();
         let back = read(&bytes).unwrap();
-        // Tabellen und Absätze kommen gleich zurück (der Schluss-Absatz nach der Tabelle ist leer)
-        let mut back2 = back.clone();
-        while matches!(back2.blocks.last(), Some(Block::Para(p)) if p.text().is_empty()) {
-            back2.blocks.pop();
-        }
-        assert_eq!(back2, d);
+        assert_eq!(resolved(strip_trailing_empty(back)), resolved(d));
         assert!(
             String::from_utf8_lossy(&read_zip_entry(&bytes, "word/document.xml").unwrap())
                 .contains("<w:bidi/>")
         );
+    }
+
+    #[test]
+    fn run_and_para_formatting_round_trips() {
+        let mut d = Document::default();
+        let mut run = Run::plain("سلام");
+        run.bold = true;
+        run.strike = true;
+        run.size_pt = Some(18.0);
+        run.color = Some("1F2937".into());
+        run.highlight = Some("FFF000".into());
+        let mut p = Para::new(Style::Normal, "");
+        p.runs = vec![run];
+        p.dir = Dir::Rtl;
+        p.line_spacing = Some(1.5);
+        p.indent_pt = Some(36.0);
+        d.blocks.push(Block::Para(p));
+
+        let bytes = write(&d).unwrap();
+        let back = strip_trailing_empty(read(&bytes).unwrap());
+        assert_eq!(back.blocks.len(), 1);
+        let Some(Block::Para(q)) = back.blocks.first() else {
+            panic!("expected a paragraph");
+        };
+        assert_eq!(q.dir, Dir::Rtl);
+        assert!(q.rtl());
+        assert_eq!(q.line_spacing, Some(1.5));
+        assert_eq!(q.indent_pt, Some(36.0));
+        let r = &q.runs[0];
+        assert!(r.strike);
+        assert_eq!(r.size_pt, Some(18.0));
+        assert_eq!(r.color.as_deref(), Some("1F2937"));
+        assert_eq!(r.highlight.as_deref(), Some("FFF000"));
+    }
+
+    #[test]
+    fn pictures_round_trip() {
+        let png: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0, 0, 0, 0];
+        let mut d = Document::default();
+        d.blocks.push(Block::Para(Para::new(Style::Normal, "A picture")));
+        d.blocks.push(Block::Picture(Picture {
+            bytes: png.clone(),
+            name: "image1.png".into(),
+            width_pt: Some(100.0),
+            height_pt: Some(50.0),
+        }));
+        let bytes = write(&d).unwrap();
+        let back = strip_trailing_empty(read(&bytes).unwrap());
+        assert_eq!(back.blocks.len(), 2);
+        let pic = back.blocks.iter().find_map(|b| match b {
+            Block::Picture(p) => Some(p),
+            _ => None,
+        });
+        let pic = pic.expect("picture round-trips");
+        assert_eq!(pic.bytes, png);
+        assert_eq!(pic.name, "image1.png");
+        assert!((pic.width_pt.unwrap() - 100.0).abs() < 0.1);
+        assert!((pic.height_pt.unwrap() - 50.0).abs() < 0.1);
     }
 }
