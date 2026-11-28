@@ -256,6 +256,38 @@ fn forward(st: &AppState, from: &str, own: &mpsc::Sender<Message>, text: &str) -
     true
 }
 
+/// Messages one signalling socket may send per second on average, and at once.
+const SIGNAL_RATE: f64 = 20.0;
+const SIGNAL_BURST: f64 = 100.0;
+
+/// Token bucket of one socket: a flood of offers or ICE candidates is dropped instead of
+/// forwarded to the callee (review: signalling without rate limit).
+struct Bucket {
+    tokens: f64,
+    at: std::time::Instant,
+}
+
+impl Bucket {
+    fn new() -> Self {
+        Self {
+            tokens: SIGNAL_BURST,
+            at: std::time::Instant::now(),
+        }
+    }
+
+    fn take(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        let refill = now.duration_since(self.at).as_secs_f64() * SIGNAL_RATE;
+        self.tokens = (self.tokens + refill).min(SIGNAL_BURST);
+        self.at = now;
+        if self.tokens < 1.0 {
+            return false;
+        }
+        self.tokens -= 1.0;
+        true
+    }
+}
+
 /// Relays the socket's messages until it closes or loses its place in the hub (its device was
 /// removed or replaced, or the device signed in again).
 async fn relay(
@@ -265,10 +297,12 @@ async fn relay(
     stop: &Notify,
     rx: &mut Stream,
 ) {
+    let mut bucket = Bucket::new();
     loop {
         tokio::select! {
             () = stop.notified() => return,
             msg = rx.next() => match msg {
+                Some(Ok(Message::Text(_))) if !bucket.take() => {}
                 Some(Ok(Message::Text(t))) => {
                     if !forward(st, number, out_tx, &t) {
                         return;
