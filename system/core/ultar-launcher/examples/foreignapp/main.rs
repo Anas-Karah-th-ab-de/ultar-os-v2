@@ -49,8 +49,8 @@ fn check(ok: bool, what: &str) {
 }
 
 /// With `--component PROGRAM` (ultar-foreign's `componenttest`): the component „Linux-Programme“
-/// as the service installs it, on this kernel, before the app (its lines pass through).
-fn component_first() {
+/// as the service installs it, on this kernel, after the app (its lines pass through).
+fn component_test() {
     let words: Vec<String> = std::env::args().collect();
     let arg = |name: &str| words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned();
     let (Some(test), Some(bin)) = (arg("--component"), arg("--bin")) else {
@@ -76,7 +76,6 @@ fn main() {
         println!("foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]");
         std::process::exit(2)
     });
-    component_first();
     let world = World::start(&args).unwrap_or_else(|e| fail(&format!("setup: {e}")));
     let files = world.client("app.files");
     let settings = world.client("app.settings");
@@ -111,7 +110,9 @@ fn main() {
     };
     let done = world::end_of(&progress, job, APT_WAIT).unwrap_or_else(|| fail("install did not end"));
     check(done.step == Step::Done, &format!("install: {done:?}"));
-    check(done.apps == [APP.to_owned()], &format!("apps: {:?}", done.apps));
+    // the package brings the editor and (Ubuntu 26.04) its settings window: two apps
+    check(done.apps.iter().any(|a| a == APP), &format!("apps: {:?}", done.apps));
+    let apps = done.apps.clone();
     check(world.asked() >= 1, "the administrator was not asked");
     let status = world.app().unwrap_or_else(|| fail("no launcher entry"));
     check(status.profile == "app.foreign", &status.profile);
@@ -154,15 +155,21 @@ fn main() {
     );
     println!("FOREIGN-APP: stopped");
 
-    // 4. removal leaves nothing behind
-    let removed = world.call(
-        &settings,
-        &Remove {
-            id: APP.into(),
-            keep_data: false,
-        },
-    );
-    check(removed.outcome == Outcome::Done, &format!("remove: {:?}", removed.outcome));
+    // 4. removal leaves nothing behind (the package goes with its last app)
+    for id in &apps {
+        let removed = world.call(
+            &settings,
+            &Remove {
+                id: id.clone(),
+                keep_data: false,
+            },
+        );
+        check(removed.outcome == Outcome::Done, &format!("remove {id}: {:?}", removed.outcome));
+        check(
+            world::poll(APT_WAIT, || !world.call(&settings, &RuntimeState {}).busy),
+            "the service stayed busy",
+        );
+    }
     check(
         world::poll(APT_WAIT, || {
             !world.call(&settings, &RuntimeState {}).busy && !world.installed("mousepad")
@@ -175,5 +182,7 @@ fn main() {
     check(!Path::new("/data/foreign/linux/usr/bin/mousepad").exists(), "the program stayed");
     println!("FOREIGN-APP: removed");
     world.stop();
+    // the component „Linux-Programme“ as the service installs it, on this kernel
+    component_test();
     println!("FOREIGN-APP-KERN: ALLES OK");
 }
