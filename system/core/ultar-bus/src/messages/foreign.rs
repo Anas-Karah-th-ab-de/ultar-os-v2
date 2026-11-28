@@ -616,9 +616,7 @@ mod tests {
         for now in [Source::Deb, Source::Exe, Source::Msi, Source::Apk] {
             assert!(now.installable());
         }
-        for later in [Source::Unknown] {
-            assert!(!later.installable());
-        }
+        assert!(!Source::Unknown.installable());
         assert!(Choices::default().is_valid());
         let lan_without_net = Choices {
             lan: true,
