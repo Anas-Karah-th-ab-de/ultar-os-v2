@@ -227,7 +227,14 @@ pub fn answer(
                 .map_err(control_code)
         });
         if let Some(service) = refused {
-            supervisor.note(&format!("refused switch caller={caller} service={service}"));
+            // A service the image does not ship (the language model in the VMware image) is no
+            // refusal: the caller is told "unknown" all the same, the journal says what it is.
+            let note = if supervisor.has_service(&service) {
+                "refused switch"
+            } else {
+                "switch of a service this image does not have:"
+            };
+            supervisor.note(&format!("{note} caller={caller} service={service}"));
         }
         return None;
     }

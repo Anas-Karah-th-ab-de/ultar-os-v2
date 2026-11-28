@@ -97,6 +97,11 @@ impl Supervisor {
         Ok(unit.state.public())
     }
 
+    /// Whether this image has a service of that name (whatever its state).
+    pub fn has_service(&self, name: &str) -> bool {
+        self.units.contains_key(name)
+    }
+
     /// The table of the control socket (`ultar-ctl status`): a header and
     /// one line per service – name, state, pid, restarts, uptime.
     pub fn status_text(&self) -> String {

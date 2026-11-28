@@ -471,6 +471,7 @@ subscribe = ["mesh.state", "mesh.handoff_progress"]
 # through a notification with a Stop button. The viewer app asks, types and stops.
 [[rule]]
 identity  = "system.screend"
+register  = ["screend"]
 call      = ["mesh.view_ready", "mesh.view_picture", "mesh.view_locked", "mesh.view_stop", "notify.post", "notify.dismiss", "notify.take_invoked"]
 subscribe = ["mesh.view_serve", "notify.invoked", "session.state"]
 
