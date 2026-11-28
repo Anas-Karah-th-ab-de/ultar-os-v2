@@ -16,7 +16,11 @@ use ultar_ui::widgets::Tone;
 /// Reads the area and the apps. The page of an app closes when the app is gone.
 pub fn load(state: &mut State, ports: &mut Ports) {
     let view = &mut state.status.foreign;
-    match ports.foreign.runtime().and_then(|r| Ok((r, ports.foreign.list()?))) {
+    match ports
+        .foreign
+        .runtime()
+        .and_then(|r| Ok((r, ports.foreign.list()?)))
+    {
         Ok((runtime, apps)) => {
             view.runtime = Some(runtime);
             view.apps = apps;

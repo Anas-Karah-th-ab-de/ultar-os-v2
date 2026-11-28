@@ -45,7 +45,10 @@ pub fn body(ui: &mut Ui, b: &mut Built, dialog: NodeId, sheet: &Sheet) -> Result
         Phase::Starting => muted(ui, dialog, Label::key("files.foreign.starting")),
         Phase::Running { step, percent, .. } => {
             let name = Label::key(foreign::step_key(*step));
-            ui.add(dialog, Progress::new(name).value(f32::from(*percent) / 100.0))?;
+            ui.add(
+                dialog,
+                Progress::new(name).value(f32::from(*percent) / 100.0),
+            )?;
             muted(ui, dialog, Label::key("files.foreign.running_hint"))
         }
         Phase::Done(_) => muted(
@@ -116,7 +119,10 @@ fn facts(ui: &mut Ui, parent: NodeId, i: &Inspected) -> Result<(), UiError> {
         Label::key_with("files.foreign.publisher_said", &[("name", &i.publisher)])
     };
     let rows = [
-        ("files.foreign.kind", Label::key(foreign::kind_key(i.source))),
+        (
+            "files.foreign.kind",
+            Label::key(foreign::kind_key(i.source)),
+        ),
         ("files.foreign.name", Label::data(&i.name)),
         ("files.foreign.version", Label::data(&i.version)),
         ("files.prop.size", Label::data(&size)),

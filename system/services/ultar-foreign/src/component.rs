@@ -107,8 +107,7 @@ impl Manifest {
             n.starts_with(PREFIX)
                 && n.ends_with(".tar.gz")
                 && n.len() <= 128
-                && n
-                    .bytes()
+                && n.bytes()
                     .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
         };
         let text_ok = |t: &str| t.len() <= 64 && !t.chars().any(char::is_control);
@@ -218,9 +217,9 @@ pub fn newest(ctx: &Ctx, dir: &Path) -> Option<Found> {
         let Some(manifest) = Manifest::parse(&signed.bytes, std::env::consts::ARCH) else {
             continue;
         };
-        let newer = best.as_ref().is_none_or(|b| {
-            version_key(&manifest.version) > version_key(&b.manifest.version)
-        });
+        let newer = best
+            .as_ref()
+            .is_none_or(|b| version_key(&manifest.version) > version_key(&b.manifest.version));
         if newer {
             best = Some(Found {
                 uap,
@@ -316,7 +315,12 @@ pub enum Updated {
 
 /// The confirmation text.
 fn confirm_text(found: &Found) -> Text {
-    let windows = found.manifest.component.components.split(',').any(|c| c.trim() == "windows");
+    let windows = found
+        .manifest
+        .component
+        .components
+        .split(',')
+        .any(|c| c.trim() == "windows");
     Text {
         key: if windows {
             "foreign.confirm.runtime.windows"
@@ -359,16 +363,17 @@ fn update_in(
     // no component on a drive or in the areas: it comes from the Store (network)
     let found = newest(ctx, dir).ok_or(Failure::Network)?;
     let installed = layout.runtime_installed();
-    if installed
-        && version_key(&found.manifest.version) <= version_key(&layout.runtime_version())
-    {
+    if installed && version_key(&found.manifest.version) <= version_key(&layout.runtime_version()) {
         return Ok(Updated::Unchanged);
     }
     if installed && holds_apps {
         return Err(Failure::Refused);
     }
     let part = &found.manifest.component;
-    let needed = part.size.saturating_add(part.unpacked).saturating_add(SPARE);
+    let needed = part
+        .size
+        .saturating_add(part.unpacked)
+        .saturating_add(SPARE);
     if free(&layout.root) < needed {
         return Err(Failure::Space);
     }
@@ -461,7 +466,11 @@ pub fn unpack(archive: &Path, into: &Path, owners: bool) -> std::io::Result<()> 
     ar.set_unpack_xattrs(false);
     if owners {
         // the area's root belongs to root, as every directory in it
-        rustix::fs::chown(into, Some(rustix::fs::Uid::ROOT), Some(rustix::fs::Gid::ROOT))?;
+        rustix::fs::chown(
+            into,
+            Some(rustix::fs::Uid::ROOT),
+            Some(rustix::fs::Gid::ROOT),
+        )?;
     }
     for entry in ar.entries()? {
         let mut e = entry?;
@@ -527,8 +536,16 @@ mod tests {
         let m = Manifest::parse(manifest("x86_64", good).as_bytes(), "x86_64").unwrap();
         assert_eq!(m.component.components, "windows");
         assert!(Manifest::parse(manifest("aarch64", good).as_bytes(), "x86_64").is_none());
-        for bad in ["../foreign.linux-runtime-x.tar.gz", "/etc/foreign.linux-runtime-x.tar.gz", "linux.tar.gz", "foreign.linux-runtime-x.tar"] {
-            assert!(Manifest::parse(manifest("x86_64", bad).as_bytes(), "x86_64").is_none(), "{bad}");
+        for bad in [
+            "../foreign.linux-runtime-x.tar.gz",
+            "/etc/foreign.linux-runtime-x.tar.gz",
+            "linux.tar.gz",
+            "foreign.linux-runtime-x.tar",
+        ] {
+            assert!(
+                Manifest::parse(manifest("x86_64", bad).as_bytes(), "x86_64").is_none(),
+                "{bad}"
+            );
         }
         let other = manifest("x86_64", good).replace(ID, "editor");
         assert!(Manifest::parse(other.as_bytes(), "x86_64").is_none());
@@ -546,7 +563,17 @@ mod tests {
         for ok in ["usr/bin/sh", "./etc/passwd", "proc", "dev", "tmp/"] {
             assert!(entry_ok(Path::new(ok)), "{ok}");
         }
-        for bad in ["", ".", "./", "/etc/passwd", "../x", "usr/../../x", "proc/1/mem", "dev/sda", "run/lock/x"] {
+        for bad in [
+            "",
+            ".",
+            "./",
+            "/etc/passwd",
+            "../x",
+            "usr/../../x",
+            "proc/1/mem",
+            "dev/sda",
+            "run/lock/x",
+        ] {
             assert!(!entry_ok(Path::new(bad)), "{bad}");
         }
     }
@@ -554,7 +581,8 @@ mod tests {
     #[test]
     fn unpacking_keeps_the_tree_and_drops_devices_links_out_and_set_id_bits() {
         use std::os::unix::fs::PermissionsExt;
-        let work = std::env::temp_dir().join(format!("ultar-foreign-unpack-{}", std::process::id()));
+        let work =
+            std::env::temp_dir().join(format!("ultar-foreign-unpack-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&work);
         std::fs::create_dir_all(work.join("into")).unwrap();
         let archive = work.join("a.tar.gz");
@@ -564,33 +592,49 @@ mod tests {
                 flate2::Compression::fast(),
             );
             let mut b = tar::Builder::new(gz);
-            let mut add = |path: &str, kind: tar::EntryType, mode: u32, data: &[u8], link: Option<&str>| {
-                let mut h = tar::Header::new_gnu();
-                h.set_entry_type(kind);
-                h.set_mode(mode);
-                h.set_size(data.len() as u64);
-                if let Some(l) = link {
-                    h.set_link_name(l).unwrap();
-                }
-                h.set_cksum();
-                b.append_data(&mut h, path, data).unwrap();
-            };
+            let mut add =
+                |path: &str, kind: tar::EntryType, mode: u32, data: &[u8], link: Option<&str>| {
+                    let mut h = tar::Header::new_gnu();
+                    h.set_entry_type(kind);
+                    h.set_mode(mode);
+                    h.set_size(data.len() as u64);
+                    if let Some(l) = link {
+                        h.set_link_name(l).unwrap();
+                    }
+                    h.set_cksum();
+                    b.append_data(&mut h, path, data).unwrap();
+                };
             add("usr/", tar::EntryType::Directory, 0o755, b"", None);
             add("usr/bin/", tar::EntryType::Directory, 0o755, b"", None);
             add("usr/bin/su", tar::EntryType::Regular, 0o4755, b"#!", None);
-            add("usr/bin/sh", tar::EntryType::Symlink, 0o777, b"", Some("dash"));
+            add(
+                "usr/bin/sh",
+                tar::EntryType::Symlink,
+                0o777,
+                b"",
+                Some("dash"),
+            );
             add("dev/", tar::EntryType::Directory, 0o755, b"", None);
             add("dev/null", tar::EntryType::Char, 0o666, b"", None);
             add("proc/", tar::EntryType::Directory, 0o555, b"", None);
             add("etc/", tar::EntryType::Directory, 0o755, b"", None);
-            add("etc/ultar-runtime", tar::EntryType::Regular, 0o644, b"version=1\n", None);
+            add(
+                "etc/ultar-runtime",
+                tar::EntryType::Regular,
+                0o644,
+                b"version=1\n",
+                None,
+            );
             b.into_inner().unwrap().finish().unwrap();
         }
         let into = work.join("into");
         unpack(&archive, &into, false).unwrap();
         let su = std::fs::metadata(into.join("usr/bin/su")).unwrap();
         assert_eq!(su.permissions().mode() & 0o7777, 0o755);
-        assert_eq!(std::fs::read_link(into.join("usr/bin/sh")).unwrap(), Path::new("dash"));
+        assert_eq!(
+            std::fs::read_link(into.join("usr/bin/sh")).unwrap(),
+            Path::new("dash")
+        );
         assert!(into.join("dev").is_dir() && !into.join("dev/null").exists());
         assert!(into.join("proc").is_dir());
         assert_eq!(field_in(&into, "version"), "1");
@@ -606,10 +650,21 @@ mod tests {
         let stick = work.join("media/stick/ultar");
         std::fs::create_dir_all(&stick).unwrap();
         std::fs::write(stick.join("foreign.linux-runtime-1-x86_64.uap"), b"x").unwrap();
-        std::fs::write(work.join("media/foreign.linux-runtime-2-x86_64.uap.part"), b"x").unwrap();
-        std::os::unix::fs::symlink("/etc/passwd", work.join("media/foreign.linux-runtime-3-x86_64.uap")).unwrap();
+        std::fs::write(
+            work.join("media/foreign.linux-runtime-2-x86_64.uap.part"),
+            b"x",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            "/etc/passwd",
+            work.join("media/foreign.linux-runtime-3-x86_64.uap"),
+        )
+        .unwrap();
         let found = candidates(&[work.join("media")]);
-        assert_eq!(found, vec![stick.join("foreign.linux-runtime-1-x86_64.uap")]);
+        assert_eq!(
+            found,
+            vec![stick.join("foreign.linux-runtime-1-x86_64.uap")]
+        );
         let _ = std::fs::remove_dir_all(&work);
     }
 }

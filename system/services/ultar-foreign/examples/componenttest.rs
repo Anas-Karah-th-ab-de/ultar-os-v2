@@ -35,7 +35,15 @@ fn check(ok: bool, what: &str) {
 }
 
 /// One entry of the area's archive.
-fn add(b: &mut tar::Builder<impl std::io::Write>, path: &str, kind: tar::EntryType, mode: u32, uid: u64, data: &[u8], link: Option<&str>) {
+fn add(
+    b: &mut tar::Builder<impl std::io::Write>,
+    path: &str,
+    kind: tar::EntryType,
+    mode: u32,
+    uid: u64,
+    data: &[u8],
+    link: Option<&str>,
+) {
     let mut h = tar::Header::new_gnu();
     h.set_entry_type(kind);
     h.set_mode(mode);
@@ -58,27 +66,104 @@ fn component(work: &Path, version: &str, key: &str, name: &str) -> PathBuf {
     let stem = format!("{}{version}-{}", component::PREFIX, std::env::consts::ARCH);
     let archive = stick.join(format!("{stem}.tar.gz"));
     {
-        let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::fast());
+        let gz = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive).unwrap(),
+            flate2::Compression::fast(),
+        );
         let mut b = tar::Builder::new(gz);
-        let runtime = format!("version={version}\nsuite=test\narch={}\ncomponents=\n", std::env::consts::ARCH);
+        let runtime = format!(
+            "version={version}\nsuite=test\narch={}\ncomponents=\n",
+            std::env::consts::ARCH
+        );
         add(&mut b, "./", E::Directory, 0o755, 0, b"", None);
-        for d in ["usr/", "usr/bin/", "etc/", "var/", "var/lib/", "var/lib/dpkg/", "proc/", "dev/", "tmp/", "home/", "home/app/"] {
+        for d in [
+            "usr/",
+            "usr/bin/",
+            "etc/",
+            "var/",
+            "var/lib/",
+            "var/lib/dpkg/",
+            "proc/",
+            "dev/",
+            "tmp/",
+            "home/",
+            "home/app/",
+        ] {
             let mode = if d == "tmp/" { 0o1777 } else { 0o755 };
             add(&mut b, d, E::Directory, mode, 0, b"", None);
         }
-        add(&mut b, "home/app/owned", E::Regular, 0o644, 1234, b"x", None);
-        add(&mut b, "usr/bin/hello", E::Regular, 0o755, 0, b"#!/bin/sh\necho hello\n", None);
-        add(&mut b, "usr/bin/su", E::Regular, 0o4755, 0, b"#!/bin/sh\n", None);
-        add(&mut b, "usr/bin/sh", E::Symlink, 0o777, 0, b"", Some("hello"));
-        add(&mut b, "usr/bin/hello2", E::Link, 0o755, 0, b"", Some("usr/bin/hello"));
+        add(
+            &mut b,
+            "home/app/owned",
+            E::Regular,
+            0o644,
+            1234,
+            b"x",
+            None,
+        );
+        add(
+            &mut b,
+            "usr/bin/hello",
+            E::Regular,
+            0o755,
+            0,
+            b"#!/bin/sh\necho hello\n",
+            None,
+        );
+        add(
+            &mut b,
+            "usr/bin/su",
+            E::Regular,
+            0o4755,
+            0,
+            b"#!/bin/sh\n",
+            None,
+        );
+        add(
+            &mut b,
+            "usr/bin/sh",
+            E::Symlink,
+            0o777,
+            0,
+            b"",
+            Some("hello"),
+        );
+        add(
+            &mut b,
+            "usr/bin/hello2",
+            E::Link,
+            0o755,
+            0,
+            b"",
+            Some("usr/bin/hello"),
+        );
         add(&mut b, "dev/null", E::Char, 0o666, 0, b"", None);
         add(&mut b, "proc/1/mem", E::Regular, 0o600, 0, b"x", None);
-        add(&mut b, "var/lib/dpkg/status", E::Regular, 0o644, 0, b"", None);
-        add(&mut b, "etc/ultar-runtime", E::Regular, 0o644, 0, runtime.as_bytes(), None);
+        add(
+            &mut b,
+            "var/lib/dpkg/status",
+            E::Regular,
+            0o644,
+            0,
+            b"",
+            None,
+        );
+        add(
+            &mut b,
+            "etc/ultar-runtime",
+            E::Regular,
+            0o644,
+            0,
+            runtime.as_bytes(),
+            None,
+        );
         b.into_inner().unwrap().finish().unwrap();
     }
     let bytes = std::fs::read(&archive).unwrap();
-    let digest: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    let digest: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     let p = work.join(format!("pkg-{name}"));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(p.join("payload")).unwrap();
@@ -96,13 +181,25 @@ fn component(work: &Path, version: &str, key: &str, name: &str) -> PathBuf {
         ),
     )
     .unwrap();
-    ultar_pkg::pack_and_sign(&p.join("manifest.toml"), &p.join("payload"), &stick.join(format!("{stem}.uap")), key).unwrap();
+    ultar_pkg::pack_and_sign(
+        &p.join("manifest.toml"),
+        &p.join("payload"),
+        &stick.join(format!("{stem}.uap")),
+        key,
+    )
+    .unwrap();
     archive
 }
 
 fn main() {
     let words: Vec<String> = std::env::args().skip(1).collect();
-    let arg = |name: &str| words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned();
+    let arg = |name: &str| {
+        words
+            .iter()
+            .position(|w| w == name)
+            .and_then(|i| words.get(i + 1))
+            .cloned()
+    };
     let helper = PathBuf::from(arg("--helper").unwrap_or_else(|| fail("--helper fehlt")));
     let work = PathBuf::from(arg("--work").unwrap_or_else(|| "/data/componenttest".into()));
     let _ = std::fs::remove_dir_all(&work);
@@ -113,7 +210,10 @@ fn main() {
         if made.is_err() || probe.is_err() {
             // which step of the kernel's file system refuses (a directory the disk does not take)
             let parent = std::fs::write(work.join(format!(".probe-{d}")), b"x");
-            fail(&format!("{}: mkdir {made:?}, a file in it {probe:?}, a file next to it {parent:?}", at.display()));
+            fail(&format!(
+                "{}: mkdir {made:?}, a file in it {probe:?}, a file next to it {parent:?}",
+                at.display()
+            ));
         }
         let _ = std::fs::remove_file(at.join(".probe"));
     }
@@ -135,47 +235,101 @@ fn main() {
     // 1. a component of an unknown publisher (even a newer one) is not taken
     component(&work, "26.04.1", &secret, "one");
     component(&work, "26.04.9", &stranger, "stranger");
-    let found: Found = component::newest(&ctx, &dir).unwrap_or_else(|| fail("the component is not found"));
-    check(found.manifest.version == "26.04.1", &format!("taken: {} (the unknown key was trusted)", found.manifest.version));
+    let found: Found =
+        component::newest(&ctx, &dir).unwrap_or_else(|| fail("the component is not found"));
+    check(
+        found.manifest.version == "26.04.1",
+        &format!(
+            "taken: {} (the unknown key was trusted)",
+            found.manifest.version
+        ),
+    );
     check(found.signer == "test", &format!("signer {}", found.signer));
     println!("COMPONENT: signature ok");
 
     // 2. installed: owners kept, set-id bits, device nodes and the insides of proc gone
-    let version = component::put_in_place(&ctx, &found, &dir, &none).unwrap_or_else(|e| fail(&format!("install: {e:?}")));
+    let version = component::put_in_place(&ctx, &found, &dir, &none)
+        .unwrap_or_else(|e| fail(&format!("install: {e:?}")));
     let area = ctx.layout.runtime();
-    check(version == "26.04.1" && area_ok(&area) && field_in(&area, "version") == "26.04.1", "the area is not in place");
-    let meta = |p: &str| std::fs::symlink_metadata(area.join(p)).unwrap_or_else(|e| fail(&format!("{p}: {e}")));
-    check(meta("usr/bin/hello").uid() == 0 && meta("usr").uid() == 0, "the area's files do not belong to root");
-    check(std::fs::metadata(&area).unwrap().uid() == 0, "the area's root does not belong to root");
-    check(meta("home/app/owned").uid() == 1234, "an owner was not kept");
-    check(meta("usr/bin/su").mode() & 0o6000 == 0, "a set-id bit stayed");
-    check(meta("usr/bin/sh").file_type().is_symlink() && meta("usr/bin/hello2").nlink() == 2, "links are wrong");
+    check(
+        version == "26.04.1" && area_ok(&area) && field_in(&area, "version") == "26.04.1",
+        "the area is not in place",
+    );
+    let meta = |p: &str| {
+        std::fs::symlink_metadata(area.join(p)).unwrap_or_else(|e| fail(&format!("{p}: {e}")))
+    };
+    check(
+        meta("usr/bin/hello").uid() == 0 && meta("usr").uid() == 0,
+        "the area's files do not belong to root",
+    );
+    check(
+        std::fs::metadata(&area).unwrap().uid() == 0,
+        "the area's root does not belong to root",
+    );
+    check(
+        meta("home/app/owned").uid() == 1234,
+        "an owner was not kept",
+    );
+    check(
+        meta("usr/bin/su").mode() & 0o6000 == 0,
+        "a set-id bit stayed",
+    );
+    check(
+        meta("usr/bin/sh").file_type().is_symlink() && meta("usr/bin/hello2").nlink() == 2,
+        "links are wrong",
+    );
     check(meta("tmp").mode() & 0o7777 == 0o1777, "the modes are wrong");
-    check(!area.join("dev/null").exists() && !area.join("proc/1").exists(), "a device node or the inside of proc came in");
+    check(
+        !area.join("dev/null").exists() && !area.join("proc/1").exists(),
+        "a device node or the inside of proc came in",
+    );
     println!("COMPONENT: unpacked ok");
 
     // 3. a damaged archive (same size, other bytes) changes nothing
     let archive = component(&work, "26.04.2", &secret, "two");
-    let found2 = component::newest(&ctx, &dir).unwrap_or_else(|| fail("the newer one is not found"));
-    check(found2.manifest.version == "26.04.2", "the newer one is not taken");
+    let found2 =
+        component::newest(&ctx, &dir).unwrap_or_else(|| fail("the newer one is not found"));
+    check(
+        found2.manifest.version == "26.04.2",
+        "the newer one is not taken",
+    );
     let mut bytes = std::fs::read(&archive).unwrap();
     let mid = bytes.len() / 2;
     bytes[mid] ^= 0xff;
     std::fs::write(&archive, &bytes).unwrap();
     let damaged = component::put_in_place(&ctx, &found2, &dir, &none);
-    check(damaged == Err(Failure::Damaged), &format!("damaged archive: {damaged:?}"));
-    check(field_in(&area, "version") == "26.04.1" && !ctx.layout.root.join("linux.new").exists(), "a damaged archive changed the area");
+    check(
+        damaged == Err(Failure::Damaged),
+        &format!("damaged archive: {damaged:?}"),
+    );
+    check(
+        field_in(&area, "version") == "26.04.1" && !ctx.layout.root.join("linux.new").exists(),
+        "a damaged archive changed the area",
+    );
     println!("COMPONENT: damaged ok");
 
     // 4. replaced by a newer one; the old one is emptied (at the next start: tidy)
     component(&work, "26.04.3", &secret, "three");
     let found3 = component::newest(&ctx, &dir).unwrap_or_else(|| fail("the newest is not found"));
-    let version = component::put_in_place(&ctx, &found3, &dir, &none).unwrap_or_else(|e| fail(&format!("replace: {e:?}")));
-    check(version == "26.04.3" && field_in(&area, "version") == "26.04.3", "not replaced");
-    check(ctx.layout.root.join("linux.old/usr/bin/hello").exists(), "the old area is not aside");
+    let version = component::put_in_place(&ctx, &found3, &dir, &none)
+        .unwrap_or_else(|e| fail(&format!("replace: {e:?}")));
+    check(
+        version == "26.04.3" && field_in(&area, "version") == "26.04.3",
+        "not replaced",
+    );
+    check(
+        ctx.layout.root.join("linux.old/usr/bin/hello").exists(),
+        "the old area is not aside",
+    );
     component::tidy(&ctx);
-    check(!ctx.layout.root.join("linux.old").exists(), "the old area stayed");
-    check(std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(1) == 0, "the copy stayed in the inbox");
+    check(
+        !ctx.layout.root.join("linux.old").exists(),
+        "the old area stayed",
+    );
+    check(
+        std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(1) == 0,
+        "the copy stayed in the inbox",
+    );
     println!("COMPONENT: replaced ok");
 
     let _ = std::fs::remove_dir_all(&work);

@@ -35,7 +35,9 @@ pub const FOLDERS: [(&str, &str); 7] = [
 /// Whether Files offers to install an item of this name.
 pub fn is_installable_name(name: &str) -> bool {
     let lower = name.to_lowercase();
-    ENDINGS.iter().any(|e| lower.ends_with(e) && lower.len() > e.len())
+    ENDINGS
+        .iter()
+        .any(|e| lower.ends_with(e) && lower.len() > e.len())
 }
 
 /// The path of `loc` as the service sees it (the device's areas or a mounted drive);
@@ -45,7 +47,10 @@ pub fn host_path(loc: &Loc, drives: &[Drive]) -> Option<String> {
         AreaId::Trash => return None,
         AreaId::Drive(_) => {
             let d = drives.iter().find(|d| d.area == loc.area)?;
-            d.uri.strip_prefix("file://")?.trim_end_matches('/').to_owned()
+            d.uri
+                .strip_prefix("file://")?
+                .trim_end_matches('/')
+                .to_owned()
         }
         area => format!("{HOST_AREAS}/{}", area.dir_name()),
     };

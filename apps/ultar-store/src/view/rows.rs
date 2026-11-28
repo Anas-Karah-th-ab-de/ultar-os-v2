@@ -255,7 +255,10 @@ mod source_mark {
             assert!(line.contains("Linux"), "{line}");
             let office = s.entry("km-office").unwrap();
             let line = key(&publisher_line(&s, office));
-            assert!(!line.contains("_from"), "an Ultar app has no source mark: {line}");
+            assert!(
+                !line.contains("_from"),
+                "an Ultar app has no source mark: {line}"
+            );
         }
     }
 }

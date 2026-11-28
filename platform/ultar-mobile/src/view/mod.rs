@@ -325,9 +325,18 @@ mod foreign_tests {
 
     #[test]
     fn apps_from_other_systems_say_where_they_come_from() {
-        assert_eq!(foreign_source("foreign.deb-mousepad"), Some("mobile.app.source.linux"));
-        assert_eq!(foreign_source("foreign.exe-notepad"), Some("mobile.app.source.windows"));
-        assert_eq!(foreign_source("foreign.apk-notes"), Some("mobile.app.source.android"));
+        assert_eq!(
+            foreign_source("foreign.deb-mousepad"),
+            Some("mobile.app.source.linux")
+        );
+        assert_eq!(
+            foreign_source("foreign.exe-notepad"),
+            Some("mobile.app.source.windows")
+        );
+        assert_eq!(
+            foreign_source("foreign.apk-notes"),
+            Some("mobile.app.source.android")
+        );
         assert_eq!(foreign_source("org.ultar.files"), None);
         let app = App::named("foreign.deb-mousepad", "Mousepad", IconId::Package);
         assert_eq!(

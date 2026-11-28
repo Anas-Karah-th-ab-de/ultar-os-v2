@@ -70,7 +70,10 @@ fn runtime(cx: &mut Cx<'_>, content: NodeId, r: &RuntimeStateReply) -> Result<()
     cx.act(header, update, Act::ForeignUpdate)?;
     let size = ultar_i18n::units::format_size(r.size_bytes, cx.tr);
     let rows = [
-        ("app.settings.foreign.runtime.version", Label::data(&r.version)),
+        (
+            "app.settings.foreign.runtime.version",
+            Label::data(&r.version),
+        ),
         ("app.settings.foreign.runtime.size", Label::data(&size)),
     ];
     for (i, (key, value)) in rows.into_iter().enumerate() {
@@ -139,12 +142,18 @@ pub(crate) fn app(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     )?;
     let back = Button::new(k("app.settings.foreign.back")).icon(IconId::Back);
     cx.act(head, back, Act::ForeignBack)?;
-    cx.ui
-        .add(content, Text::new(name(&a.name)).spec(super::spec::page_title()))?;
+    cx.ui.add(
+        content,
+        Text::new(name(&a.name)).spec(super::spec::page_title()),
+    )?;
     let kind = k(kind_key(a.source)).resolve(cx.tr).into_owned();
     let sub = Label::key_with(
         "app.settings.foreign.app.from",
-        &[("kind", &kind), ("package", &a.package), ("version", &a.version)],
+        &[
+            ("kind", &kind),
+            ("package", &a.package),
+            ("version", &a.version),
+        ],
     );
     muted(cx.ui, content, sub)?;
     let warning = InfoBar::new(Tone::Warning, k("app.settings.foreign.unchecked"))
@@ -169,7 +178,11 @@ fn rights(cx: &mut Cx<'_>, content: NodeId, a: &ForeignApp) -> Result<(), UiErro
         Act::ForeignInternet,
     )];
     if net {
-        toggles.push(("app.settings.foreign.lan".into(), a.choices.lan, Act::ForeignLan));
+        toggles.push((
+            "app.settings.foreign.lan".into(),
+            a.choices.lan,
+            Act::ForeignLan,
+        ));
     }
     for (i, word) in FOLDERS.iter().enumerate() {
         let on = a.choices.folders.iter().any(|f| f == word);
@@ -194,7 +207,11 @@ fn removal(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         .last();
     let row = cx.ui.add(card, keep)?;
     let on = cx.state.status.foreign.keep_data;
-    cx.act(row, Switch::new(k("app.settings.foreign.keep"), on), Act::ForeignKeep)?;
+    cx.act(
+        row,
+        Switch::new(k("app.settings.foreign.keep"), on),
+        Act::ForeignKeep,
+    )?;
     let remove = Button::new(k("app.settings.foreign.remove")).variant(ButtonVariant::Danger);
     cx.act_sized(content, remove, Sizing::AUTO, Act::ForeignRemove)
         .map(|_| ())
